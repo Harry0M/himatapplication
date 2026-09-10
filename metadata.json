@@ -1,0 +1,6 @@
+{
+  "name": "Himat Textile",
+  "description": "Sales and Garment Sourcing Management App for Himat Textile sourcing agency.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

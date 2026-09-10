@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Garment Hanger & Textile Emblem -->
+    <!-- Outer Shield / Hex Badge Accent -->
+    <path
+        android:fillColor="#15FFFFFF"
+        android:pathData="M54,22 L78,36 L78,66 L54,80 L30,66 L30,36 Z" />
+    <path
+        android:strokeColor="#D4AF37"
+        android:strokeWidth="1.8"
+        android:fillColor="#00000000"
+        android:pathData="M54,22 L78,36 L78,66 L54,80 L30,66 L30,36 Z" />
+    <!-- Clothes Hanger Hook -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M54,34 C54,30 57,28 59,30 C61,32 60,36 54,38 L54,42" />
+    <!-- Hanger Triangular Shoulder -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M38,52 L54,42 L70,52 Z" />
+    <!-- Center Textile Weave / HT Monogram Pillars -->
+    <path
+        android:fillColor="#D4AF37"
+        android:pathData="M44,55 L48,55 L48,70 L44,70 Z" />
+    <path
+        android:fillColor="#D4AF37"
+        android:pathData="M60,55 L64,55 L64,70 L60,70 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M46,61 L62,61 L62,64 L46,64 Z" />
+</vector>
