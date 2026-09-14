@@ -80,7 +80,8 @@ object ShareUtil {
         val totalLoose = entries.sumOf { it.loosePieces }
 
         return buildString {
-            appendLine("📋 *HIMAT TEXTILE — CUSTOMER DAY REPORT*")
+            appendLine("📋 *HIMAT TEXTILE — YOUR BUSINESS GUIDE ACROSS INDIA*")
+            appendLine("Customer Day Report & Multi-Supplier Sourcing Summary")
             appendLine("─────────────────────────")
             appendLine("👤 *Customer:* ${customer?.name ?: visit.customerName}")
             appendLine("📍 *Market:* ${customer?.city ?: "—"}")
@@ -108,7 +109,7 @@ object ShareUtil {
             appendLine("Garment GST (5%): ₹${String.format("%,.2f", totalGst)}")
             appendLine("💰 *GRAND TOTAL: ₹${String.format("%,.2f", grandTotal)}*")
             appendLine("─────────────────────────")
-            appendLine("_Himat Textile Garment Sourcing Agency_")
+            appendLine("_Himat Textile — Your Business Guide Across India_")
         }
     }
 
@@ -123,7 +124,8 @@ object ShareUtil {
         val grandTotal = totalAmount + totalGst
 
         return buildString {
-            appendLine("🏷️ *HIMAT TEXTILE — SUPPLIER PURCHASE COPY*")
+            appendLine("🏷️ *HIMAT TEXTILE — YOUR BUSINESS GUIDE ACROSS INDIA*")
+            appendLine("Supplier Purchase Order Copy")
             appendLine("─────────────────────────")
             appendLine("🏭 *Supplier:* ${supplier.name} (${supplier.type})")
             appendLine("📍 *Market Area:* ${supplier.marketArea}")
@@ -148,7 +150,7 @@ object ShareUtil {
             appendLine("GST (5%): ₹${String.format("%,.2f", totalGst)}")
             appendLine("💰 *NET TOTAL: ₹${String.format("%,.2f", grandTotal)}*")
             appendLine("─────────────────────────")
-            appendLine("_Himat Textile Sourcing Agency — Direct Booking_")
+            appendLine("_Himat Textile — Your Business Guide Across India_")
         }
     }
 }

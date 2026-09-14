@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -12,6 +13,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.res.painterResource
+import com.example.R
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -178,25 +181,34 @@ fun CustomerReportScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.Top
                         ) {
-                            Column {
-                                Text(
-                                    text = "HIMAT TEXTILE",
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = NavyPrimary,
-                                    letterSpacing = 0.5.sp
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Image(
+                                    painter = painterResource(id = R.drawable.himat_logo),
+                                    contentDescription = "Himat Textile Logo",
+                                    modifier = Modifier
+                                        .size(42.dp)
+                                        .padding(end = 10.dp)
                                 )
-                                Text(
-                                    text = "GARMENT SOURCING AGENCY",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = GoldAccent
-                                )
-                                Text(
-                                    text = "Multi-Supplier Procurement Facilitator",
-                                    fontSize = 9.sp,
-                                    color = TextSecondary
-                                )
+                                Column {
+                                    Text(
+                                        text = "HIMAT TEXTILE",
+                                        fontSize = 17.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = NavyPrimary,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                    Text(
+                                        text = "YOUR BUSINESS GUIDE ACROSS INDIA",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = GoldAccent
+                                    )
+                                    Text(
+                                        text = "Multi-Supplier Procurement Facilitator",
+                                        fontSize = 8.5.sp,
+                                        color = TextSecondary
+                                    )
+                                }
                             }
 
                             Column(horizontalAlignment = Alignment.End) {

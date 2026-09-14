@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -12,6 +13,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.res.painterResource
+import com.example.R
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -266,27 +269,36 @@ fun SupplierReportScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.Top
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "HIMAT TEXTILE",
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = NavyPrimary,
-                                    letterSpacing = 0.5.sp
+                            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                                Image(
+                                    painter = painterResource(id = R.drawable.himat_logo),
+                                    contentDescription = "Himat Textile Logo",
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .padding(end = 10.dp)
                                 )
-                                Text(
-                                    text = "GARMENT SOURCING AGENCY • SUPPLIER COPY",
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = GoldAccent
-                                )
-                                Text(
-                                    text = "Spot Procurement Voucher for Wholesaler / Manufacturer",
-                                    fontSize = 8.5.sp,
-                                    color = TextSecondary,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                                Column {
+                                    Text(
+                                        text = "HIMAT TEXTILE",
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = NavyPrimary,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                    Text(
+                                        text = "YOUR BUSINESS GUIDE ACROSS INDIA",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = GoldAccent
+                                    )
+                                    Text(
+                                        text = "Spot Procurement Voucher for Wholesaler / Manufacturer",
+                                        fontSize = 8.5.sp,
+                                        color = TextSecondary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
 
                             Spacer(modifier = Modifier.width(8.dp))
