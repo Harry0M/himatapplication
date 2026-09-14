@@ -26,10 +26,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Assignment
+import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Person
@@ -105,14 +106,14 @@ fun EmployeeDetailScreen(
         employeeVisits.map { it.id }.toSet()
     }
 
-    // All purchase entries where this employee gave their contribution / sahyog
+    // All purchase entries where this employee assisted or contributed
     val employeeEntries = remember(allEntries, employeeVisitIds) {
         allEntries.filter { it.visitId in employeeVisitIds }
             .sortedByDescending { it.id }
     }
 
     // Key metrics requested by the user:
-    // "unhone kin kin entries me apna sahyog diya hai , unke banaye gaye kinte bill pending hai kitne clear hai"
+    // "unhone kin kin entries me apna assisted diya hai , unke banaye gaye kinte bill pending hai kitne clear hai"
     val totalEntriesCount = employeeEntries.size
     val totalVisitsCount = employeeVisits.size
     val totalPieces = employeeEntries.sumOf { it.pieces }
@@ -167,7 +168,7 @@ fun EmployeeDetailScreen(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "Agent Performance, Sahyog Entries & Bill Status",
+                            text = "Agent Performance, Assisted Orders & Bill Status",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -200,7 +201,7 @@ fun EmployeeDetailScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer
+                    containerColor = Color(0xFFF6F8FB)
                 )
             )
         }
@@ -280,6 +281,169 @@ fun EmployeeDetailScreen(
                             }
                         }
 
+                        // Contact Phones (up to 5 phones with 1-click dial chips)
+                        val employeePhones = listOfNotNull(
+                            employee.phone.takeIf { it.isNotBlank() },
+                            employee.phone2.takeIf { it.isNotBlank() },
+                            employee.phone3.takeIf { it.isNotBlank() },
+                            employee.phone4.takeIf { it.isNotBlank() },
+                            employee.phone5.takeIf { it.isNotBlank() }
+                        )
+                        if (employeePhones.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                employeePhones.forEachIndexed { idx, p ->
+                                    Surface(
+                                        color = Color(0xFFF0FDF4),
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                                        modifier = Modifier.clickable {
+                                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$p"))
+                                            context.startActivity(intent)
+                                        }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(Icons.Default.Call, contentDescription = null, tint = Color(0xFF059669), modifier = Modifier.size(12.dp))
+                                            Text(
+                                                text = if (idx == 0) p else "Alt ${idx + 1}: $p",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = Color(0xFF065F46)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Emails
+                        val employeeEmails: List<String> = listOfNotNull(
+                            employee.email.takeIf { it.isNotBlank() },
+                            employee.alternateEmail.takeIf { it.isNotBlank() }
+                        )
+                        if (employeeEmails.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                employeeEmails.forEach { em ->
+                                    Surface(
+                                        color = Color(0xFFF1F5F9),
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                        modifier = Modifier.clickable {
+                                            val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$em"))
+                                            context.startActivity(intent)
+                                        }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(Icons.Default.Email, contentDescription = null, tint = Color(0xFF475569), modifier = Modifier.size(12.dp))
+                                            Text(
+                                                text = em,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = Color(0xFF334155)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Emergency Contact Badge
+                        if (employee.emergencyContactPhone.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Surface(
+                                color = Color(0xFFFEF2F2),
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, Color(0xFFFECACA)),
+                                modifier = Modifier.clickable {
+                                    val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${employee.emergencyContactPhone}"))
+                                    context.startActivity(intent)
+                                }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(Icons.Default.Call, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(12.dp))
+                                    Text(
+                                        text = "Emergency: ${employee.emergencyContactName.ifBlank { "Contact" }} (${employee.emergencyContactPhone})",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFB91C1C)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Extended details card: assigned markets, addresses, personal location, referredBy
+                        val hasExtendedDetails = employee.assignedMarkets.isNotBlank() ||
+                                employee.currentAddress.isNotBlank() ||
+                                employee.permanentAddress.isNotBlank() ||
+                                employee.personalLocation.isNotBlank() ||
+                                employee.referredBy.isNotBlank()
+
+                        if (hasExtendedDetails) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Surface(
+                                color = Color(0xFFF8FAFC),
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    if (employee.assignedMarkets.isNotBlank()) {
+                                        Row(verticalAlignment = Alignment.Top) {
+                                            Text("Territory: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                            Text(employee.assignedMarkets, fontSize = 11.sp, color = Color(0xFF0F766E), fontWeight = FontWeight.Medium)
+                                        }
+                                    }
+                                    if (employee.currentAddress.isNotBlank()) {
+                                        Row(verticalAlignment = Alignment.Top) {
+                                            Text("Current: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                            Text(employee.currentAddress, fontSize = 11.sp, color = Color(0xFF1E293B))
+                                        }
+                                    }
+                                    if (employee.permanentAddress.isNotBlank() || employee.personalLocation.isNotBlank()) {
+                                        Row(verticalAlignment = Alignment.Top) {
+                                            Text("Native/Perm: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                            Text(
+                                                text = listOfNotNull(employee.permanentAddress.takeIf { it.isNotBlank() }, employee.personalLocation.takeIf { it.isNotBlank() }).joinToString(" • "),
+                                                fontSize = 11.sp,
+                                                color = Color(0xFF1E293B)
+                                            )
+                                        }
+                                    }
+                                    if (employee.referredBy.isNotBlank()) {
+                                        Row(verticalAlignment = Alignment.Top) {
+                                            Text("Referred by: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                            Text(employee.referredBy, fontSize = 11.sp, color = Color(0xFF1E293B))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         Spacer(modifier = Modifier.height(14.dp))
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                         Spacer(modifier = Modifier.height(12.dp))
@@ -313,7 +477,7 @@ fun EmployeeDetailScreen(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = "⏳ Pending Bills",
+                                            text = "Pending Bills",
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.error
@@ -345,7 +509,6 @@ fun EmployeeDetailScreen(
                             Surface(
                                 color = Color(0xFFECFDF5),
                                 shape = RoundedCornerShape(14.dp),
-                                border = BorderStroke(1.dp, Color(0xFF059669).copy(alpha = 0.4f)),
                                 modifier = Modifier
                                     .weight(1f)
                                     .clickable { selectedFilterTab = "CLEARED" }
@@ -357,7 +520,7 @@ fun EmployeeDetailScreen(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = "✅ Cleared Bills",
+                                            text = "Cleared Bills",
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.Bold,
                                             color = Color(0xFF059669)
@@ -388,13 +551,13 @@ fun EmployeeDetailScreen(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        // Secondary Row: Total Sahyog & Visits
+                        // Secondary Row: Total Handled Orders & Visits
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             CustomerSummaryChip(
-                                title = "Total Sahyog Entries",
+                                title = "Total Handled Orders",
                                 value = "$totalEntriesCount Orders",
                                 subtitle = "${String.format("%,d", totalPieces)} pcs volume",
                                 color = MaterialTheme.colorScheme.primary,
@@ -437,9 +600,9 @@ fun EmployeeDetailScreen(
                 ) {
                     listOf(
                         "ALL" to "All Entries ($totalEntriesCount)",
-                        "PENDING" to "⏳ Pending Bills ($pendingCount)",
-                        "CLEARED" to "✅ Cleared Bills ($clearedCount)",
-                        "VISITS" to "📅 Handled Visits ($totalVisitsCount)"
+                        "PENDING" to "Pending Bills ($pendingCount)",
+                        "CLEARED" to "Cleared Bills ($clearedCount)",
+                        "VISITS" to "Handled Visits ($totalVisitsCount)"
                     ).forEach { (tabKey, label) ->
                         val isSelected = selectedFilterTab == tabKey
                         FilterChip(
@@ -489,7 +652,7 @@ fun EmployeeDetailScreen(
                                             fontWeight = FontWeight.Bold
                                         )
                                         Text(
-                                            text = "📅 ${visit.date} • Code: ${visit.visitCode}",
+                                            text = "${visit.date} • Code: ${visit.visitCode}",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -596,7 +759,7 @@ fun EmployeeEntryCard(
                         )
                         if (visit != null) {
                             Text(
-                                text = " • 📅 ${visit.date}",
+                                text = " • ${visit.date}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -665,14 +828,14 @@ fun EmployeeEntryCard(
                         "${entry.loosePieces} Loose"
                     }
                     Text(
-                        text = "📦 $packText (${entry.pieces} pcs)",
+                        text = "$packText (${entry.pieces} pcs)",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
                     if (entry.transporter.isNotBlank()) {
                         Text(
-                            text = "🚛 ${entry.transporter}",
+                            text = entry.transporter,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -710,9 +873,9 @@ fun EmployeeEntryCard(
                         modifier = Modifier.defaultMinSize(minHeight = 30.dp)
                     ) {
                         val nextLabel = when (entry.deliveryStatus.lowercase()) {
-                            "pending" -> "Mark Packed 📦"
-                            "packed" -> "Mark Dispatched 🚚"
-                            "dispatched" -> "Mark Delivered ✅"
+                            "pending" -> "Mark Packed"
+                            "packed" -> "Mark Dispatched"
+                            "dispatched" -> "Mark Delivered"
                             else -> "Advance"
                         }
                         Text(nextLabel, style = MaterialTheme.typography.labelSmall)
@@ -737,7 +900,7 @@ private fun EmptyStateCard(message: String) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Icon(
-                Icons.Default.Assignment,
+                Icons.AutoMirrored.Filled.Assignment,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(40.dp)

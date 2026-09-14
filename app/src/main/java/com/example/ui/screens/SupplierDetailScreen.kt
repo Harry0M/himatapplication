@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -197,7 +198,7 @@ fun SupplierDetailScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer
+                    containerColor = Color(0xFFF6F8FB)
                 )
             )
         }
@@ -240,84 +241,239 @@ fun SupplierDetailScreen(
                                     )
                                 }
                                 Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Text(
-                                            text = supplier.name,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold
+                                    Column {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Text(
+                                                text = supplier.name,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            SupplierTypeBadge(type = supplier.type)
+                                        }
+                                        val subTitles = listOfNotNull(
+                                            supplier.firmName.takeIf { it.isNotBlank() }?.let { "Firm: $it" },
+                                            supplier.brand.takeIf { it.isNotBlank() }?.let { "Brand: $it" }
                                         )
-                                        SupplierTypeBadge(type = supplier.type)
+                                        if (subTitles.isNotEmpty()) {
+                                            Text(
+                                                text = subTitles.joinToString(" • "),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
                                     }
-                                    if (supplier.brand.isNotBlank()) {
-                                        Text(
-                                            text = "Brand: ${supplier.brand}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            fontWeight = FontWeight.Medium
-                                        )
+                                }
+                            }
+
+                        // Badges: GSTIN, Case Size, Outlets
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (supplier.gstin.isNotBlank()) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    shape = RoundedCornerShape(6.dp),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                                ) {
+                                    Text(
+                                        text = "GSTIN: ${supplier.gstin}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                            Surface(
+                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text(
+                                    text = "Case: ${supplier.defaultCaseSize} pcs",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                            if (supplier.shopCount > 1) {
+                                Surface(
+                                    color = Color(0xFFFEF3C7),
+                                    shape = RoundedCornerShape(6.dp),
+                                    border = BorderStroke(1.dp, Color(0xFFFDE68A))
+                                ) {
+                                    Text(
+                                        text = "🏪 ${supplier.shopCount} Outlets",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFD97706),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Contact Phones (up to 5 phones with 1-click dial chips)
+                        val supplierPhones = listOfNotNull(
+                            supplier.phone.takeIf { it.isNotBlank() },
+                            supplier.phone2.takeIf { it.isNotBlank() },
+                            supplier.phone3.takeIf { it.isNotBlank() },
+                            supplier.phone4.takeIf { it.isNotBlank() },
+                            supplier.phone5.takeIf { it.isNotBlank() }
+                        )
+                        if (supplierPhones.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                supplierPhones.forEachIndexed { idx, p ->
+                                    Surface(
+                                        color = Color(0xFFF0FDF4),
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                                        modifier = Modifier.clickable {
+                                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$p"))
+                                            context.startActivity(intent)
+                                        }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(Icons.Default.Call, contentDescription = null, tint = Color(0xFF059669), modifier = Modifier.size(12.dp))
+                                            Text(
+                                                text = if (idx == 0) p else "Alt ${idx + 1}: $p",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = Color(0xFF065F46)
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
 
-                        // Contact & Address Details
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Place,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Text(
-                                text = "${supplier.marketArea}${if (supplier.city.isNotBlank()) ", ${supplier.city}" else ""}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            if (supplier.contactPerson.isNotBlank()) {
-                                Text(" • ", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Icon(
-                                    Icons.Default.Person,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Text(
-                                    text = "${supplier.contactPerson} (${supplier.phone})",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        // Categories Tag Chips
-                        if (supplier.categories.isNotBlank()) {
-                            Spacer(modifier = Modifier.height(8.dp))
+                        // Emails
+                        val supplierEmails = listOfNotNull(
+                            supplier.email.takeIf { it.isNotBlank() },
+                            supplier.email2.takeIf { it.isNotBlank() }
+                        )
+                        if (supplierEmails.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(6.dp))
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                supplier.categoryList.forEach { cat ->
+                                supplierEmails.forEach { em ->
                                     Surface(
-                                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                                        shape = RoundedCornerShape(6.dp)
+                                        color = Color(0xFFF1F5F9),
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                        modifier = Modifier.clickable {
+                                            val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$em"))
+                                            context.startActivity(intent)
+                                        }
                                     ) {
-                                        Text(
-                                            text = "🏷️ $cat",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            fontWeight = FontWeight.SemiBold,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                        )
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(Icons.Default.Email, contentDescription = null, tint = Color(0xFF475569), modifier = Modifier.size(12.dp))
+                                            Text(
+                                                text = em,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = Color(0xFF334155)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Extended details card: addresses, locations, markets, categories, referredBy
+                        val officeAddr = supplier.officeAddress.ifBlank { supplier.address }
+                        val hasExtendedDetails = officeAddr.isNotBlank() ||
+                                supplier.homeAddress.isNotBlank() ||
+                                supplier.officeLocation.isNotBlank() ||
+                                supplier.personalLocation.isNotBlank() ||
+                                supplier.shopLocations.isNotBlank() ||
+                                supplier.markets.isNotBlank() ||
+                                supplier.categories.isNotBlank() ||
+                                supplier.garmentTypes.isNotBlank() ||
+                                supplier.referredBy.isNotBlank()
+
+                        if (hasExtendedDetails) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Surface(
+                                color = Color(0xFFF8FAFC),
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    if (officeAddr.isNotBlank() || supplier.officeLocation.isNotBlank()) {
+                                        Row(verticalAlignment = Alignment.Top) {
+                                            Text("Office/Mill: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                            Text(
+                                                text = listOfNotNull(officeAddr.takeIf { it.isNotBlank() }, supplier.officeLocation.takeIf { it.isNotBlank() }).joinToString(" • "),
+                                                fontSize = 11.sp,
+                                                color = Color(0xFF1E293B)
+                                            )
+                                        }
+                                    }
+                                    if (supplier.homeAddress.isNotBlank() || supplier.personalLocation.isNotBlank()) {
+                                        Row(verticalAlignment = Alignment.Top) {
+                                            Text("Home/Fact: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                            Text(
+                                                text = listOfNotNull(supplier.homeAddress.takeIf { it.isNotBlank() }, supplier.personalLocation.takeIf { it.isNotBlank() }).joinToString(" • "),
+                                                fontSize = 11.sp,
+                                                color = Color(0xFF1E293B)
+                                            )
+                                        }
+                                    }
+                                    if (supplier.shopLocations.isNotBlank()) {
+                                        Row(verticalAlignment = Alignment.Top) {
+                                            Text("Branches: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                            Text(supplier.shopLocations, fontSize = 11.sp, color = Color(0xFF1E293B))
+                                        }
+                                    }
+                                    if (supplier.markets.isNotBlank()) {
+                                        Row(verticalAlignment = Alignment.Top) {
+                                            Text("Markets: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                            Text(supplier.markets, fontSize = 11.sp, color = Color(0xFF0F766E), fontWeight = FontWeight.Medium)
+                                        }
+                                    }
+                                    val cats = supplier.categories.ifBlank { supplier.garmentTypes }
+                                    if (cats.isNotBlank()) {
+                                        Row(verticalAlignment = Alignment.Top) {
+                                            Text("Products: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                            Text(cats, fontSize = 11.sp, color = Color(0xFF6366F1), fontWeight = FontWeight.Medium)
+                                        }
+                                    }
+                                    if (supplier.referredBy.isNotBlank()) {
+                                        Row(verticalAlignment = Alignment.Top) {
+                                            Text("Referred by: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                            Text(supplier.referredBy, fontSize = 11.sp, color = Color(0xFF1E293B))
+                                        }
                                     }
                                 }
                             }
@@ -355,14 +511,14 @@ fun SupplierDetailScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             CustomerSummaryChip(
-                                title = "⏳ Pending Deliveries",
+                                title = "Pending Deliveries",
                                 value = "$pendingOrders Bills",
                                 subtitle = "₹${String.format("%,.0f", pendingAmount)} pending",
                                 color = if (pendingOrders > 0) MaterialTheme.colorScheme.secondary else Color(0xFF059669),
                                 modifier = Modifier.weight(1f)
                             )
                             CustomerSummaryChip(
-                                title = "✅ Cleared / Delivered",
+                                title = "Cleared / Delivered",
                                 value = "$deliveredOrders Bills",
                                 subtitle = "₹${String.format("%,.0f", deliveredAmount)} fulfilled",
                                 color = Color(0xFF059669),
@@ -398,8 +554,8 @@ fun SupplierDetailScreen(
                     ) {
                         listOf(
                             "All" to "All Bills ($totalOrders)",
-                            "Pending" to "⏳ Ongoing ($pendingOrders)",
-                            "Delivered" to "✅ Delivered ($deliveredOrders)"
+                            "Pending" to "Ongoing ($pendingOrders)",
+                            "Delivered" to "Delivered ($deliveredOrders)"
                         ).forEach { (statusKey, label) ->
                             val isSelected = filterStatus == statusKey
                             FilterChip(
@@ -523,7 +679,7 @@ fun SupplierBillCard(
                             shape = RoundedCornerShape(6.dp)
                         ) {
                             Text(
-                                text = "📅 ${visit.date}",
+                                text = visit.date,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -596,14 +752,14 @@ fun SupplierBillCard(
                         "${entry.loosePieces} Loose pcs"
                     }
                     Text(
-                        text = "📦 $packDesc",
+                        text = packDesc,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
                     if (entry.transporter.isNotBlank()) {
                         Text(
-                            text = "🚛 ${entry.transporter}",
+                            text = entry.transporter,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontWeight = FontWeight.Medium
@@ -615,7 +771,7 @@ fun SupplierBillCard(
             if (!entry.mixedPackNote.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "🏷️ Pack Group Note: ${entry.mixedPackNote}",
+                    text = "Pack Group Note: ${entry.mixedPackNote}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.tertiary,
                     fontWeight = FontWeight.Medium
@@ -656,9 +812,9 @@ fun SupplierBillCard(
                         modifier = Modifier.defaultMinSize(minHeight = 32.dp)
                     ) {
                         val nextLabel = when (entry.deliveryStatus.lowercase()) {
-                            "pending" -> "Mark Packed 📦"
-                            "packed" -> "Mark Dispatched 🚚"
-                            "dispatched" -> "Mark Delivered ✅"
+                            "pending" -> "Mark Packed"
+                            "packed" -> "Mark Dispatched"
+                            "dispatched" -> "Mark Delivered"
                             else -> "Advance"
                         }
                         Text(nextLabel, style = MaterialTheme.typography.labelSmall)

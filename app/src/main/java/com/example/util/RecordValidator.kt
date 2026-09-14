@@ -52,13 +52,13 @@ object RecordValidator {
             errors.add("Supplier name must be at least 2 characters long.")
         }
 
-        // 2. Supplier Type (Manufacturer or Wholesaler)
+        // 2. Supplier Type (Manufacturer, Wholesaler, Trader, Semi-Wholesaler)
         val cleanType = supplier.type.trim()
-        val validTypes = listOf("Manufacturer", "Wholesaler")
+        val validTypes = listOf("Manufacturer", "Wholesaler", "Trader", "Semi-Wholesaler")
         if (cleanType.isBlank()) {
-            errors.add("Supplier type (Manufacturer or Wholesaler) is required.")
+            errors.add("Supplier type is required.")
         } else if (!validTypes.any { it.equals(cleanType, ignoreCase = true) }) {
-            errors.add("Supplier type must be either 'Manufacturer' or 'Wholesaler'.")
+            errors.add("Supplier type must be 'Manufacturer', 'Wholesaler', or 'Trader'.")
         }
 
         // 3. Location / Market Area completeness (Wholesale textile gaddi/market location)

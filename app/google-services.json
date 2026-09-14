@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "787473572186",
+    "firebase_url": "https://himatsms-default-rtdb.firebaseio.com",
+    "project_id": "himatsms",
+    "storage_bucket": "himatsms.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:787473572186:android:1c6baa198c66cca6f79363",
+        "android_client_info": {
+          "package_name": "com.aistudio.himattextile.sourcemgmt"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "787473572186-6f99r3emcgmta13l2qi04408jspapl6e.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBQ9oIGJwamcd3__6NNqd_Ds-SAyYoicpY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "787473572186-6f99r3emcgmta13l2qi04408jspapl6e.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

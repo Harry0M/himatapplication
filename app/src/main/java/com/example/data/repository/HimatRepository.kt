@@ -11,6 +11,7 @@ import com.example.data.local.entity.SupplierEntity
 import com.example.data.local.entity.TransactionEntity
 import com.example.data.local.entity.TransactionLogEntity
 import com.example.data.local.entity.VisitEntity
+import com.example.data.remote.FirebaseRtdbService
 import com.example.util.RecordValidationException
 import com.example.util.RecordValidator
 import com.example.util.ValidationResult
@@ -204,10 +205,16 @@ class HimatRepository(private val database: AppDatabase) {
     fun getEntriesByDeliveryStatus(status: String): Flow<List<PurchaseEntryEntity>> =
         purchaseEntryDao.getEntriesByDeliveryStatus(status)
     val distinctItemCodes: Flow<List<String>> = purchaseEntryDao.getDistinctItemCodes()
+    suspend fun getEntryById(id: Long) = purchaseEntryDao.getEntryById(id)
+    suspend fun getTransactionByOrderNo(orderNo: String) = transactionDao.getTransactionByOrderNo(orderNo)
 
     suspend fun getNextOrderNumber(): String {
-        val count = purchaseEntryDao.getEntriesCount()
-        return "HT-${2600 + count + 1}"
+        val allEntries = purchaseEntryDao.getAllEntries().first()
+        val allTxns = transactionDao.getAllTransactions().first()
+        val maxEntryNum = allEntries.mapNotNull { it.orderNo.trim().removePrefix("HT-").toIntOrNull() }.maxOrNull() ?: 2600
+        val maxTxnNum = allTxns.mapNotNull { it.orderNo.trim().removePrefix("HT-").toIntOrNull() }.maxOrNull() ?: 2600
+        val maxNum = maxOf(2600, maxOf(maxEntryNum, maxTxnNum))
+        return "HT-${maxNum + 1}"
     }
 
     suspend fun savePurchaseEntry(entry: PurchaseEntryEntity): Long {
@@ -245,10 +252,73 @@ class HimatRepository(private val database: AppDatabase) {
         }
     }
 
+    suspend fun updatePurchaseEntryDetails(
+        entry: PurchaseEntryEntity
+    ): PurchaseEntryEntity {
+        val totalAmount = entry.pieces * entry.rate
+        val gstAmount = (totalAmount * entry.gstRate) / 100.0
+        val grandTotal = totalAmount + gstAmount
+
+        val caseSize = if (entry.caseSize > 0) entry.caseSize else 24
+        val caseCount = entry.pieces / caseSize
+        val loosePieces = entry.pieces % caseSize
+
+        val processedEntry = entry.copy(
+            totalAmount = totalAmount,
+            gstAmount = gstAmount,
+            grandTotalWithGst = grandTotal,
+            caseSize = caseSize,
+            caseCount = caseCount,
+            loosePieces = loosePieces
+        )
+
+        purchaseEntryDao.updateEntry(processedEntry)
+
+        if (processedEntry.orderNo.isNotBlank()) {
+            val existingTxn = transactionDao.getTransactionByOrderNo(processedEntry.orderNo)
+            if (existingTxn != null) {
+                val updatedTxn = existingTxn.copy(
+                    pieces = processedEntry.pieces,
+                    rate = processedEntry.rate,
+                    totalAmount = totalAmount,
+                    gstAmount = gstAmount,
+                    grandTotalWithGst = grandTotal,
+                    caseSize = caseSize,
+                    caseCount = caseCount,
+                    loosePieces = loosePieces,
+                    deliveryStatus = processedEntry.deliveryStatus,
+                    transporter = processedEntry.transporter,
+                    paymentStatus = processedEntry.paymentStatus,
+                    paymentMode = processedEntry.paymentMode,
+                    paidAmount = processedEntry.paidAmount,
+                    paymentRemarks = processedEntry.paymentRemarks
+                )
+                transactionDao.updateTransaction(updatedTxn)
+            }
+        }
+        return processedEntry
+    }
+
+    suspend fun updatePaymentInfo(
+        id: Long,
+        paymentStatus: String,
+        paymentMode: String,
+        paidAmount: Double,
+        paymentRemarks: String
+    ) {
+        purchaseEntryDao.updatePaymentInfo(id, paymentStatus, paymentMode, paidAmount, paymentRemarks)
+        val entry = purchaseEntryDao.getEntryById(id)
+        if (entry != null && entry.orderNo.isNotBlank()) {
+            transactionDao.updatePaymentStatusByOrderNo(entry.orderNo, paymentStatus, paymentMode, paidAmount, paymentRemarks)
+        }
+    }
+
     suspend fun deletePurchaseEntry(entry: PurchaseEntryEntity) = purchaseEntryDao.deleteEntry(entry)
 
     // Mixed Case Packing
+    val allPackGroups: Flow<List<PackGroupEntity>> = packGroupDao.getAllPackGroups()
     fun getPackGroupsByVisit(visitId: Long): Flow<List<PackGroupEntity>> = packGroupDao.getPackGroupsByVisit(visitId)
+    suspend fun getPackGroupById(id: Long) = packGroupDao.getPackGroupById(id)
 
     suspend fun createMixedPackGroup(
         visitId: Long,
@@ -295,7 +365,7 @@ class HimatRepository(private val database: AppDatabase) {
                 val othersDesc = otherEntries.joinToString(", ") { "${it.loosePieces} pcs ${it.itemCode} (${it.supplierName})" }
                 "Mixed Packing: ${entry.loosePieces} pcs packed with $othersDesc"
             }
-            purchaseEntryDao.updateMixedPackInfo(entry.id, packGroupId, itemSpecificNote)
+            purchaseEntryDao.updateMixedPackInfoWithOrderNo(entry.id, entry.orderNo, packGroupId, itemSpecificNote)
         }
 
         return packGroupId
@@ -309,13 +379,156 @@ class HimatRepository(private val database: AppDatabase) {
         packGroupDao.deletePackGroup(packGroup)
     }
 
-    suspend fun ensureInitialDataLoaded() {
+    // Cloud Sync Ingestion Operations
+    suspend fun syncEmployeesFromCloud(employees: List<EmployeeEntity>) {
+        val valid = employees.filter { it.id > 0L && it.name.isNotBlank() }
+            .distinctBy { it.id }
+        if (valid.isNotEmpty()) {
+            employeeDao.insertAll(valid)
+        }
+    }
+
+    suspend fun syncCustomersFromCloud(customers: List<CustomerEntity>) {
+        val valid = customers.filter { it.id > 0L && it.name.isNotBlank() }
+            .distinctBy { it.id }
+            .distinctBy { "${it.name.trim().lowercase()}_${it.phone.trim()}" }
+        if (valid.isNotEmpty()) {
+            customerDao.insertAll(valid)
+        }
+    }
+
+    suspend fun syncSuppliersFromCloud(suppliers: List<SupplierEntity>) {
+        val valid = suppliers.filter { it.id > 0L && it.name.isNotBlank() }
+            .distinctBy { it.id }
+            .distinctBy { "${it.name.trim().lowercase()}_${it.brand.trim().lowercase()}_${it.phone.trim()}" }
+        if (valid.isNotEmpty()) {
+            supplierDao.insertAll(valid)
+        }
+    }
+
+    suspend fun syncProductsFromCloud(products: List<ProductEntity>) {
+        val valid = products.filter { it.id > 0L && it.name.isNotBlank() }
+            .distinctBy { it.id }
+            .distinctBy {
+                if (it.productCode.isNotBlank()) it.productCode.trim().lowercase()
+                else "${it.name.trim().lowercase()}_${it.supplierName.trim().lowercase()}"
+            }
+        if (valid.isNotEmpty()) {
+            productDao.insertAll(valid)
+        }
+    }
+
+    suspend fun syncVisitsFromCloud(visits: List<VisitEntity>) {
+        val valid = visits.filter { it.id > 0L }.distinctBy { it.id }
+        if (valid.isNotEmpty()) {
+            visitDao.insertAll(valid)
+        }
+    }
+
+    suspend fun syncEntriesFromCloud(entries: List<PurchaseEntryEntity>) {
+        val valid = entries.filter { it.id > 0L }.distinctBy { it.id }
+        if (valid.isNotEmpty()) {
+            purchaseEntryDao.insertAll(valid)
+        }
+    }
+
+    suspend fun syncTransactionsFromCloud(transactions: List<TransactionEntity>) {
+        val valid = transactions.filter { it.id > 0L }.distinctBy { it.id }
+        if (valid.isNotEmpty()) {
+            transactionDao.insertAll(valid)
+        }
+    }
+
+    suspend fun syncPackGroupsFromCloud(packGroups: List<PackGroupEntity>) {
+        val valid = packGroups.filter { it.id > 0L }.distinctBy { it.id }
+        valid.forEach {
+            packGroupDao.insertPackGroup(it)
+        }
+    }
+
+    // Startup & Sync Deduplication Routine
+    suspend fun deduplicateDatabase(rtdbService: FirebaseRtdbService) {
+        try {
+            // 1. Deduplicate Customers by name + phone
+            val currentCustomers = customerDao.getAllCustomers().first()
+            val customerGroups = currentCustomers.groupBy { "${it.name.trim().lowercase()}_${it.phone.trim()}" }
+            customerGroups.forEach { (_, group) ->
+                if (group.size > 1) {
+                    val canonical = group.minByOrNull { it.id } ?: group.first()
+                    val duplicates = group.filter { it.id != canonical.id }
+                    duplicates.forEach { dup ->
+                        customerDao.deleteCustomer(dup)
+                        rtdbService.deleteCustomer(dup.id)
+                    }
+                }
+            }
+
+            // 2. Deduplicate Suppliers by name + brand + phone
+            val currentSuppliers = supplierDao.getAllSuppliers().first()
+            val supplierGroups = currentSuppliers.groupBy {
+                "${it.name.trim().lowercase()}_${it.brand.trim().lowercase()}_${it.phone.trim()}"
+            }
+            supplierGroups.forEach { (_, group) ->
+                if (group.size > 1) {
+                    val canonical = group.minByOrNull { it.id } ?: group.first()
+                    val duplicates = group.filter { it.id != canonical.id }
+                    duplicates.forEach { dup ->
+                        purchaseEntryDao.repointSupplierId(dup.id, canonical.id)
+                        transactionDao.repointSupplierId(dup.id, canonical.id)
+                        supplierDao.deleteSupplier(dup)
+                        rtdbService.deleteSupplier(dup.id)
+                    }
+                }
+            }
+
+            // 3. Deduplicate Purchase Entries by visitId + orderNo
+            val currentEntries = purchaseEntryDao.getAllEntries().first()
+            val entryGroups = currentEntries.filter { it.orderNo.isNotBlank() }.groupBy { "${it.visitId}_${it.orderNo}" }
+            entryGroups.forEach { (_, group) ->
+                if (group.size > 1) {
+                    val canonical = group.find { it.packGroupId != null } ?: group.minByOrNull { it.id } ?: group.first()
+                    val duplicates = group.filter { it.id != canonical.id }
+                    duplicates.forEach { dup ->
+                        purchaseEntryDao.deleteEntry(dup)
+                        rtdbService.deletePurchaseEntry(dup.id)
+                    }
+                }
+            }
+
+            // 4. Deduplicate Products
+            val currentProducts = productDao.getAllProducts().first()
+            val productGroups = currentProducts.groupBy {
+                if (it.productCode.isNotBlank()) it.productCode.trim().lowercase()
+                else "${it.name.trim().lowercase()}_${it.supplierName.trim().lowercase()}"
+            }
+            productGroups.forEach { (_, group) ->
+                if (group.size > 1) {
+                    val canonical = group.minByOrNull { it.id } ?: group.first()
+                    val duplicates = group.filter { it.id != canonical.id }
+                    duplicates.forEach { dup ->
+                        productDao.deleteProduct(dup)
+                        rtdbService.deleteProduct(dup.id)
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+    }
+
+    suspend fun isLocalDatabaseEmpty(): Boolean {
         val count = purchaseEntryDao.getEntriesCount()
         val prodCount = productDao.getProductsCount()
         val txnCount = transactionDao.getTransactionsCount()
         val garmentCount = garmentItemDao.getGarmentItemsCount()
         val logCount = transactionLogDao.getLogsCount()
-        if (count == 0 || prodCount == 0 || txnCount == 0 || garmentCount == 0 || logCount == 0) {
+        return (count == 0 && prodCount == 0 && txnCount == 0 && garmentCount == 0 && logCount == 0)
+    }
+
+    suspend fun ensureInitialDataLoaded(isCloudEmpty: Boolean = false) {
+        if (!isCloudEmpty) {
+            // Cloud has data! Do not load mock SampleData, let cloud sync populate real data.
+            return
+        }
+        if (isLocalDatabaseEmpty()) {
             AppDatabase.populateDatabase(database)
         }
     }

@@ -18,21 +18,24 @@ object SampleData {
             employeeId = "EMP-01",
             name = "Himat Bhai",
             phone = "+91 98200 11223",
-            role = "Admin"
+            role = "Admin",
+            email = "owner@himattextile.com"
         ),
         EmployeeEntity(
             id = 2,
             employeeId = "EMP-02",
             name = "Sunil Verma",
             phone = "+91 98199 22334",
-            role = "Salesman"
+            role = "Salesman",
+            email = "sunil.salesman@gmail.com"
         ),
         EmployeeEntity(
             id = 3,
             employeeId = "EMP-03",
             name = "Amit Patel",
             phone = "+91 98799 33445",
-            role = "Salesman"
+            role = "Salesman",
+            email = "amit.salesman@gmail.com"
         )
     )
 

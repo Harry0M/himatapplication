@@ -53,70 +53,46 @@ import androidx.compose.ui.unit.sp
 fun HimatTopBar(
     role: String,
     salesmanName: String?,
-    onSwitchRole: () -> Unit,
+    onOpenProfile: () -> Unit = {},
+    onSwitchRole: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val handleProfileClick = {
+        onOpenProfile()
+        onSwitchRole()
+    }
+
     Surface(
-        color = MaterialTheme.colorScheme.primary,
-        contentColor = MaterialTheme.colorScheme.onPrimary,
+        color = Color(0xFFF6F8FB),
+        contentColor = MaterialTheme.colorScheme.onSurface,
         modifier = modifier.fillMaxWidth(),
-        shadowElevation = 3.dp
+        shadowElevation = 0.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.secondary),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "HT",
-                            color = MaterialTheme.colorScheme.onSecondary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column {
-                        Text(
-                            text = "HIMAT TEXTILE",
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 17.sp,
-                            letterSpacing = 0.5.sp
-                        )
-                        Text(
-                            text = "Garment Sourcing Agency",
-                            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-            }
+            // Clean Brand Name without colored background blocks or clutter
+            Text(
+                text = "Himat Textile",
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 20.sp,
+                letterSpacing = (-0.3).sp
+            )
 
-            // Material 3 Role Switcher Pill with accessible touch target
+            // Modern Profile Option - opens profile dialog containing all switch options
             Surface(
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.16f),
-                border = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.35f)
-                ),
+                color = Color.White,
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
                 modifier = Modifier
                     .clip(CircleShape)
-                    .clickable { onSwitchRole() }
-                    .defaultMinSize(minHeight = 36.dp)
+                    .clickable { handleProfileClick() }
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -124,23 +100,16 @@ fun HimatTopBar(
                 ) {
                     Icon(
                         imageVector = Icons.Default.AccountCircle,
-                        contentDescription = "Role",
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(17.dp)
+                        contentDescription = "Profile",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = if (role == "Admin") "Admin (Owner)" else (salesmanName ?: "Salesman"),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        fontSize = 12.sp,
+                        text = "Profile",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 12.5.sp,
                         fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Icon(
-                        imageVector = Icons.Default.SwapHoriz,
-                        contentDescription = "Switch",
-                        tint = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f),
-                        modifier = Modifier.size(15.dp)
                     )
                 }
             }
@@ -251,7 +220,7 @@ fun StatusBadge(
 
     Surface(
         color = bgColor,
-        shape = RoundedCornerShape(12.dp),
+        shape = CircleShape,
         modifier = modifier.heightIn(min = 22.dp, max = 26.dp)
     ) {
         Row(
@@ -293,12 +262,11 @@ fun SupplierTypeBadge(
     val color = if (isWholesaler) MaterialTheme.colorScheme.primary else Color(0xFF7C3AED)
     val bgColor = if (isWholesaler) MaterialTheme.colorScheme.primaryContainer else Color(0xFFF3E8FF)
     val textColor = if (isWholesaler) MaterialTheme.colorScheme.onPrimaryContainer else Color(0xFF6B21A8)
-    val label = if (isWholesaler) "Wholesale" else "Mfr"
+    val label = if (isWholesaler) "Wholesale" else "Manufacturer"
 
     Surface(
         color = bgColor,
-        shape = RoundedCornerShape(6.dp),
-        border = androidx.compose.foundation.BorderStroke(0.5.dp, color.copy(alpha = 0.3f)),
+        shape = CircleShape,
         modifier = modifier.heightIn(min = 20.dp, max = 24.dp)
     ) {
         Row(
@@ -306,7 +274,7 @@ fun SupplierTypeBadge(
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
         ) {
             Text(
-                text = if (isWholesaler) "🏬 $label" else "🏭 $label",
+                text = label,
                 color = textColor,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
@@ -385,8 +353,8 @@ fun IncompleteCaseBanner(
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF3C7)),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFDE68A)),
-        shape = RoundedCornerShape(10.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        shape = RoundedCornerShape(12.dp),
         modifier = modifier.fillMaxWidth()
     ) {
         Row(

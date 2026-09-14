@@ -597,8 +597,8 @@ fun SuppliersListView(
                             label = {
                                 Text(
                                     when (type) {
-                                        "Manufacturer" -> "🏭 Manufacturers"
-                                        "Wholesaler" -> "🏬 Wholesalers"
+                                        "Manufacturer" -> "Manufacturers"
+                                        "Wholesaler" -> "Wholesalers"
                                         else -> "All (${suppliers.size})"
                                     },
                                     style = MaterialTheme.typography.labelMedium,
@@ -806,7 +806,7 @@ fun SuppliersListView(
                         if (supplier.email.isNotBlank()) {
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "✉ ${supplier.email}",
+                                text = supplier.email,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -826,7 +826,7 @@ fun SuppliersListView(
                                         shape = RoundedCornerShape(6.dp)
                                     ) {
                                         Text(
-                                            text = "🧵 $cat",
+                                            text = cat,
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.Medium,
                                             color = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1059,15 +1059,8 @@ fun TransactionStatusTrackerView(
                             modifier = Modifier.defaultMinSize(minHeight = 36.dp),
                             shape = CircleShape,
                             label = {
-                                val iconEmoji = when (st) {
-                                    "Pending" -> "⏳ "
-                                    "Packed" -> "📦 "
-                                    "Dispatched" -> "🚚 "
-                                    "Delivered" -> "✅ "
-                                    else -> ""
-                                }
                                 Text(
-                                    text = "$iconEmoji$st ($count)",
+                                    text = "$st ($count)",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                                 )
@@ -1179,14 +1172,10 @@ fun TransactionCardItem(
                     Surface(
                         color = if (transaction.paymentStatus == "Paid") Color(0xFFDCFCE7) else Color(0xFFFEF3C7),
                         shape = CircleShape,
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            if (transaction.paymentStatus == "Paid") Color(0xFF86EFAC) else Color(0xFFFDE68A)
-                        ),
                         modifier = Modifier.clickable { onTogglePayment() }
                     ) {
                         Text(
-                            text = if (transaction.paymentStatus == "Paid") "Paid ✓" else "Pending ⏳",
+                            text = if (transaction.paymentStatus == "Paid") "Paid" else "Pending",
                             color = if (transaction.paymentStatus == "Paid") Color(0xFF166534) else Color(0xFF92400E),
                             fontWeight = FontWeight.Bold,
                             fontSize = 11.sp,
@@ -1357,7 +1346,7 @@ fun TransactionCardItem(
                 ) {
                     Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(15.dp))
                     Spacer(modifier = Modifier.width(5.dp))
-                    Text("Edit Status / Bilty", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                    Text("Edit Status / LR", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
                 }
 
                 // 1-Tap Advance Status Button
@@ -1369,7 +1358,7 @@ fun TransactionCardItem(
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                             modifier = Modifier.defaultMinSize(minHeight = 42.dp)
                         ) {
-                            Text("Mark Packed 📦", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                            Text("Mark Packed", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
                         }
                     }
                     "packed" -> {
@@ -1379,7 +1368,7 @@ fun TransactionCardItem(
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                             modifier = Modifier.defaultMinSize(minHeight = 42.dp)
                         ) {
-                            Text("Dispatch 🚚", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                            Text("Mark Dispatched", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
                         }
                     }
                     "dispatched" -> {
@@ -1389,7 +1378,7 @@ fun TransactionCardItem(
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                             modifier = Modifier.defaultMinSize(minHeight = 42.dp)
                         ) {
-                            Text("Mark Delivered ✅", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                            Text("Mark Delivered", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
                         }
                     }
                     else -> {
@@ -1559,8 +1548,8 @@ fun UpdateTransactionStatusDialog(
                 OutlinedTextField(
                     value = transporter,
                     onValueChange = { transporter = it },
-                    label = { Text("Transporter / Bilty No") },
-                    placeholder = { Text("e.g. VRL Logistics, Bilty #4920") },
+                    label = { Text("Transporter / LR No") },
+                    placeholder = { Text("e.g. VRL Logistics, LR #4920") },
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .fillMaxWidth()

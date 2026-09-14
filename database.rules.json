@@ -1,0 +1,69 @@
+{
+  "rules": {
+    ".read": "auth != null",
+    "super_admins": {
+      ".read": "auth != null",
+      "$key": {
+        ".write": "auth != null && (!root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists() || auth.uid == $key)"
+      }
+    },
+    "employees": {
+      ".read": "auth != null",
+      ".write": "auth != null && (!root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists())"
+    },
+    "customers": {
+      ".read": "auth != null",
+      "$id": {
+        ".write": "auth != null && (newData.exists() || !root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists())"
+      }
+    },
+    "suppliers": {
+      ".read": "auth != null",
+      "$id": {
+        ".write": "auth != null && (newData.exists() || !root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists())"
+      }
+    },
+    "manufacturers": {
+      ".read": "auth != null",
+      "$id": {
+        ".write": "auth != null && (newData.exists() || !root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists())"
+      }
+    },
+    "visits": {
+      ".read": "auth != null",
+      "$id": {
+        ".write": "auth != null && (newData.exists() || !root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists())"
+      }
+    },
+    "purchase_entries": {
+      ".read": "auth != null",
+      "$id": {
+        ".write": "auth != null && (newData.exists() || !root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists())"
+      }
+    },
+    "pack_groups": {
+      ".read": "auth != null",
+      "$id": {
+        ".write": "auth != null && (newData.exists() || !root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists())"
+      }
+    },
+    "products": {
+      ".read": "auth != null",
+      "$id": {
+        ".write": "auth != null && (newData.exists() || !root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists())"
+      }
+    },
+    "transactions": {
+      ".read": "auth != null",
+      "$id": {
+        ".write": "auth != null && (newData.exists() || !root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists())"
+      }
+    },
+    "deletion_requests": {
+      ".read": "auth != null",
+      "$id": {
+        ".write": "auth != null"
+      }
+    }
+  }
+}

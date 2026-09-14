@@ -51,9 +51,9 @@ private val LightColorScheme = lightColorScheme(
     onTertiary = Color(0xFFFFFFFF),
     tertiaryContainer = Color(0xFFA8F2CA),
     onTertiaryContainer = Color(0xFF002113),
-    background = Color(0xFFF8F9FA),
+    background = Color(0xFFF6F8FB),
     onBackground = Color(0xFF191C20),
-    surface = Color(0xFFFDFDFD),
+    surface = Color(0xFFFFFFFF),
     onSurface = Color(0xFF191C20),
     surfaceVariant = Color(0xFFDFE2EB),
     onSurfaceVariant = Color(0xFF43474E),
@@ -68,7 +68,7 @@ private val LightColorScheme = lightColorScheme(
 @Composable
 fun MyApplicationTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true, // Dynamic color enabled for wallpaper and phone theme matching!
+    dynamicColor: Boolean = false, // Keep consistent agency brand colors and status bar blending
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {

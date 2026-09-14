@@ -8,21 +8,24 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.Assessment
-import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -31,16 +34,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.components.HimatTopBar
-import com.example.ui.dialogs.AddPurchaseEntryDialog
 import com.example.ui.dialogs.CreateVisitDialog
 import com.example.ui.dialogs.MixedPackDialog
 import com.example.ui.dialogs.RoleSwitcherDialog
+import com.example.ui.screens.AddEditMasterScreen
+import com.example.ui.screens.AddStopScreen
 import com.example.ui.screens.CustomerDetailScreen
 import com.example.ui.screens.CustomerReportScreen
 import com.example.ui.screens.DashboardScreen
@@ -48,7 +53,11 @@ import com.example.ui.screens.DeliveriesScreen
 import com.example.ui.screens.EmployeeDetailScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.MainScreen
+import com.example.ui.screens.LoginScreen
 import com.example.ui.screens.MastersScreen
+import com.example.ui.screens.PaymentsScreen
+import com.example.ui.screens.PendingScreen
+import com.example.ui.screens.ProfileScreen
 import com.example.ui.screens.ReportsScreen
 import com.example.ui.screens.SupplierDetailScreen
 import com.example.ui.screens.SupplierReportScreen
@@ -58,15 +67,220 @@ import com.example.ui.theme.GoldAccent
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.NavyPrimary
 import com.example.ui.viewmodel.AppScreen
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedButton
+import com.google.firebase.auth.FirebaseUser
 import com.example.ui.viewmodel.HimatViewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = androidx.activity.SystemBarStyle.light(
+                android.graphics.Color.TRANSPARENT,
+                android.graphics.Color.TRANSPARENT
+            ),
+            navigationBarStyle = androidx.activity.SystemBarStyle.light(
+                android.graphics.Color.TRANSPARENT,
+                android.graphics.Color.TRANSPARENT
+            )
+        )
         setContent {
             MyApplicationTheme {
-                HimatApp()
+                val viewModel: HimatViewModel = viewModel()
+                val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
+                val isAuthorized by viewModel.isAuthorized.collectAsStateWithLifecycle()
+                val authorizationMessage by viewModel.authorizationMessage.collectAsStateWithLifecycle()
+
+                if (currentUser == null) {
+                    LoginScreen(
+                        viewModel = viewModel,
+                        onLoginSuccess = { /* Automatically navigates on auth state update */ }
+                    )
+                } else if (isAuthorized == false) {
+                    AccessRestrictedScreen(
+                        currentUser = currentUser!!,
+                        authorizationMessage = authorizationMessage,
+                        onSignOut = { viewModel.signOut(this@MainActivity) },
+                        onRetry = { viewModel.retryAuthorization() }
+                    )
+                } else if (isAuthorized == null) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = androidx.compose.ui.Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = NavyPrimary)
+                    }
+                } else {
+                    HimatApp(viewModel = viewModel)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AccessRestrictedScreen(
+    currentUser: FirebaseUser,
+    authorizationMessage: String? = null,
+    onSignOut: () -> Unit,
+    onRetry: () -> Unit
+) {
+    val isDeactivated = authorizationMessage?.contains("deactivated", ignoreCase = true) == true
+    val isSuspended = !isDeactivated && !authorizationMessage.isNullOrBlank()
+    val screenTitle = if (isDeactivated) "Account Deactivated" else if (isSuspended) "Access Suspended" else "Access Restricted"
+    val accentColor = if (isDeactivated) MaterialTheme.colorScheme.error else if (isSuspended) Color(0xFFD97706) else MaterialTheme.colorScheme.error
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(24.dp),
+        contentAlignment = androidx.compose.ui.Alignment.Center
+    ) {
+        Card(
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = accentColor.copy(alpha = 0.12f),
+                    modifier = Modifier.size(64.dp)
+                ) {
+                    Box(contentAlignment = androidx.compose.ui.Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Security,
+                            contentDescription = "Restricted",
+                            tint = accentColor,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                Text(
+                    text = screenTitle,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = authorizationMessage ?: "Your Google account is not authorized to access Himat Textile Agency data.",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text(
+                            text = "Signed In As:",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = currentUser.displayName ?: "Google User",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = currentUser.email ?: "",
+                            fontSize = 12.5.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (isSuspended) Color(0xFFFEF3C7) else if (isDeactivated) Color(0xFFFFE4E6) else Color(0xFFFEF3C7),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Security,
+                            contentDescription = null,
+                            tint = if (isSuspended) Color(0xFFD97706) else if (isDeactivated) Color(0xFFE11D48) else Color(0xFFD97706),
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = if (isSuspended) {
+                                "Your historical trips, orders, and customer data are 100% safely preserved. Please contact your agency administrator to resume your mobile app access."
+                            } else if (isDeactivated) {
+                                "All your past trips, orders, and client relationships remain safely preserved in the agency records."
+                            } else {
+                                "Please ask the Agency Super Admin to register this email in Employee Master to activate your access."
+                            },
+                            fontSize = 12.sp,
+                            color = if (isSuspended) Color(0xFF92400E) else if (isDeactivated) Color(0xFF9F1239) else Color(0xFF92400E),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onRetry,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Retry", modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Refresh", fontSize = 13.sp)
+                    }
+
+                    Button(
+                        onClick = onSignOut,
+                        colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
+                        modifier = Modifier.weight(1.2f)
+                    ) {
+                        Text("Sign Out", fontSize = 13.sp)
+                    }
+                }
             }
         }
     }
@@ -84,6 +298,7 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
     val employees by viewModel.allEmployees.collectAsStateWithLifecycle()
     val suppliers by viewModel.allSuppliers.collectAsStateWithLifecycle()
     val visitEntries by viewModel.visitEntries.collectAsStateWithLifecycle()
+    val visitPackGroups by viewModel.visitPackGroups.collectAsStateWithLifecycle()
     val historyItemCodes by viewModel.distinctItemCodes.collectAsStateWithLifecycle()
     val selectedCustomer by viewModel.selectedCustomer.collectAsStateWithLifecycle()
     val selectedSupplier by viewModel.selectedSupplier.collectAsStateWithLifecycle()
@@ -91,32 +306,63 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
 
     var showCreateVisitDialog by remember { mutableStateOf(false) }
     var showRoleSwitcherDialog by remember { mutableStateOf(false) }
-    var showAddPurchaseEntryDialog by remember { mutableStateOf(false) }
     var showMixedPackDialog by remember { mutableStateOf(false) }
 
     val isDetailOrDocumentScreen = currentScreen in listOf(
         AppScreen.VISIT_DETAIL,
+        AppScreen.ADD_STOP,
         AppScreen.CUSTOMER_REPORT_VIEW,
         AppScreen.SUPPLIER_COPY_VIEW,
         AppScreen.CUSTOMER_DETAIL,
         AppScreen.SUPPLIER_DETAIL,
-        AppScreen.EMPLOYEE_DETAIL
+        AppScreen.EMPLOYEE_DETAIL,
+        AppScreen.ANALYTICS_DASHBOARD,
+        AppScreen.ADD_EDIT_MASTER,
+        AppScreen.PAYMENTS,
+        AppScreen.PENDINGS,
+        AppScreen.PROFILE
+    )
+
+    // Screens that display their own integrated flat header
+    val screensWithOwnHeader = listOf(
+        AppScreen.VISITS,
+        AppScreen.CUSTOMER_MASTER,
+        AppScreen.SUPPLIER_MASTER,
+        AppScreen.EMPLOYEE_MASTER,
+        AppScreen.VISIT_DETAIL,
+        AppScreen.ADD_STOP,
+        AppScreen.CUSTOMER_REPORT_VIEW,
+        AppScreen.SUPPLIER_COPY_VIEW,
+        AppScreen.CUSTOMER_DETAIL,
+        AppScreen.SUPPLIER_DETAIL,
+        AppScreen.EMPLOYEE_DETAIL,
+        AppScreen.ANALYTICS_DASHBOARD,
+        AppScreen.ADD_EDIT_MASTER,
+        AppScreen.PAYMENTS,
+        AppScreen.PENDINGS,
+        AppScreen.PROFILE
     )
 
     // Handle Android system back button smoothly
     BackHandler(enabled = currentScreen != AppScreen.DASHBOARD) {
         when (currentScreen) {
             AppScreen.CUSTOMER_REPORT_VIEW,
-            AppScreen.SUPPLIER_COPY_VIEW -> {
+            AppScreen.SUPPLIER_COPY_VIEW,
+            AppScreen.ADD_STOP -> {
                 viewModel.navigateTo(AppScreen.VISIT_DETAIL)
             }
             AppScreen.VISIT_DETAIL -> {
                 viewModel.navigateTo(AppScreen.VISITS)
             }
+            AppScreen.ADD_EDIT_MASTER,
             AppScreen.CUSTOMER_DETAIL,
             AppScreen.SUPPLIER_DETAIL,
             AppScreen.EMPLOYEE_DETAIL -> {
                 viewModel.navigateTo(AppScreen.CUSTOMER_MASTER)
+            }
+            AppScreen.ANALYTICS_DASHBOARD,
+            AppScreen.PROFILE -> {
+                viewModel.navigateTo(AppScreen.DASHBOARD)
             }
             else -> {
                 viewModel.navigateTo(AppScreen.DASHBOARD)
@@ -125,58 +371,83 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
     }
 
     Scaffold(
+        containerColor = Color(0xFFF6F8FB),
         topBar = {
-            if (!isDetailOrDocumentScreen) {
+            if (currentScreen !in screensWithOwnHeader) {
                 HimatTopBar(
                     role = currentRole,
                     salesmanName = currentEmployee?.name,
-                    onSwitchRole = { showRoleSwitcherDialog = true }
+                    onOpenProfile = { viewModel.navigateTo(AppScreen.PROFILE) }
                 )
             }
         },
         bottomBar = {
             // Show bottom bar only on primary top-level tabs
             if (!isDetailOrDocumentScreen) {
-                NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    tonalElevation = 2.dp
+                Surface(
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 0.dp
                 ) {
-                    NavigationBarItem(
-                        selected = currentScreen == AppScreen.DASHBOARD,
-                        onClick = { viewModel.navigateTo(AppScreen.DASHBOARD) },
-                        icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
-                        label = { Text("Home", style = MaterialTheme.typography.labelMedium) }
-                    )
+                    androidx.compose.foundation.layout.Column {
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                            thickness = 0.6.dp
+                        )
+                        NavigationBar(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            tonalElevation = 0.dp
+                        ) {
+                            val navItemColors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = NavyPrimary,
+                                indicatorColor = NavyPrimary.copy(alpha = 0.12f),
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
 
-                    NavigationBarItem(
-                        selected = currentScreen == AppScreen.VISITS,
-                        onClick = { viewModel.navigateTo(AppScreen.VISITS) },
-                        icon = { Icon(Icons.Default.Assignment, contentDescription = "Visits") },
-                        label = { Text("Visits", style = MaterialTheme.typography.labelMedium) }
-                    )
+                            NavigationBarItem(
+                                selected = currentScreen == AppScreen.DASHBOARD,
+                                onClick = { viewModel.navigateTo(AppScreen.DASHBOARD) },
+                                icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
+                                label = { Text("Home", style = MaterialTheme.typography.labelMedium) },
+                                colors = navItemColors
+                            )
 
-                    NavigationBarItem(
-                        selected = currentScreen == AppScreen.CUSTOMER_MASTER ||
-                                currentScreen == AppScreen.SUPPLIER_MASTER ||
-                                currentScreen == AppScreen.EMPLOYEE_MASTER,
-                        onClick = { viewModel.navigateTo(AppScreen.CUSTOMER_MASTER) },
-                        icon = { Icon(Icons.Default.Storefront, contentDescription = "Masters") },
-                        label = { Text("Masters", style = MaterialTheme.typography.labelMedium) }
-                    )
+                            NavigationBarItem(
+                                selected = currentScreen == AppScreen.VISITS,
+                                onClick = { viewModel.navigateTo(AppScreen.VISITS) },
+                                icon = { Icon(Icons.AutoMirrored.Filled.Assignment, contentDescription = "Visits") },
+                                label = { Text("Visits", style = MaterialTheme.typography.labelMedium) },
+                                colors = navItemColors
+                            )
 
-                    NavigationBarItem(
-                        selected = currentScreen == AppScreen.DELIVERIES,
-                        onClick = { viewModel.navigateTo(AppScreen.DELIVERIES) },
-                        icon = { Icon(Icons.Default.LocalShipping, contentDescription = "Deliveries") },
-                        label = { Text("Deliveries", style = MaterialTheme.typography.labelMedium) }
-                    )
+                            NavigationBarItem(
+                                selected = currentScreen == AppScreen.CUSTOMER_MASTER ||
+                                        currentScreen == AppScreen.SUPPLIER_MASTER ||
+                                        currentScreen == AppScreen.EMPLOYEE_MASTER,
+                                onClick = { viewModel.navigateTo(AppScreen.CUSTOMER_MASTER) },
+                                icon = { Icon(Icons.Default.Storefront, contentDescription = "Masters") },
+                                label = { Text("Masters", style = MaterialTheme.typography.labelMedium) },
+                                colors = navItemColors
+                            )
 
-                    NavigationBarItem(
-                        selected = currentScreen == AppScreen.REPORTS,
-                        onClick = { viewModel.navigateTo(AppScreen.REPORTS) },
-                        icon = { Icon(Icons.Default.Assessment, contentDescription = "Reports") },
-                        label = { Text("Reports", style = MaterialTheme.typography.labelMedium) }
-                    )
+                            NavigationBarItem(
+                                selected = currentScreen == AppScreen.DELIVERIES,
+                                onClick = { viewModel.navigateTo(AppScreen.DELIVERIES) },
+                                icon = { Icon(Icons.Default.LocalShipping, contentDescription = "Deliveries") },
+                                label = { Text("Deliveries", style = MaterialTheme.typography.labelMedium) },
+                                colors = navItemColors
+                            )
+
+                            NavigationBarItem(
+                                selected = currentScreen == AppScreen.REPORTS,
+                                onClick = { viewModel.navigateTo(AppScreen.REPORTS) },
+                                icon = { Icon(Icons.Default.Assessment, contentDescription = "Reports") },
+                                label = { Text("Reports", style = MaterialTheme.typography.labelMedium) },
+                                colors = navItemColors
+                            )
+                        }
+                    }
                 }
             }
         },
@@ -195,7 +466,17 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
                         onOpenVisit = { viewModel.openVisitDetail(it) },
                         onOpenSupplier = { viewModel.openSupplierDetail(it) },
                         onOpenMixedPack = { showMixedPackDialog = true },
-                        onSwitchRole = { showRoleSwitcherDialog = true }
+                        onSwitchRole = { viewModel.navigateTo(AppScreen.PROFILE) }
+                    )
+                }
+
+                AppScreen.ANALYTICS_DASHBOARD -> {
+                    DashboardScreen(
+                        viewModel = viewModel,
+                        onNavigate = { viewModel.navigateTo(it) },
+                        onOpenNewVisit = { showCreateVisitDialog = true },
+                        onOpenVisit = { viewModel.openVisitDetail(it) },
+                        onBack = { viewModel.navigateTo(AppScreen.DASHBOARD) }
                     )
                 }
 
@@ -221,10 +502,29 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
                             viewModel = viewModel,
                             visit = visit,
                             onBack = { viewModel.navigateTo(AppScreen.VISITS) },
-                            onOpenAddEntry = { showAddPurchaseEntryDialog = true },
+                            onOpenAddEntry = { viewModel.openAddStop(visit) },
                             onOpenMixedPack = { showMixedPackDialog = true },
                             onOpenCustomerReport = { viewModel.openCustomerReport(it) },
                             onOpenSupplierCopy = { v, sup -> viewModel.openSupplierCopy(v, sup) }
+                        )
+                    } ?: run {
+                        viewModel.navigateTo(AppScreen.VISITS)
+                    }
+                }
+
+                AppScreen.ADD_STOP -> {
+                    selectedVisit?.let { visit ->
+                        AddStopScreen(
+                            viewModel = viewModel,
+                            visit = visit,
+                            onBack = { viewModel.navigateTo(AppScreen.VISIT_DETAIL) },
+                            onSaveSuccess = {
+                                viewModel.navigateTo(AppScreen.VISIT_DETAIL)
+                            },
+                            onOpenMixedPack = {
+                                viewModel.navigateTo(AppScreen.VISIT_DETAIL)
+                                showMixedPackDialog = true
+                            }
                         )
                     } ?: run {
                         viewModel.navigateTo(AppScreen.VISITS)
@@ -262,6 +562,13 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
                 AppScreen.SUPPLIER_MASTER,
                 AppScreen.EMPLOYEE_MASTER -> {
                     MastersScreen(viewModel = viewModel)
+                }
+
+                AppScreen.ADD_EDIT_MASTER -> {
+                    AddEditMasterScreen(
+                        viewModel = viewModel,
+                        onBack = { viewModel.navigateTo(AppScreen.CUSTOMER_MASTER) }
+                    )
                 }
 
                 AppScreen.CUSTOMER_DETAIL -> {
@@ -314,6 +621,34 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
                 AppScreen.REPORTS -> {
                     ReportsScreen(viewModel = viewModel)
                 }
+
+                AppScreen.PAYMENTS -> {
+                    PaymentsScreen(
+                        viewModel = viewModel,
+                        onBack = { viewModel.navigateTo(AppScreen.DASHBOARD) },
+                        onOpenCustomer = { viewModel.openCustomerDetail(it) },
+                        onOpenSupplier = { viewModel.openSupplierDetail(it) },
+                        onOpenVisit = { viewModel.openVisitDetail(it) }
+                    )
+                }
+
+                AppScreen.PENDINGS -> {
+                    PendingScreen(
+                        viewModel = viewModel,
+                        onBack = { viewModel.navigateTo(AppScreen.DASHBOARD) },
+                        onOpenVisit = { viewModel.openVisitDetail(it) },
+                        onOpenCustomer = { viewModel.openCustomerDetail(it) },
+                        onOpenSupplier = { viewModel.openSupplierDetail(it) },
+                        onOpenMixedPack = { showMixedPackDialog = true }
+                    )
+                }
+
+                AppScreen.PROFILE -> {
+                    ProfileScreen(
+                        viewModel = viewModel,
+                        onBack = { viewModel.navigateTo(AppScreen.DASHBOARD) }
+                    )
+                }
             }
         }
     }
@@ -334,51 +669,35 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
     }
 
     if (showRoleSwitcherDialog) {
+        val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
+        val isSuperAdmin by viewModel.isSuperAdmin.collectAsStateWithLifecycle()
+        val context = LocalContext.current
         RoleSwitcherDialog(
             currentRole = currentRole,
             currentEmployee = currentEmployee,
             employees = employees,
+            currentUser = currentUser,
+            isSuperAdmin = isSuperAdmin,
             onDismiss = { showRoleSwitcherDialog = false },
             onSelectRole = { role, employee ->
                 viewModel.setRole(role, employee)
+                showRoleSwitcherDialog = false
+            },
+            onSignOut = {
+                viewModel.signOut(context)
                 showRoleSwitcherDialog = false
             }
         )
     }
 
-    if (showAddPurchaseEntryDialog) {
-        selectedVisit?.let { visit ->
-            AddPurchaseEntryDialog(
-                visitId = visit.id,
-                suppliers = suppliers,
-                historyItemCodes = historyItemCodes,
-                onDismiss = { showAddPurchaseEntryDialog = false },
-                onOpenMixedPack = {
-                    showAddPurchaseEntryDialog = false
-                    showMixedPackDialog = true
-                },
-                onSave = { sup, itemCode, pieces, rate, caseSize, gstRate, expDate, transporter ->
-                    viewModel.savePurchaseEntry(
-                        orderNo = null,
-                        visitId = visit.id,
-                        supplier = sup,
-                        itemCode = itemCode,
-                        pieces = pieces,
-                        rate = rate,
-                        caseSize = caseSize,
-                        gstRate = gstRate,
-                        expectedDeliveryDate = expDate,
-                        transporter = transporter
-                    )
-                    showAddPurchaseEntryDialog = false
-                }
-            )
-        }
-    }
-
     if (showMixedPackDialog) {
         selectedVisit?.let { visit ->
-            val incompleteEntries = visitEntries.filter { it.loosePieces > 0 }
+            val packedEntryIds = visitPackGroups.flatMap { group ->
+                group.linkedEntryIds.split(",").mapNotNull { it.trim().toLongOrNull() }
+            }.toSet()
+            val incompleteEntries = visitEntries.filter {
+                it.loosePieces > 0 && it.packGroupId == null && it.id !in packedEntryIds
+            }
             MixedPackDialog(
                 incompleteEntries = incompleteEntries,
                 onDismiss = { showMixedPackDialog = false },

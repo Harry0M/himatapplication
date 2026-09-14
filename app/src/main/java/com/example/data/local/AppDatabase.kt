@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.data.local.dao.CustomerDao
 import com.example.data.local.dao.EmployeeDao
@@ -43,7 +44,7 @@ import kotlinx.coroutines.launch
         PurchaseEntryEntity::class,
         PackGroupEntity::class
     ],
-    version = 4,
+    version = 9,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -62,6 +63,18 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE purchase_entries ADD COLUMN paymentStatus TEXT NOT NULL DEFAULT 'Pending'")
+                db.execSQL("ALTER TABLE purchase_entries ADD COLUMN paymentMode TEXT NOT NULL DEFAULT 'Cash'")
+                db.execSQL("ALTER TABLE purchase_entries ADD COLUMN paymentRemarks TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE purchase_entries ADD COLUMN paidAmount REAL NOT NULL DEFAULT 0.0")
+                db.execSQL("ALTER TABLE transactions ADD COLUMN paymentMode TEXT NOT NULL DEFAULT 'Cash'")
+                db.execSQL("ALTER TABLE transactions ADD COLUMN paidAmount REAL NOT NULL DEFAULT 0.0")
+                db.execSQL("ALTER TABLE transactions ADD COLUMN paymentRemarks TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun getDatabase(context: Context, scope: CoroutineScope): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -69,24 +82,11 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "himat_textile_db"
                 )
+                    .addMigrations(MIGRATION_5_6)
                     .fallbackToDestructiveMigration()
-                    .addCallback(DatabaseCallback(scope))
                     .build()
                 INSTANCE = instance
                 instance
-            }
-        }
-
-        private class DatabaseCallback(
-            private val scope: CoroutineScope
-        ) : RoomDatabase.Callback() {
-            override fun onCreate(db: SupportSQLiteDatabase) {
-                super.onCreate(db)
-                INSTANCE?.let { database ->
-                    scope.launch(Dispatchers.IO) {
-                        populateDatabase(database)
-                    }
-                }
             }
         }
 

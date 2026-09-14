@@ -178,17 +178,32 @@ interface PurchaseEntryDao {
     @Query("UPDATE purchase_entries SET packGroupId = :packGroupId, mixedPackNote = :note WHERE id = :id")
     suspend fun updateMixedPackInfo(id: Long, packGroupId: Long?, note: String?)
 
+    @Query("UPDATE purchase_entries SET packGroupId = :packGroupId, mixedPackNote = :note WHERE id = :id OR (orderNo = :orderNo AND :orderNo != '')")
+    suspend fun updateMixedPackInfoWithOrderNo(id: Long, orderNo: String, packGroupId: Long?, note: String?)
+
+    @Query("UPDATE purchase_entries SET paymentStatus = :paymentStatus, paymentMode = :paymentMode, paidAmount = :paidAmount, paymentRemarks = :paymentRemarks WHERE id = :id")
+    suspend fun updatePaymentInfo(id: Long, paymentStatus: String, paymentMode: String, paidAmount: Double, paymentRemarks: String)
+
+    @Query("UPDATE purchase_entries SET supplierId = :newSupplierId WHERE supplierId = :oldSupplierId")
+    suspend fun repointSupplierId(oldSupplierId: Long, newSupplierId: Long)
+
     @Delete
     suspend fun deleteEntry(entry: PurchaseEntryEntity)
 }
 
 @Dao
 interface PackGroupDao {
+    @Query("SELECT * FROM pack_groups ORDER BY id DESC")
+    fun getAllPackGroups(): Flow<List<PackGroupEntity>>
+
     @Query("SELECT * FROM pack_groups WHERE visitId = :visitId ORDER BY id DESC")
     fun getPackGroupsByVisit(visitId: Long): Flow<List<PackGroupEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPackGroup(group: PackGroupEntity): Long
+
+    @Query("SELECT * FROM pack_groups WHERE id = :id LIMIT 1")
+    suspend fun getPackGroupById(id: Long): PackGroupEntity?
 
     @Delete
     suspend fun deletePackGroup(group: PackGroupEntity)
@@ -267,6 +282,15 @@ interface TransactionDao {
 
     @Query("UPDATE transactions SET paymentStatus = :status WHERE id = :id")
     suspend fun updatePaymentStatus(id: Long, status: String)
+
+    @Query("UPDATE transactions SET paymentStatus = :status, paymentMode = :mode, paidAmount = :paidAmount, paymentRemarks = :paymentRemarks WHERE orderNo = :orderNo")
+    suspend fun updatePaymentStatusByOrderNo(orderNo: String, status: String, mode: String, paidAmount: Double, paymentRemarks: String)
+
+    @Query("SELECT * FROM transactions WHERE orderNo = :orderNo LIMIT 1")
+    suspend fun getTransactionByOrderNo(orderNo: String): TransactionEntity?
+
+    @Query("UPDATE transactions SET supplierId = :newSupplierId WHERE supplierId = :oldSupplierId")
+    suspend fun repointSupplierId(oldSupplierId: Long, newSupplierId: Long)
 
     @Delete
     suspend fun deleteTransaction(transaction: TransactionEntity)

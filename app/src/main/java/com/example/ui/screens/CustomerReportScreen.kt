@@ -97,7 +97,7 @@ fun CustomerReportScreen(
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.weight(1.2f)
                     ) {
-                        Text("🟢 WhatsApp", fontWeight = FontWeight.Bold, color = Color.White)
+                        Text("Share WhatsApp", fontWeight = FontWeight.Bold, color = Color.White)
                     }
 
                     // PDF Export & Share
@@ -371,7 +371,7 @@ fun CustomerReportScreen(
                         // Mixed Pack Groups Breakdown
                         if (packGroups.isNotEmpty()) {
                             Spacer(modifier = Modifier.height(12.dp))
-                            Text("📦 Mixed Packing Summary:", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF92400E))
+                            Text("Mixed Packing Summary:", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF92400E))
                             Spacer(modifier = Modifier.height(4.dp))
                             packGroups.forEach { pg ->
                                 Surface(
