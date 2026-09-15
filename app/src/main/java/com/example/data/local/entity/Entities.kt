@@ -27,8 +27,30 @@ data class CustomerEntity(
     val shopLocations: String = "",
     val marketArea: String = "",
     val markets: String = "",
-    val city: String = "",
+    val city: String = "Ahmedabad",
+    val district: String = "",
+    val state: String = "Gujarat",
+    val pincode: String = "",
+    val shopMapLink: String = "",
     val gstin: String = "",
+    val panNumber: String = "",
+    val customerType: String = "Credit", // "Cash" or "Credit"
+    val contactsJson: String = "[]",
+    val outletsJson: String = "[]",
+    val garmentTypes: String = "",
+    val addedByAgentId: Long? = null,
+    val addedByAgentName: String = "",
+    val preferredTransporterId: Long? = null,
+    val preferredTransporterName: String = "",
+    val transportPreference: String = "",
+    val dob: String = "",
+    val religion: String = "",
+    val aadharPhotoUri: String = "",
+    val gstCertPhotoUri: String = "",
+    val panPhotoUri: String = "",
+    val shopPhotoUri: String = "",
+    val purchaserPhotoUri: String = "",
+    val cancelChequePhotoUri: String = "",
     val preferredCategories: String = "",
     val referredBy: String = "",
     val defaultSalesmanId: Long? = null,
@@ -55,7 +77,9 @@ data class SupplierEntity(
     val firmName: String = "",
     val type: String = "Manufacturer", // "Manufacturer" or "Wholesaler"
     val brand: String = "",
+    val brandId: Long? = null,
     val gstin: String = "",
+    val panNumber: String = "",
     val address: String = "",
     val officeAddress: String = "",
     val homeAddress: String = "",
@@ -63,9 +87,11 @@ data class SupplierEntity(
     val personalLocation: String = "",
     val shopCount: Int = 1,
     val shopLocations: String = "",
-    val city: String = "",
+    val city: String = "Ahmedabad",
     val marketArea: String = "",
     val markets: String = "",
+    val marketId: Long? = null,
+    val marketName: String = "",
     val contactPerson: String = "",
     val phone: String = "",
     val phone2: String = "",
@@ -76,6 +102,12 @@ data class SupplierEntity(
     val email2: String = "",
     val categories: String = "", // Categories of fabrics or garments provided
     val garmentTypes: String = "",
+    val productsMade: String = "",
+    val priceRange: String = "",
+    val factoriesJson: String = "[]",
+    val outletsJson: String = "[]",
+    val shopPhotoUri: String = "",
+    val visitingCardPhotoUri: String = "",
     val referredBy: String = "",
     val defaultCaseSize: Int = 24,
     val rating: Float = 4.5f,
@@ -94,6 +126,59 @@ data class SupplierEntity(
             .map { it.trim() }
             .filter { it.isNotBlank() }
 }
+
+@IgnoreExtraProperties
+@Entity(tableName = "brands")
+data class BrandEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val brandName: String = "",
+    val manufacturerId: Long? = null,
+    val manufacturerName: String = "",
+    val category: String = "",
+    val logoPhotoUri: String = "",
+    val description: String = "",
+    val isActive: Boolean = true,
+    val isDeleted: Boolean = false,
+    val deletedAt: Long? = null,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@IgnoreExtraProperties
+@Entity(tableName = "transporters")
+data class TransporterEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val transporterName: String = "",
+    val contactPerson: String = "",
+    val phone1: String = "",
+    val phone2: String = "",
+    val phone3: String = "",
+    val officeAddress: String = "",
+    val godownAddress: String = "",
+    val city: String = "Ahmedabad",
+    val destinationsCovered: String = "",
+    val gstin: String = "",
+    val trackingUrl: String = "",
+    val notes: String = "",
+    val isDeleted: Boolean = false,
+    val deletedAt: Long? = null,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@IgnoreExtraProperties
+@Entity(tableName = "markets")
+data class MarketEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val marketName: String = "",
+    val city: String = "Ahmedabad",
+    val area: String = "",
+    val landmark: String = "",
+    val pincode: String = "",
+    val marketType: String = "Mixed",
+    val description: String = "",
+    val isDeleted: Boolean = false,
+    val deletedAt: Long? = null,
+    val createdAt: Long = System.currentTimeMillis()
+)
 
 @IgnoreExtraProperties
 @Entity(tableName = "employees")
@@ -329,3 +414,7 @@ typealias Product = ProductEntity
 typealias GarmentItem = GarmentItemEntity
 typealias Transaction = TransactionEntity
 typealias TransactionLog = TransactionLogEntity
+typealias Brand = BrandEntity
+typealias Transporter = TransporterEntity
+typealias Market = MarketEntity
+

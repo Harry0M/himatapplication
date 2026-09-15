@@ -6,25 +6,31 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.example.data.local.dao.BrandDao
 import com.example.data.local.dao.CustomerDao
 import com.example.data.local.dao.EmployeeDao
 import com.example.data.local.dao.GarmentItemDao
+import com.example.data.local.dao.MarketDao
 import com.example.data.local.dao.PackGroupDao
 import com.example.data.local.dao.ProductDao
 import com.example.data.local.dao.PurchaseEntryDao
 import com.example.data.local.dao.SupplierDao
 import com.example.data.local.dao.TransactionDao
 import com.example.data.local.dao.TransactionLogDao
+import com.example.data.local.dao.TransporterDao
 import com.example.data.local.dao.VisitDao
+import com.example.data.local.entity.BrandEntity
 import com.example.data.local.entity.CustomerEntity
 import com.example.data.local.entity.EmployeeEntity
 import com.example.data.local.entity.GarmentItemEntity
+import com.example.data.local.entity.MarketEntity
 import com.example.data.local.entity.PackGroupEntity
 import com.example.data.local.entity.ProductEntity
 import com.example.data.local.entity.PurchaseEntryEntity
 import com.example.data.local.entity.SupplierEntity
 import com.example.data.local.entity.TransactionEntity
 import com.example.data.local.entity.TransactionLogEntity
+import com.example.data.local.entity.TransporterEntity
 import com.example.data.local.entity.VisitEntity
 import com.example.data.sample.SampleData
 import kotlinx.coroutines.CoroutineScope
@@ -42,9 +48,12 @@ import kotlinx.coroutines.launch
         EmployeeEntity::class,
         VisitEntity::class,
         PurchaseEntryEntity::class,
-        PackGroupEntity::class
+        PackGroupEntity::class,
+        BrandEntity::class,
+        TransporterEntity::class,
+        MarketEntity::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -58,6 +67,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun visitDao(): VisitDao
     abstract fun purchaseEntryDao(): PurchaseEntryDao
     abstract fun packGroupDao(): PackGroupDao
+    abstract fun brandDao(): BrandDao
+    abstract fun transporterDao(): TransporterDao
+    abstract fun marketDao(): MarketDao
 
     companion object {
         @Volatile

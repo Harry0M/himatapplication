@@ -13,6 +13,9 @@ import { DeliveriesView } from "./views/DeliveriesView"
 import { CustomersView } from "./views/CustomersView"
 import { SuppliersView } from "./views/SuppliersView"
 import { EmployeesView } from "./views/EmployeesView"
+import { BrandsView } from "./views/BrandsView"
+import { TransportersView } from "./views/TransportersView"
+import { MarketsView } from "./views/MarketsView"
 import { DeletionsView } from "./views/DeletionsView"
 import { Loader2 } from "lucide-react"
 
@@ -57,6 +60,12 @@ function MainLayout() {
         return <CustomersView />
       case "suppliers":
         return <SuppliersView />
+      case "brands":
+        return <BrandsView />
+      case "transporters":
+        return <TransportersView />
+      case "markets":
+        return <MarketsView />
       case "deletions":
         return <DeletionsView />
       default:
@@ -74,6 +83,9 @@ function MainLayout() {
     employees: "Staff & Sales Agents",
     customers: "Customers",
     suppliers: "Suppliers & Mills",
+    brands: "Brand Master",
+    transporters: "Transporter & Logistics Master",
+    markets: "Textile Markets Master",
     deletions: "Deletion Approvals & Recovery",
   }
 

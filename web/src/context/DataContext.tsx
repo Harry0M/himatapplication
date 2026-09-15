@@ -10,6 +10,9 @@ import {
   Transaction,
   Employee,
   Product,
+  Brand,
+  Transporter,
+  Market,
   SoftDeletedItem
 } from "../types"
 
@@ -95,6 +98,9 @@ interface DataContextType {
   customers: Customer[]
   suppliers: Supplier[]
   products: Product[]
+  brands: Brand[]
+  transporters: Transporter[]
+  markets: Market[]
   packGroups: PackGroup[]
   transactions: Transaction[]
   employees: Employee[]
@@ -141,6 +147,12 @@ interface DataContextType {
   deleteCustomer: (id: number) => Promise<void>
   saveSupplier: (supplier: Supplier) => Promise<void>
   deleteSupplier: (id: number) => Promise<void>
+  saveBrand: (brand: Brand) => Promise<void>
+  deleteBrand: (id: number) => Promise<void>
+  saveTransporter: (transporter: Transporter) => Promise<void>
+  deleteTransporter: (id: number) => Promise<void>
+  saveMarket: (market: Market) => Promise<void>
+  deleteMarket: (id: number) => Promise<void>
   saveEmployee: (employee: Employee) => Promise<void>
   deleteEmployee: (id: number) => Promise<void>
   suspendEmployee: (id: number, reason?: string) => Promise<void>
@@ -168,6 +180,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [rawSuppliers, setRawSuppliers] = useState<Supplier[]>([])
   const [rawEmployees, setRawEmployees] = useState<Employee[]>([])
   const [rawProducts, setRawProducts] = useState<Product[]>([])
+  const [rawBrands, setRawBrands] = useState<Brand[]>([])
+  const [rawTransporters, setRawTransporters] = useState<Transporter[]>([])
+  const [rawMarkets, setRawMarkets] = useState<Market[]>([])
   const [packGroups, setPackGroups] = useState<PackGroup[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState<boolean>(true)
@@ -178,7 +193,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Real-time synchronization
   useEffect(() => {
     let activeListeners = 0
-    const totalListeners = 8
+    const totalListeners = 11
 
     const checkLoading = () => {
       activeListeners++
@@ -275,6 +290,39 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       checkLoading()
     })
 
+    // 9. Brands
+    const brandsRef = ref(rtdb, "brands")
+    const unsubBrands = onValue(brandsRef, (snapshot) => {
+      if (snapshot.exists()) {
+        setRawBrands(parseRtdbList<Brand>(snapshot.val()))
+      } else {
+        setRawBrands([])
+      }
+      checkLoading()
+    })
+
+    // 10. Transporters
+    const transportersRef = ref(rtdb, "transporters")
+    const unsubTransporters = onValue(transportersRef, (snapshot) => {
+      if (snapshot.exists()) {
+        setRawTransporters(parseRtdbList<Transporter>(snapshot.val()))
+      } else {
+        setRawTransporters([])
+      }
+      checkLoading()
+    })
+
+    // 11. Markets
+    const marketsRef = ref(rtdb, "markets")
+    const unsubMarkets = onValue(marketsRef, (snapshot) => {
+      if (snapshot.exists()) {
+        setRawMarkets(parseRtdbList<Market>(snapshot.val()))
+      } else {
+        setRawMarkets([])
+      }
+      checkLoading()
+    })
+
     return () => {
       unsubVisits()
       unsubEntries()
@@ -284,6 +332,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       unsubTx()
       unsubEmp()
       unsubProducts()
+      unsubBrands()
+      unsubTransporters()
+      unsubMarkets()
     }
   }, [])
 
@@ -299,6 +350,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const products = React.useMemo(() => {
     return rawProducts.filter((p) => !p.isDeleted)
   }, [rawProducts])
+
+  const brands = React.useMemo(() => {
+    return rawBrands.filter((b) => !b.isDeleted)
+  }, [rawBrands])
+
+  const transporters = React.useMemo(() => {
+    return rawTransporters.filter((t) => !t.isDeleted)
+  }, [rawTransporters])
+
+  const markets = React.useMemo(() => {
+    return rawMarkets.filter((m) => !m.isDeleted)
+  }, [rawMarkets])
 
   // Synthesize employees: combine explicit employees from RTDB with any agent found in visits
   const employees = React.useMemo(() => {
@@ -343,9 +406,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (c && c.id && !c.isDeleted) {
         map.set(Number(c.id), {
           ...c,
-          marketArea: c.marketArea || c.city || "Local Market",
-          city: c.city || c.marketArea || "Local",
+          firmName: c.firmName || c.name,
+          city: c.city || "Ahmedabad",
+          state: c.state || "Gujarat",
           gstNumber: c.gstNumber || c.gstin || "",
+          gstin: c.gstin || c.gstNumber || "",
         })
       }
     })
@@ -356,8 +421,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           id: Number(v.customerId),
           customerId: `CUST-${v.customerId}`,
           name: v.customerName || `Customer #${v.customerId}`,
-          marketArea: "Main Market",
-          city: "Market",
+          firmName: v.customerName || `Customer #${v.customerId}`,
+          city: "Ahmedabad",
+          state: "Gujarat",
           phone: "+91 98765 00000",
         })
       }
@@ -685,8 +751,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const customerRef = ref(rtdb, `customers/${customer.id}`)
     const payload = {
       ...customer,
-      marketArea: customer.marketArea || customer.city || "Local Market",
-      city: customer.city || customer.marketArea || "Local",
+      firmName: customer.firmName || customer.name,
+      city: customer.city || "Ahmedabad",
+      state: customer.state || "Gujarat",
       gstin: customer.gstin || customer.gstNumber || "",
       gstNumber: customer.gstNumber || customer.gstin || "",
     }
@@ -700,10 +767,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const saveSupplier = async (supplier: Supplier) => {
     const supplierRef = ref(rtdb, `suppliers/${supplier.id}`)
-    await set(supplierRef, sanitizePayload(supplier))
+    const payload = {
+      ...supplier,
+      firmName: supplier.firmName || supplier.name,
+      gstin: supplier.gstin || supplier.gstNumber || "",
+      gstNumber: supplier.gstNumber || supplier.gstin || "",
+    }
+    await set(supplierRef, sanitizePayload(payload))
     if (supplier.type?.toLowerCase() === "manufacturer") {
       const mfgRef = ref(rtdb, `manufacturers/${supplier.id}`)
-      await set(mfgRef, sanitizePayload(supplier))
+      await set(mfgRef, sanitizePayload(payload))
     }
   }
 
@@ -712,6 +785,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await remove(supplierRef)
     const mfgRef = ref(rtdb, `manufacturers/${id}`)
     await remove(mfgRef)
+  }
+
+  const saveBrand = async (brand: Brand) => {
+    const brandRef = ref(rtdb, `brands/${brand.id}`)
+    await set(brandRef, sanitizePayload(brand))
+  }
+
+  const deleteBrand = async (id: number) => {
+    const brandRef = ref(rtdb, `brands/${id}`)
+    await remove(brandRef)
+  }
+
+  const saveTransporter = async (transporter: Transporter) => {
+    const transporterRef = ref(rtdb, `transporters/${transporter.id}`)
+    await set(transporterRef, sanitizePayload(transporter))
+  }
+
+  const deleteTransporter = async (id: number) => {
+    const transporterRef = ref(rtdb, `transporters/${id}`)
+    await remove(transporterRef)
+  }
+
+  const saveMarket = async (market: Market) => {
+    const marketRef = ref(rtdb, `markets/${market.id}`)
+    await set(marketRef, sanitizePayload(market))
+  }
+
+  const deleteMarket = async (id: number) => {
+    const marketRef = ref(rtdb, `markets/${id}`)
+    await remove(marketRef)
   }
 
   const saveEmployee = async (employee: Employee) => {
@@ -934,6 +1037,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         customers,
         suppliers,
         products,
+        brands,
+        transporters,
+        markets,
         packGroups,
         transactions,
         employees,
@@ -960,6 +1066,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         deleteCustomer,
         saveSupplier,
         deleteSupplier,
+        saveBrand,
+        deleteBrand,
+        saveTransporter,
+        deleteTransporter,
+        saveMarket,
+        deleteMarket,
         saveEmployee,
         deleteEmployee,
         suspendEmployee,

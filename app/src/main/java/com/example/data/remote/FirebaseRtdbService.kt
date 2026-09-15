@@ -1,12 +1,15 @@
 package com.example.data.remote
 
+import com.example.data.local.entity.BrandEntity
 import com.example.data.local.entity.CustomerEntity
 import com.example.data.local.entity.EmployeeEntity
+import com.example.data.local.entity.MarketEntity
 import com.example.data.local.entity.PackGroupEntity
 import com.example.data.local.entity.ProductEntity
 import com.example.data.local.entity.PurchaseEntryEntity
 import com.example.data.local.entity.SupplierEntity
 import com.example.data.local.entity.TransactionEntity
+import com.example.data.local.entity.TransporterEntity
 import com.example.data.local.entity.VisitEntity
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
@@ -361,6 +364,55 @@ class FirebaseRtdbService(
         }
     }
 
+    suspend fun syncBrand(brand: BrandEntity) = withContext(Dispatchers.IO) {
+        try {
+            rootRef.child("brands").child(brand.id.toString()).setValue(brand)
+        } catch (e: Exception) {
+            // Ignore
+        }
+    }
+
+    suspend fun deleteBrand(brandId: Long) = withContext(Dispatchers.IO) {
+        try {
+            rootRef.child("brands").child(brandId.toString()).removeValue()
+        } catch (e: Exception) {
+            // Ignore
+        }
+    }
+
+    suspend fun syncTransporter(transporter: TransporterEntity) = withContext(Dispatchers.IO) {
+        try {
+            rootRef.child("transporters").child(transporter.id.toString()).setValue(transporter)
+        } catch (e: Exception) {
+            // Ignore
+        }
+    }
+
+    suspend fun deleteTransporter(transporterId: Long) = withContext(Dispatchers.IO) {
+        try {
+            rootRef.child("transporters").child(transporterId.toString()).removeValue()
+        } catch (e: Exception) {
+            // Ignore
+        }
+    }
+
+    suspend fun syncMarket(market: MarketEntity) = withContext(Dispatchers.IO) {
+        try {
+            rootRef.child("markets").child(market.id.toString()).setValue(market)
+        } catch (e: Exception) {
+            // Ignore
+        }
+    }
+
+    suspend fun deleteMarket(marketId: Long) = withContext(Dispatchers.IO) {
+        try {
+            rootRef.child("markets").child(marketId.toString()).removeValue()
+        } catch (e: Exception) {
+            // Ignore
+        }
+    }
+
+
     // Downstream Deserialization Helper
     private inline fun <reified T> DataSnapshot.extractList(): List<T> {
         val list = mutableListOf<T>()
@@ -392,6 +444,9 @@ class FirebaseRtdbService(
                         }
                         is TransactionEntity -> if (item.id <= 0L && keyLong > 0L) item.copy(id = keyLong) else item
                         is PackGroupEntity -> if (item.id <= 0L && keyLong > 0L) item.copy(id = keyLong) else item
+                        is BrandEntity -> if (item.id <= 0L && keyLong > 0L) item.copy(id = keyLong) else item
+                        is TransporterEntity -> if (item.id <= 0L && keyLong > 0L) item.copy(id = keyLong) else item
+                        is MarketEntity -> if (item.id <= 0L && keyLong > 0L) item.copy(id = keyLong) else item
                         else -> item
                     }
                     val isValidId = when (fixedItem) {
@@ -403,6 +458,9 @@ class FirebaseRtdbService(
                         is PurchaseEntryEntity -> fixedItem.id > 0L
                         is TransactionEntity -> fixedItem.id > 0L
                         is PackGroupEntity -> fixedItem.id > 0L
+                        is BrandEntity -> fixedItem.id > 0L
+                        is TransporterEntity -> fixedItem.id > 0L
+                        is MarketEntity -> fixedItem.id > 0L
                         else -> true
                     }
                     if (isValidId) {
@@ -545,6 +603,40 @@ class FirebaseRtdbService(
         })
     }
 
+    suspend fun fetchBrands(): List<BrandEntity> = suspendCancellableCoroutine { cont ->
+        rootRef.child("brands").addListenerForSingleValueEvent(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                if (cont.isActive) cont.resumeWith(Result.success(snapshot.extractList<BrandEntity>()))
+            }
+            override fun onCancelled(error: DatabaseError) {
+                if (cont.isActive) cont.resumeWith(Result.success(emptyList()))
+            }
+        })
+    }
+
+    suspend fun fetchTransporters(): List<TransporterEntity> = suspendCancellableCoroutine { cont ->
+        rootRef.child("transporters").addListenerForSingleValueEvent(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                if (cont.isActive) cont.resumeWith(Result.success(snapshot.extractList<TransporterEntity>()))
+            }
+            override fun onCancelled(error: DatabaseError) {
+                if (cont.isActive) cont.resumeWith(Result.success(emptyList()))
+            }
+        })
+    }
+
+    suspend fun fetchMarkets(): List<MarketEntity> = suspendCancellableCoroutine { cont ->
+        rootRef.child("markets").addListenerForSingleValueEvent(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                if (cont.isActive) cont.resumeWith(Result.success(snapshot.extractList<MarketEntity>()))
+            }
+            override fun onCancelled(error: DatabaseError) {
+                if (cont.isActive) cont.resumeWith(Result.success(emptyList()))
+            }
+        })
+    }
+
+
     // Realtime Downstream Listeners
     fun listenToEmployees(onUpdate: (List<EmployeeEntity>) -> Unit): ValueEventListener {
         val listener = object : ValueEventListener {
@@ -639,4 +731,38 @@ class FirebaseRtdbService(
         rootRef.child("pack_groups").addValueEventListener(listener)
         return listener
     }
+
+    fun listenToBrands(onUpdate: (List<BrandEntity>) -> Unit): ValueEventListener {
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                onUpdate(snapshot.extractList<BrandEntity>())
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        }
+        rootRef.child("brands").addValueEventListener(listener)
+        return listener
+    }
+
+    fun listenToTransporters(onUpdate: (List<TransporterEntity>) -> Unit): ValueEventListener {
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                onUpdate(snapshot.extractList<TransporterEntity>())
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        }
+        rootRef.child("transporters").addValueEventListener(listener)
+        return listener
+    }
+
+    fun listenToMarkets(onUpdate: (List<MarketEntity>) -> Unit): ValueEventListener {
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                onUpdate(snapshot.extractList<MarketEntity>())
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        }
+        rootRef.child("markets").addValueEventListener(listener)
+        return listener
+    }
 }
+

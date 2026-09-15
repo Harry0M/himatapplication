@@ -36,12 +36,16 @@ import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Inventory
+import androidx.compose.material.icons.filled.LocalShipping
+import androidx.compose.material.icons.filled.LocationCity
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.Store
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material3.Card
@@ -64,6 +68,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,10 +81,13 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.local.entity.BrandEntity
 import com.example.data.local.entity.CustomerEntity
 import com.example.data.local.entity.EmployeeEntity
+import com.example.data.local.entity.MarketEntity
 import com.example.data.local.entity.ProductEntity
 import com.example.data.local.entity.SupplierEntity
+import com.example.data.local.entity.TransporterEntity
 import com.example.ui.components.SupplierTypeBadge
 import com.example.ui.theme.GoldAccent
 import com.example.ui.theme.NavyPrimary
@@ -96,7 +104,15 @@ fun MastersScreen(
     val isSuperAdmin by viewModel.isSuperAdmin.collectAsStateWithLifecycle()
 
     val availableTabs = remember {
-        listOf(MasterTab.CUSTOMERS, MasterTab.SUPPLIERS, MasterTab.PRODUCTS, MasterTab.EMPLOYEES)
+        listOf(
+            MasterTab.CUSTOMERS,
+            MasterTab.SUPPLIERS,
+            MasterTab.BRANDS,
+            MasterTab.TRANSPORTERS,
+            MasterTab.EMPLOYEES,
+            MasterTab.MARKETS,
+            MasterTab.PRODUCTS
+        )
     }
 
     var selectedTab by remember { mutableStateOf(initialTab) }
@@ -110,14 +126,20 @@ fun MastersScreen(
 
     val customerListState = rememberLazyListState()
     val supplierListState = rememberLazyListState()
-    val productListState = rememberLazyListState()
+    val brandListState = rememberLazyListState()
+    val transporterListState = rememberLazyListState()
     val employeeListState = rememberLazyListState()
+    val marketListState = rememberLazyListState()
+    val productListState = rememberLazyListState()
 
     val currentListState = when (selectedTab) {
         MasterTab.CUSTOMERS -> customerListState
         MasterTab.SUPPLIERS -> supplierListState
-        MasterTab.PRODUCTS -> productListState
+        MasterTab.BRANDS -> brandListState
+        MasterTab.TRANSPORTERS -> transporterListState
         MasterTab.EMPLOYEES -> employeeListState
+        MasterTab.MARKETS -> marketListState
+        MasterTab.PRODUCTS -> productListState
     }
 
     var isHeaderVisible by remember { mutableStateOf(true) }
@@ -163,8 +185,12 @@ fun MastersScreen(
 
     val customers by viewModel.visibleCustomers.collectAsStateWithLifecycle()
     val suppliers by viewModel.visibleSuppliers.collectAsStateWithLifecycle()
+    val brands by viewModel.visibleBrands.collectAsStateWithLifecycle()
+    val transporters by viewModel.visibleTransporters.collectAsStateWithLifecycle()
+    val markets by viewModel.visibleMarkets.collectAsStateWithLifecycle()
     val products by viewModel.visibleProducts.collectAsStateWithLifecycle()
     val employees by viewModel.allEmployees.collectAsStateWithLifecycle()
+
 
     Scaffold(
         containerColor = Color(0xFFF6F8FB),
@@ -242,12 +268,53 @@ fun MastersScreen(
                         text = when (selectedTab) {
                             MasterTab.CUSTOMERS -> "${customers.size} registered customers"
                             MasterTab.SUPPLIERS -> "${suppliers.size} manufacturers & wholesalers"
-                            MasterTab.PRODUCTS -> "${products.size} active catalog items"
+                            MasterTab.BRANDS -> "${brands.size} garment brands"
+                            MasterTab.TRANSPORTERS -> "${transporters.size} transport partners"
                             MasterTab.EMPLOYEES -> "${employees.size} registered salesmen"
+                            MasterTab.MARKETS -> "${markets.size} textile markets"
+                            MasterTab.PRODUCTS -> "${products.size} active catalog items"
                         },
                         fontSize = 12.sp,
                         color = TextSecondary
                     )
+                }
+
+                // Tally XML Export Button
+                val context = LocalContext.current
+                if (selectedTab == MasterTab.CUSTOMERS || selectedTab == MasterTab.SUPPLIERS) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFF0F766E), // Dark Teal
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable {
+                                if (selectedTab == MasterTab.CUSTOMERS) {
+                                    viewModel.exportCustomersToTallyXml(context)
+                                } else {
+                                    viewModel.exportSuppliersToTallyXml(context)
+                                }
+                            }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.FileDownload,
+                                contentDescription = "Tally XML",
+                                tint = Color.White,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Tally XML",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
                 }
 
                 // Search Toggle Button in top-right header corner
@@ -320,8 +387,11 @@ fun MastersScreen(
                     val (label, icon, count) = when (tab) {
                         MasterTab.CUSTOMERS -> Triple("Customers", Icons.Default.People, customers.size)
                         MasterTab.SUPPLIERS -> Triple("Suppliers", Icons.Default.Store, suppliers.size)
-                        MasterTab.PRODUCTS -> Triple("Products", Icons.Default.Inventory, products.size)
+                        MasterTab.BRANDS -> Triple("Brands", Icons.Default.Sell, brands.size)
+                        MasterTab.TRANSPORTERS -> Triple("Transporters", Icons.Default.LocalShipping, transporters.size)
                         MasterTab.EMPLOYEES -> Triple("Salesmen", Icons.Default.Person, employees.size)
+                        MasterTab.MARKETS -> Triple("Markets", Icons.Default.LocationCity, markets.size)
+                        MasterTab.PRODUCTS -> Triple("Products", Icons.Default.Inventory, products.size)
                     }
 
                     Surface(
@@ -536,7 +606,73 @@ fun MastersScreen(
                         }
                     }
                 }
+
+                MasterTab.BRANDS -> {
+                    val filtered = brands.filter {
+                        it.brandName.contains(searchQuery, ignoreCase = true) ||
+                                it.category.contains(searchQuery, ignoreCase = true) ||
+                                it.manufacturerName.contains(searchQuery, ignoreCase = true)
+                    }
+                    LazyColumn(
+                        state = brandListState,
+                        contentPadding = PaddingValues(bottom = 88.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(filtered) { brand ->
+                            BrandCard(
+                                brand = brand,
+                                onEdit = { viewModel.openEditBrand(brand) },
+                                onDelete = { viewModel.deleteBrand(brand) }
+                            )
+                        }
+                    }
+                }
+
+                MasterTab.TRANSPORTERS -> {
+                    val filtered = transporters.filter {
+                        it.transporterName.contains(searchQuery, ignoreCase = true) ||
+                                it.city.contains(searchQuery, ignoreCase = true) ||
+                                it.contactPerson.contains(searchQuery, ignoreCase = true) ||
+                                it.destinationsCovered.contains(searchQuery, ignoreCase = true)
+                    }
+                    LazyColumn(
+                        state = transporterListState,
+                        contentPadding = PaddingValues(bottom = 88.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(filtered) { transporter ->
+                            TransporterCard(
+                                transporter = transporter,
+                                onEdit = { viewModel.openEditTransporter(transporter) },
+                                onDelete = { viewModel.deleteTransporter(transporter) }
+                            )
+                        }
+                    }
+                }
+
+                MasterTab.MARKETS -> {
+                    val filtered = markets.filter {
+                        it.marketName.contains(searchQuery, ignoreCase = true) ||
+                                it.city.contains(searchQuery, ignoreCase = true) ||
+                                it.area.contains(searchQuery, ignoreCase = true) ||
+                                it.marketType.contains(searchQuery, ignoreCase = true)
+                    }
+                    LazyColumn(
+                        state = marketListState,
+                        contentPadding = PaddingValues(bottom = 88.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(filtered) { market ->
+                            MarketCard(
+                                market = market,
+                                onEdit = { viewModel.openEditMarket(market) },
+                                onDelete = { viewModel.deleteMarket(market) }
+                            )
+                        }
+                    }
+                }
             }
+
         }
     }
 }
@@ -956,3 +1092,246 @@ fun ProductCard(
         }
     }
 }
+
+@Composable
+fun BrandCard(
+    brand: BrandEntity,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = CircleShape,
+                        color = NavyPrimary.copy(alpha = 0.08f),
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Sell, contentDescription = null, tint = NavyPrimary, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(brand.brandName, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
+                        if (brand.category.isNotBlank()) {
+                            Text(brand.category, fontSize = 12.sp, color = TextSecondary)
+                        }
+                    }
+                }
+                Row {
+                    IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = NavyPrimary, modifier = Modifier.size(18.dp))
+                    }
+                    IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = Color(0xFFDC2626), modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+            if (brand.manufacturerName.isNotBlank()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Manufacturer / Mill: ${brand.manufacturerName}",
+                    fontSize = 12.sp,
+                    color = TextSecondary
+                )
+            }
+            if (brand.description.isNotBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = brand.description,
+                    fontSize = 11.5.sp,
+                    color = TextSecondary,
+                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun TransporterCard(
+    transporter: TransporterEntity,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFF0F766E).copy(alpha = 0.1f),
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.LocalShipping, contentDescription = null, tint = Color(0xFF0F766E), modifier = Modifier.size(18.dp))
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(transporter.transporterName, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
+                        Text(
+                            text = if (transporter.contactPerson.isNotBlank()) "${transporter.contactPerson} • ${transporter.city}" else transporter.city,
+                            fontSize = 12.sp,
+                            color = TextSecondary
+                        )
+                    }
+                }
+                Row {
+                    IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = NavyPrimary, modifier = Modifier.size(18.dp))
+                    }
+                    IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = Color(0xFFDC2626), modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+
+            if (transporter.phone1.isNotBlank()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Phone, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(13.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    val phones = listOfNotNull(
+                        transporter.phone1.takeIf { it.isNotBlank() },
+                        transporter.phone2.takeIf { it.isNotBlank() },
+                        transporter.phone3.takeIf { it.isNotBlank() }
+                    ).joinToString(" • ")
+                    Text(phones, fontSize = 12.sp, color = TextSecondary)
+                }
+            }
+
+            if (transporter.destinationsCovered.isNotBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Surface(
+                    color = Color(0xFFF1F5F9),
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text(
+                        text = "Routes: ${transporter.destinationsCovered}",
+                        fontSize = 11.5.sp,
+                        color = NavyPrimary,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            if (transporter.officeAddress.isNotBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Office: ${transporter.officeAddress}",
+                    fontSize = 11.5.sp,
+                    color = TextSecondary
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun MarketCard(
+    market: MarketEntity,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = CircleShape,
+                        color = NavyPrimary.copy(alpha = 0.08f),
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.LocationCity, contentDescription = null, tint = NavyPrimary, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(market.marketName, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
+                        Text(
+                            text = "${market.city}${if (market.area.isNotBlank()) ", ${market.area}" else ""}${if (market.pincode.isNotBlank()) " - ${market.pincode}" else ""}",
+                            fontSize = 12.sp,
+                            color = TextSecondary
+                        )
+                    }
+                }
+                Row {
+                    IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = NavyPrimary, modifier = Modifier.size(18.dp))
+                    }
+                    IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = Color(0xFFDC2626), modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+            Surface(
+                color = Color(0xFFFEF3C7),
+                shape = RoundedCornerShape(4.dp)
+            ) {
+                Text(
+                    text = market.marketType,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF92400E),
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+
+            if (market.description.isNotBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = market.description,
+                    fontSize = 11.5.sp,
+                    color = TextSecondary,
+                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                )
+            }
+        }
+    }
+}
+

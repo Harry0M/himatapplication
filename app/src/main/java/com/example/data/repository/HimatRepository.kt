@@ -1,15 +1,18 @@
 package com.example.data.repository
 
 import com.example.data.local.AppDatabase
+import com.example.data.local.entity.BrandEntity
 import com.example.data.local.entity.CustomerEntity
 import com.example.data.local.entity.EmployeeEntity
 import com.example.data.local.entity.GarmentItemEntity
+import com.example.data.local.entity.MarketEntity
 import com.example.data.local.entity.PackGroupEntity
 import com.example.data.local.entity.ProductEntity
 import com.example.data.local.entity.PurchaseEntryEntity
 import com.example.data.local.entity.SupplierEntity
 import com.example.data.local.entity.TransactionEntity
 import com.example.data.local.entity.TransactionLogEntity
+import com.example.data.local.entity.TransporterEntity
 import com.example.data.local.entity.VisitEntity
 import com.example.data.remote.FirebaseRtdbService
 import com.example.util.RecordValidationException
@@ -29,6 +32,9 @@ class HimatRepository(private val database: AppDatabase) {
     private val visitDao = database.visitDao()
     private val purchaseEntryDao = database.purchaseEntryDao()
     private val packGroupDao = database.packGroupDao()
+    private val brandDao = database.brandDao()
+    private val transporterDao = database.transporterDao()
+    private val marketDao = database.marketDao()
 
     // Customers
     val allCustomers: Flow<List<CustomerEntity>> = customerDao.getAllCustomers()
@@ -66,6 +72,46 @@ class HimatRepository(private val database: AppDatabase) {
     }
     suspend fun deleteSupplier(supplier: SupplierEntity) = supplierDao.deleteSupplier(supplier)
     suspend fun deleteSupplierById(id: Long) = supplierDao.deleteSupplierById(id)
+
+    // Brands
+    val allBrands: Flow<List<BrandEntity>> = brandDao.getAllBrands()
+    suspend fun getBrandById(id: Long) = brandDao.getBrandById(id)
+    suspend fun saveBrand(brand: BrandEntity): Long {
+        return if (brand.id == 0L) {
+            brandDao.insertBrand(brand)
+        } else {
+            brandDao.updateBrand(brand)
+            brand.id
+        }
+    }
+    suspend fun deleteBrand(brand: BrandEntity) = brandDao.deleteBrand(brand)
+
+    // Transporters
+    val allTransporters: Flow<List<TransporterEntity>> = transporterDao.getAllTransporters()
+    suspend fun getTransporterById(id: Long) = transporterDao.getTransporterById(id)
+    suspend fun saveTransporter(transporter: TransporterEntity): Long {
+        return if (transporter.id == 0L) {
+            transporterDao.insertTransporter(transporter)
+        } else {
+            transporterDao.updateTransporter(transporter)
+            transporter.id
+        }
+    }
+    suspend fun deleteTransporter(transporter: TransporterEntity) = transporterDao.deleteTransporter(transporter)
+
+    // Markets
+    val allMarkets: Flow<List<MarketEntity>> = marketDao.getAllMarkets()
+    suspend fun getMarketById(id: Long) = marketDao.getMarketById(id)
+    suspend fun saveMarket(market: MarketEntity): Long {
+        return if (market.id == 0L) {
+            marketDao.insertMarket(market)
+        } else {
+            marketDao.updateMarket(market)
+            market.id
+        }
+    }
+    suspend fun deleteMarket(market: MarketEntity) = marketDao.deleteMarket(market)
+
 
     // Products
     val allProducts: Flow<List<ProductEntity>> = productDao.getAllProducts()
@@ -445,6 +491,28 @@ class HimatRepository(private val database: AppDatabase) {
             packGroupDao.insertPackGroup(it)
         }
     }
+
+    suspend fun syncBrandsFromCloud(brands: List<BrandEntity>) {
+        val valid = brands.filter { it.id > 0L && it.brandName.isNotBlank() }.distinctBy { it.id }
+        if (valid.isNotEmpty()) {
+            brandDao.insertAll(valid)
+        }
+    }
+
+    suspend fun syncTransportersFromCloud(transporters: List<TransporterEntity>) {
+        val valid = transporters.filter { it.id > 0L && it.transporterName.isNotBlank() }.distinctBy { it.id }
+        if (valid.isNotEmpty()) {
+            transporterDao.insertAll(valid)
+        }
+    }
+
+    suspend fun syncMarketsFromCloud(markets: List<MarketEntity>) {
+        val valid = markets.filter { it.id > 0L && it.marketName.isNotBlank() }.distinctBy { it.id }
+        if (valid.isNotEmpty()) {
+            marketDao.insertAll(valid)
+        }
+    }
+
 
     // Startup & Sync Deduplication Routine
     suspend fun deduplicateDatabase(rtdbService: FirebaseRtdbService) {

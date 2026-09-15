@@ -1,4 +1,3 @@
-import React from "react"
 import {
   LayoutDashboard,
   MapPin,
@@ -11,7 +10,9 @@ import {
   UserCheck,
   LogOut,
   Sparkles,
-  ShieldAlert
+  ShieldAlert,
+  Tag,
+  Compass
 } from "lucide-react"
 import { useAuth } from "../../context/AuthContext"
 import { useData } from "../../context/DataContext"
@@ -29,6 +30,9 @@ export type ActiveTab =
   | "employees"
   | "customers"
   | "suppliers"
+  | "brands"
+  | "transporters"
+  | "markets"
   | "deletions"
 
 interface SidebarProps {
@@ -104,6 +108,21 @@ export function Sidebar({ activeTab, setActiveTab, isOpen, onClose }: SidebarPro
       id: "suppliers",
       label: "Suppliers & Mills",
       icon: Building2,
+    },
+    {
+      id: "brands",
+      label: "Brand Master",
+      icon: Tag,
+    },
+    {
+      id: "transporters",
+      label: "Transporters",
+      icon: Truck,
+    },
+    {
+      id: "markets",
+      label: "Textile Markets",
+      icon: Compass,
     },
     {
       id: "deletions",

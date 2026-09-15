@@ -6,15 +6,18 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import com.example.data.local.entity.BrandEntity
 import com.example.data.local.entity.CustomerEntity
 import com.example.data.local.entity.EmployeeEntity
 import com.example.data.local.entity.GarmentItemEntity
+import com.example.data.local.entity.MarketEntity
 import com.example.data.local.entity.PackGroupEntity
 import com.example.data.local.entity.ProductEntity
 import com.example.data.local.entity.PurchaseEntryEntity
 import com.example.data.local.entity.SupplierEntity
 import com.example.data.local.entity.TransactionEntity
 import com.example.data.local.entity.TransactionLogEntity
+import com.example.data.local.entity.TransporterEntity
 import com.example.data.local.entity.VisitEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -420,4 +423,86 @@ interface TransactionLogDao {
     @Query("DELETE FROM transaction_logs WHERE id = :id")
     suspend fun deleteLogById(id: Long)
 }
+
+@Dao
+interface BrandDao {
+    @Query("SELECT * FROM brands ORDER BY brandName ASC")
+    fun getAllBrands(): Flow<List<BrandEntity>>
+
+    @Query("SELECT * FROM brands WHERE id = :id LIMIT 1")
+    suspend fun getBrandById(id: Long): BrandEntity?
+
+    @Query("SELECT COUNT(*) FROM brands")
+    suspend fun getBrandsCount(): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBrand(brand: BrandEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(brands: List<BrandEntity>)
+
+    @Update
+    suspend fun updateBrand(brand: BrandEntity)
+
+    @Delete
+    suspend fun deleteBrand(brand: BrandEntity)
+
+    @Query("DELETE FROM brands WHERE id = :id")
+    suspend fun deleteBrandById(id: Long)
+}
+
+@Dao
+interface TransporterDao {
+    @Query("SELECT * FROM transporters ORDER BY transporterName ASC")
+    fun getAllTransporters(): Flow<List<TransporterEntity>>
+
+    @Query("SELECT * FROM transporters WHERE id = :id LIMIT 1")
+    suspend fun getTransporterById(id: Long): TransporterEntity?
+
+    @Query("SELECT COUNT(*) FROM transporters")
+    suspend fun getTransportersCount(): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTransporter(transporter: TransporterEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(transporters: List<TransporterEntity>)
+
+    @Update
+    suspend fun updateTransporter(transporter: TransporterEntity)
+
+    @Delete
+    suspend fun deleteTransporter(transporter: TransporterEntity)
+
+    @Query("DELETE FROM transporters WHERE id = :id")
+    suspend fun deleteTransporterById(id: Long)
+}
+
+@Dao
+interface MarketDao {
+    @Query("SELECT * FROM markets ORDER BY marketName ASC")
+    fun getAllMarkets(): Flow<List<MarketEntity>>
+
+    @Query("SELECT * FROM markets WHERE id = :id LIMIT 1")
+    suspend fun getMarketById(id: Long): MarketEntity?
+
+    @Query("SELECT COUNT(*) FROM markets")
+    suspend fun getMarketsCount(): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMarket(market: MarketEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(markets: List<MarketEntity>)
+
+    @Update
+    suspend fun updateMarket(market: MarketEntity)
+
+    @Delete
+    suspend fun deleteMarket(market: MarketEntity)
+
+    @Query("DELETE FROM markets WHERE id = :id")
+    suspend fun deleteMarketById(id: Long)
+}
+
 

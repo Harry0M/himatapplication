@@ -18,9 +18,15 @@ import {
   Tag,
   Info,
   Printer,
-  FileText
+  FileText,
+  FileDown,
+  Camera,
+  Navigation,
+  Truck,
+  Sparkles
 } from "lucide-react"
 import { useData } from "../context/DataContext"
+import { useAuth } from "../context/AuthContext"
 import { formatInr } from "../lib/utils"
 import { Card } from "../components/ui/Card"
 import { Button } from "../components/ui/Button"
@@ -28,24 +34,29 @@ import { Badge } from "../components/ui/Badge"
 import { Dialog } from "../components/ui/Dialog"
 import { Input } from "../components/ui/Input"
 import { Tabs } from "../components/ui/Tabs"
-import { Customer, Visit } from "../types"
-import { AHMEDABAD_TEXTILE_MARKETS, GARMENT_CATEGORIES } from "../lib/constants"
+import { Customer, CustomerContact, CustomerOutlet, Visit } from "../types"
+import { GARMENT_CATEGORIES } from "../lib/constants"
 import { ReportViewerModal } from "../components/ui/ReportViewerModal"
 import {
   generateCustomerDayReportHtml,
   buildCustomerReportWhatsAppText,
 } from "../lib/pdfReports"
+import { generateCustomersTallyXml, downloadXmlFile } from "../lib/tallyExport"
 
 export function CustomersView() {
+  const { user } = useAuth()
   const {
     customers,
     visits,
     entries,
     employees,
     packGroups,
+    transporters,
+    suppliers,
     saveCustomer,
     deleteCustomer,
   } = useData()
+
   const [search, setSearch] = useState<string>("")
   const [showSearch, setShowSearch] = useState<boolean>(false)
 
@@ -105,7 +116,7 @@ export function CustomersView() {
 
     setReportModal({
       open: true,
-      title: `Customer Statement & Report: ${c.name}`,
+      title: `Customer Statement & Report: ${c.firmName || c.name}`,
       html,
       whatsAppText,
     })
@@ -113,68 +124,78 @@ export function CustomersView() {
 
   // Form State
   const [editingId, setEditingId] = useState<number | null>(null)
-  const [name, setName] = useState<string>("")
-  const [firmName, setFirmName] = useState<string>("")
+  const [customerId, setCustomerId] = useState<string>("")
+  const [name, setName] = useState<string>("") // Owner Name
+  const [firmName, setFirmName] = useState<string>("") // Shop / Firm Name
   const [gstin, setGstin] = useState<string>("")
-
-  // Phones (Up to 5)
-  const [phone1, setPhone1] = useState<string>("")
-  const [phone2, setPhone2] = useState<string>("")
-  const [phone3, setPhone3] = useState<string>("")
-  const [phone4, setPhone4] = useState<string>("")
-  const [phone5, setPhone5] = useState<string>("")
-  const [phoneCount, setPhoneCount] = useState<number>(1)
-
-  // Emails
-  const [email1, setEmail1] = useState<string>("")
-  const [email2, setEmail2] = useState<string>("")
-
-  // Addresses & Locations
-  const [shopAddress, setShopAddress] = useState<string>("")
-  const [shopLocation, setShopLocation] = useState<string>("")
-  const [homeAddress, setHomeAddress] = useState<string>("")
-  const [personalLocation, setPersonalLocation] = useState<string>("")
-  const [shopCount, setShopCount] = useState<string>("1")
-  const [shopLocations, setShopLocations] = useState<string>("")
-
-  // Markets & Garments
-  const [selectedMarkets, setSelectedMarkets] = useState<string[]>([])
+  const [panNumber, setPanNumber] = useState<string>("")
   const [city, setCity] = useState<string>("Ahmedabad")
+  const [district, setDistrict] = useState<string>("")
+  const [state, setState] = useState<string>("Gujarat")
+  const [pincode, setPincode] = useState<string>("")
+  const [customerType, setCustomerType] = useState<string>("Cash")
+  const [creditDays, setCreditDays] = useState<string>("30")
+  const [creditLimit, setCreditLimit] = useState<string>("")
+
+  // Dynamic Contacts (up to 5)
+  const [contacts, setContacts] = useState<CustomerContact[]>([
+    { name: "", phone: "", designation: "Proprietor / Owner", email: "" }
+  ])
+
+  // Dynamic Outlets (up to 5)
+  const [outlets, setOutlets] = useState<CustomerOutlet[]>([
+    { name: "Main Shop / Outlet 1", address: "", pincode: "", mapLink: "" }
+  ])
+
+  // Garments & CRM
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   const [customCategory, setCustomCategory] = useState<string>("")
   const [referredBy, setReferredBy] = useState<string>("")
-  const [creditDays, setCreditDays] = useState<string>("30")
-  const [creditLimit, setCreditLimit] = useState<string>("")
+  const [addedByAgentName, setAddedByAgentName] = useState<string>("")
+  const [preferredTransporterName, setPreferredTransporterName] = useState<string>("")
+  const [dob, setDob] = useState<string>("")
+  const [religion, setReligion] = useState<string>("")
   const [notes, setNotes] = useState<string>("")
+
+  // KYC & Photos (URLs / Paths)
+  const [aadharPhotoUri, setAadharPhotoUri] = useState<string>("")
+  const [gstCertPhotoUri, setGstCertPhotoUri] = useState<string>("")
+  const [panPhotoUri, setPanPhotoUri] = useState<string>("")
+  const [shopPhotoUri, setShopPhotoUri] = useState<string>("")
+  const [purchaserPhotoUri, setPurchaserPhotoUri] = useState<string>("")
+  const [cancelChequePhotoUri, setCancelChequePhotoUri] = useState<string>("")
 
   // Open Add Dialog
   const handleOpenAdd = () => {
     setEditingId(null)
+    setCustomerId(`CUST-${Math.floor(100 + Math.random() * 900)}`)
     setName("")
     setFirmName("")
     setGstin("")
-    setPhone1("")
-    setPhone2("")
-    setPhone3("")
-    setPhone4("")
-    setPhone5("")
-    setPhoneCount(1)
-    setEmail1("")
-    setEmail2("")
-    setShopAddress("")
-    setShopLocation("")
-    setHomeAddress("")
-    setPersonalLocation("")
-    setShopCount("1")
-    setShopLocations("")
-    setSelectedMarkets(["Maskati Cloth Market (Sakarkalupur)"])
+    setPanNumber("")
     setCity("Ahmedabad")
+    setDistrict("")
+    setState("Gujarat")
+    setPincode("")
+    setCustomerType("Cash")
+    setCreditDays("30")
+    setCreditLimit("")
+    setContacts([{ name: "", phone: "", designation: "Owner / Purchaser", email: "" }])
+    setOutlets([{ name: "Main Outlet", address: "", pincode: "", mapLink: "" }])
     setSelectedCategories([])
     setCustomCategory("")
     setReferredBy("")
-    setCreditDays("30")
-    setCreditLimit("")
+    setAddedByAgentName(user?.displayName || employees[0]?.name || "Himat Staff")
+    setPreferredTransporterName("")
+    setDob("")
+    setReligion("")
     setNotes("")
+    setAadharPhotoUri("")
+    setGstCertPhotoUri("")
+    setPanPhotoUri("")
+    setShopPhotoUri("")
+    setPurchaserPhotoUri("")
+    setCancelChequePhotoUri("")
     setActiveFormTab("basic")
     setIsDialogOpen(true)
   }
@@ -182,46 +203,72 @@ export function CustomersView() {
   // Open Edit Dialog
   const handleOpenEdit = (c: Customer) => {
     setEditingId(c.id)
+    setCustomerId(c.customerId || `CUST-${c.id}`)
     setName(c.name || "")
-    setFirmName(c.firmName || "")
+    setFirmName(c.firmName || c.name || "")
     setGstin(c.gstin || c.gstNumber || "")
-
-    setPhone1(c.phone || "")
-    setPhone2(c.phone2 || "")
-    setPhone3(c.phone3 || "")
-    setPhone4(c.phone4 || "")
-    setPhone5(c.phone5 || "")
-    const count = [c.phone, c.phone2, c.phone3, c.phone4, c.phone5].filter(Boolean).length
-    setPhoneCount(Math.max(1, count))
-
-    setEmail1(c.email || "")
-    setEmail2(c.email2 || "")
-
-    setShopAddress(c.shopAddress || c.address || "")
-    setShopLocation(c.shopLocation || "")
-    setHomeAddress(c.homeAddress || "")
-    setPersonalLocation(c.personalLocation || "")
-    setShopCount(String(c.shopCount || 1))
-    setShopLocations(c.shopLocations || "")
-
-    const mkts = c.markets
-      ? c.markets.split(",").map((m) => m.trim()).filter(Boolean)
-      : c.marketArea
-      ? [c.marketArea]
-      : []
-    setSelectedMarkets(mkts.length > 0 ? mkts : ["Maskati Cloth Market (Sakarkalupur)"])
+    setPanNumber(c.panNumber || "")
     setCity(c.city || "Ahmedabad")
+    setDistrict(c.district || "")
+    setState(c.state || "Gujarat")
+    setPincode(c.pincode || "")
+    setCustomerType(c.customerType || "Cash")
+    setCreditDays(String(c.creditDays || 30))
+    setCreditLimit(c.creditLimit ? String(c.creditLimit) : "")
 
-    const cats = (c.preferredCategories || "")
+    // Initialize contacts from model or existing phones
+    if (c.contacts && c.contacts.length > 0) {
+      setContacts(c.contacts.slice(0, 5))
+    } else {
+      const phones = [c.phone, c.phone2, c.phone3, c.phone4, c.phone5].filter(Boolean)
+      if (phones.length > 0) {
+        setContacts(
+          phones.map((p, idx) => ({
+            name: idx === 0 ? c.name : "",
+            phone: p || "",
+            designation: idx === 0 ? "Owner" : `Contact ${idx + 1}`,
+            email: idx === 0 ? (c.email || "") : "",
+          }))
+        )
+      } else {
+        setContacts([{ name: c.name || "", phone: "", designation: "Owner", email: c.email || "" }])
+      }
+    }
+
+    // Initialize outlets from model or existing shopAddress
+    if (c.outlets && c.outlets.length > 0) {
+      setOutlets(c.outlets.slice(0, 5))
+    } else {
+      setOutlets([
+        {
+          name: "Main Outlet",
+          address: c.shopAddress || c.address || "",
+          pincode: c.pincode || "",
+          mapLink: c.shopMapLink || c.mapLink || c.shopLocation || "",
+        },
+      ])
+    }
+
+    const cats = (c.garmentTypes || c.preferredCategories || "")
       .split(",")
       .map((cat) => cat.trim())
       .filter(Boolean)
     setSelectedCategories(cats)
     setCustomCategory("")
     setReferredBy(c.referredBy || "")
-    setCreditDays(String(c.creditDays || 30))
-    setCreditLimit(c.creditLimit ? String(c.creditLimit) : "")
+    setAddedByAgentName(c.addedByAgentName || user?.displayName || employees[0]?.name || "Staff")
+    setPreferredTransporterName(c.preferredTransporterName || c.transportPreference || "")
+    setDob(c.dob || "")
+    setReligion(c.religion || "")
     setNotes(c.notes || "")
+
+    setAadharPhotoUri(c.aadharPhotoUri || "")
+    setGstCertPhotoUri(c.gstCertPhotoUri || "")
+    setPanPhotoUri(c.panPhotoUri || "")
+    setShopPhotoUri(c.shopPhotoUri || "")
+    setPurchaserPhotoUri(c.purchaserPhotoUri || "")
+    setCancelChequePhotoUri(c.cancelChequePhotoUri || "")
+
     setActiveFormTab("basic")
     setIsDialogOpen(true)
   }
@@ -235,25 +282,15 @@ export function CustomersView() {
     }
   }
 
-  // Toggle Market selection
-  const handleToggleMarket = (mkt: string) => {
-    if (selectedMarkets.includes(mkt)) {
-      setSelectedMarkets(selectedMarkets.filter((m) => m !== mkt))
-    } else {
-      setSelectedMarkets([...selectedMarkets, mkt])
-    }
-  }
-
   const handleSave = async () => {
-    const finalName = name.trim() || firmName.trim()
-    if (!finalName) return
+    const finalFirmName = firmName.trim() || name.trim()
+    const finalOwnerName = name.trim() || firmName.trim()
+    if (!finalFirmName) return
 
     const id = editingId || Date.now()
-    const allPhones = [phone1.trim(), phone2.trim(), phone3.trim(), phone4.trim(), phone5.trim()].filter(Boolean)
-    const primaryPhone = allPhones[0] || ""
-
-    const allEmails = [email1.trim(), email2.trim()].filter(Boolean)
-    const primaryEmail = allEmails[0] || ""
+    const validContacts = contacts.filter((ct) => ct.phone.trim() || ct.name?.trim())
+    const primaryPhone = validContacts[0]?.phone.trim() || ""
+    const primaryEmail = validContacts[0]?.email?.trim() || ""
 
     const allCats = [...selectedCategories]
     if (customCategory.trim() && !allCats.includes(customCategory.trim())) {
@@ -262,37 +299,51 @@ export function CustomersView() {
 
     const newCustomer: Customer = {
       id,
-      customerId: editingId
-        ? (customers.find((c) => c.id === editingId)?.customerId || `CUST-${id % 10000}`)
-        : `CUST-${id % 10000}`,
-      name: finalName,
-      firmName: firmName.trim() || finalName,
+      customerId: customerId.trim() || `CUST-${id % 10000}`,
+      name: finalOwnerName,
+      firmName: finalFirmName,
       phone: primaryPhone,
-      phone2: phone2.trim() || "",
-      phone3: phone3.trim() || "",
-      phone4: phone4.trim() || "",
-      phone5: phone5.trim() || "",
-      phones: allPhones,
-      email: primaryEmail || "",
-      email2: email2.trim() || "",
-      emails: allEmails,
-      address: shopAddress.trim() || "",
-      shopAddress: shopAddress.trim() || "",
-      homeAddress: homeAddress.trim() || "",
-      shopLocation: shopLocation.trim() || "",
-      personalLocation: personalLocation.trim() || "",
-      shopCount: parseInt(shopCount, 10) || 1,
-      shopLocations: shopLocations.trim() || "",
-      marketArea: selectedMarkets[0] || "Maskati Cloth Market (Sakarkalupur)",
-      markets: selectedMarkets.join(", "),
+      phone2: validContacts[1]?.phone.trim() || "",
+      phone3: validContacts[2]?.phone.trim() || "",
+      phone4: validContacts[3]?.phone.trim() || "",
+      phone5: validContacts[4]?.phone.trim() || "",
+      phones: validContacts.map((ct) => ct.phone.trim()).filter(Boolean),
+      contacts: validContacts,
+      email: primaryEmail,
+      email2: validContacts[1]?.email?.trim() || "",
+      address: outlets[0]?.address?.trim() || "",
+      shopAddress: outlets[0]?.address?.trim() || "",
+      shopLocation: outlets[0]?.mapLink?.trim() || "",
+      mapLink: outlets[0]?.mapLink?.trim() || "",
+      shopMapLink: outlets[0]?.mapLink?.trim() || "",
+      outlets: outlets.filter((o) => o?.address?.trim() || o?.name?.trim()),
+      shopCount: outlets.filter((o) => o?.address?.trim()).length || 1,
       city: city.trim() || "Ahmedabad",
+      district: district.trim(),
+      state: state.trim() || "Gujarat",
+      pincode: pincode.trim() || (outlets[0]?.pincode?.trim() || ""),
       gstin: gstin.trim().toUpperCase(),
       gstNumber: gstin.trim().toUpperCase(),
-      preferredCategories: allCats.join(", "),
-      referredBy: referredBy.trim() || "",
+      panNumber: panNumber.trim().toUpperCase() || (gstin.length === 15 ? gstin.slice(2, 12) : ""),
+      customerType,
       creditDays: parseInt(creditDays, 10) || 30,
       creditLimit: creditLimit ? parseFloat(creditLimit) : 0,
-      notes: notes.trim() || "",
+      garmentTypes: allCats.join(", "),
+      preferredCategories: allCats.join(", "),
+      referredBy: referredBy.trim(),
+      addedByAgentName: addedByAgentName.trim(),
+      preferredTransporterName: preferredTransporterName.trim(),
+      transportPreference: preferredTransporterName.trim(),
+      dob: dob.trim(),
+      religion: religion.trim(),
+      notes: notes.trim(),
+      aadharPhotoUri: aadharPhotoUri.trim(),
+      gstCertPhotoUri: gstCertPhotoUri.trim(),
+      panPhotoUri: panPhotoUri.trim(),
+      shopPhotoUri: shopPhotoUri.trim(),
+      purchaserPhotoUri: purchaserPhotoUri.trim(),
+      cancelChequePhotoUri: cancelChequePhotoUri.trim(),
+      createdAt: editingId ? (customers.find((c) => c.id === editingId)?.createdAt || Date.now()) : Date.now(),
     }
 
     await saveCustomer(newCustomer)
@@ -300,12 +351,18 @@ export function CustomersView() {
   }
 
   const handleDelete = async (id: number) => {
-    if (window.confirm("Are you sure you want to remove this customer record?")) {
+    if (window.confirm("Are you sure you want to remove this customer master record?")) {
       await deleteCustomer(id)
       if (viewProfileCustomer?.id === id) {
         setViewProfileCustomer(null)
       }
     }
+  }
+
+  const handleExportTally = () => {
+    const xml = generateCustomersTallyXml(customers)
+    const today = new Date().toISOString().slice(0, 10)
+    downloadXmlFile(xml, `Himat_Customers_Tally_Import_${today}.xml`)
   }
 
   // Search filter
@@ -317,16 +374,13 @@ export function CustomersView() {
       c.firmName?.toLowerCase().includes(q) ||
       c.phone?.includes(q) ||
       c.phone2?.includes(q) ||
-      c.phone3?.includes(q) ||
-      c.phone4?.includes(q) ||
-      c.phone5?.includes(q) ||
       c.gstNumber?.toLowerCase().includes(q) ||
       c.gstin?.toLowerCase().includes(q) ||
       c.customerId?.toLowerCase().includes(q) ||
-      c.marketArea?.toLowerCase().includes(q) ||
-      c.markets?.toLowerCase().includes(q) ||
       c.city?.toLowerCase().includes(q) ||
+      c.state?.toLowerCase().includes(q) ||
       c.preferredCategories?.toLowerCase().includes(q) ||
+      c.garmentTypes?.toLowerCase().includes(q) ||
       c.referredBy?.toLowerCase().includes(q)
   )
 
@@ -335,17 +389,32 @@ export function CustomersView() {
       {/* Top Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 flex items-center gap-2">
-            <span>Customers & Retail Clients Directory</span>
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+              Customer Master & CRM Directory
+            </h2>
+            <Badge variant="outline" className="text-xs bg-indigo-500/10 text-indigo-700 border-indigo-500/20 font-semibold">
+              {customers.length} Retailers
+            </Badge>
+          </div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {customers.length} registered textile buyers, boutique owners, and retail shops.
+            Manage buyer shops across India, multi-outlets, KYC documents, credit rules, and Tally ledgers.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button
-            shape="pill"
+            variant="outline"
+            size="sm"
+            onClick={handleExportTally}
+            className="h-8 px-3 text-xs gap-1.5 border-emerald-600/30 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 font-medium"
+            title="Export all customer ledgers to Tally Prime / ERP 9 XML"
+          >
+            <FileDown className="h-3.5 w-3.5 text-emerald-600" />
+            <span>Export to Tally XML</span>
+          </Button>
+
+          <Button
             variant="outline"
             size="sm"
             onClick={() => {
@@ -359,151 +428,139 @@ export function CustomersView() {
           </Button>
 
           <Button
-            shape="pill"
             size="sm"
             onClick={handleOpenAdd}
-            className="h-8 shadow-sm font-semibold text-xs"
+            className="h-8 px-3 text-xs font-semibold shadow-sm bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 gap-1"
           >
-            <Plus className="mr-1.5 h-3.5 w-3.5" />
-            Add Customer
+            <Plus className="h-3.5 w-3.5" />
+            <span>New Customer</span>
           </Button>
         </div>
       </div>
 
-      {/* Expandable Search Input */}
+      {/* Search Input Bar */}
       {showSearch && (
-        <div className="relative">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by customer name, firm name, any of 5 phones, GSTIN, Ahmedabad market, garment category..."
-            className="pl-9 pr-8"
-            autoFocus
-          />
-          {search && (
-            <button
-              onClick={() => setSearch("")}
-              className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
+        <Card className="p-3 bg-zinc-50/70 dark:bg-zinc-900/70 border-zinc-200/80">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by firm name, owner name, ID, phone, GSTIN, city, state..."
+              className="pl-9 pr-8 text-xs h-9 bg-white dark:bg-zinc-950"
+              autoFocus
+            />
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-zinc-800"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </Card>
       )}
 
-      {/* Grid of Customer Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {/* Customers Card Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredCustomers.length === 0 ? (
-          <div className="col-span-full py-12 text-center text-xs text-muted-foreground">
-            No customers found matching the search criteria.
+          <div className="col-span-full p-12 text-center border border-dashed rounded-2xl">
+            <Store className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-60" />
+            <h3 className="font-semibold text-sm">No customer records found</h3>
+            <p className="text-xs text-muted-foreground max-w-sm mx-auto mt-1">
+              {search ? "No retailers match your search filters." : "Start registering buyer retail shops."}
+            </p>
+            <Button onClick={handleOpenAdd} variant="outline" size="sm" className="mt-4 text-xs gap-1.5">
+              <Plus className="h-3.5 w-3.5" />
+              Add First Customer
+            </Button>
           </div>
         ) : (
           filteredCustomers.map((cust) => {
-            const extraPhonesCount = [cust.phone2, cust.phone3, cust.phone4, cust.phone5].filter(Boolean).length
-            const marketDisplay = cust.marketArea || (cust.markets ? cust.markets.split(",")[0] : cust.city || "Ahmedabad")
+            const hasGst = Boolean(cust.gstin || cust.gstNumber)
+            const outletCount = (cust.outlets && cust.outlets.length) || cust.shopCount || 1
+            const primaryPhone = cust.phone || (cust.contacts && cust.contacts[0]?.phone) || ""
 
             return (
               <Card
                 key={cust.id}
-                className="p-5 rounded-2xl hover:border-zinc-300 dark:hover:border-zinc-700 transition-all flex flex-col justify-between"
+                className="group relative flex flex-col justify-between p-4 border border-zinc-200/80 dark:border-zinc-800 hover:shadow-md transition-all"
               >
                 <div>
-                  {/* Card Header */}
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                        <span>{cust.firmName || cust.name}</span>
-                      </h3>
-                      {cust.firmName && cust.name && cust.firmName !== cust.name && (
-                        <p className="text-xs text-zinc-600 dark:text-zinc-400 font-medium mt-0.5">
-                          Owner: {cust.name}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-700 font-bold text-sm dark:bg-indigo-500/20 dark:text-indigo-400">
+                        {(cust.firmName || cust.name || "C")[0].toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="font-bold text-sm text-zinc-900 dark:text-zinc-50 truncate">
+                          {cust.firmName || cust.name}
+                        </h4>
+                        <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 truncate">
+                          <User className="h-3 w-3 shrink-0" />
+                          <span>{cust.name || "Proprietor"}</span>
+                          {cust.customerId && (
+                            <span className="font-mono text-[10px] text-zinc-400 font-semibold">
+                              • {cust.customerId}
+                            </span>
+                          )}
                         </p>
-                      )}
-                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                        <MapPin className="h-3 w-3 text-zinc-400 shrink-0" />
-                        <span className="truncate max-w-[200px]" title={cust.markets || marketDisplay}>
-                          {marketDisplay}
-                        </span>
-                      </p>
+                      </div>
                     </div>
 
-                    {cust.customerId && (
-                      <span className="text-[10px] font-mono font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 px-2 py-0.5 rounded-full">
-                        {cust.customerId}
-                      </span>
-                    )}
+                    <Badge
+                      variant={cust.customerType === "Credit" ? "warning" : "default"}
+                      className="text-[10px] uppercase font-bold shrink-0"
+                    >
+                      {cust.customerType || "Cash"}
+                    </Badge>
                   </div>
 
-                  {/* Garment Categories & Shops Tag */}
-                  <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                    {cust.shopCount && cust.shopCount > 1 && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 px-2 py-0.5 rounded-full">
-                        <Store className="h-2.5 w-2.5" />
-                        {cust.shopCount} Outlets
+                  <div className="mt-3.5 space-y-1.5 text-xs text-zinc-600 dark:text-zinc-300">
+                    <div className="flex items-center gap-1.5">
+                      <MapPin className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                      <span className="truncate">
+                        {cust.city || "Ahmedabad"}{cust.state ? `, ${cust.state}` : ""}
+                        {cust.pincode ? ` (${cust.pincode})` : ""}
                       </span>
-                    )}
+                    </div>
 
-                    {cust.preferredCategories && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 px-2 py-0.5 rounded-full truncate max-w-[220px]">
-                        <Tag className="h-2.5 w-2.5 text-zinc-400" />
-                        {cust.preferredCategories}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Contact Info & Up to 5 Phones */}
-                  <div className="mt-3.5 space-y-1 border-t border-zinc-100 pt-3 dark:border-zinc-800 text-xs">
-                    {cust.phone ? (
-                      <div className="flex items-center justify-between">
-                        <p className="text-muted-foreground flex items-center gap-1.5">
-                          <Phone className="h-3 w-3 text-zinc-400" />
-                          <span className="text-zinc-800 dark:text-zinc-200 font-medium">
-                            {cust.phone}
-                          </span>
-                        </p>
-                        {extraPhonesCount > 0 && (
-                          <span className="text-[10px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 px-1.5 py-0.5 rounded-full">
-                            +{extraPhonesCount} more
+                    {primaryPhone && (
+                      <div className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-1.5 font-medium text-zinc-800 dark:text-zinc-200">
+                          <Phone className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                          <span>{primaryPhone}</span>
+                        </div>
+                        {cust.contacts && cust.contacts.length > 1 && (
+                          <span className="text-[10px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 px-1.5 py-0.5 rounded-full">
+                            +{cust.contacts.length - 1} lines
                           </span>
                         )}
                       </div>
-                    ) : (
-                      <p className="text-muted-foreground text-[11px] italic">
-                        No phone number registered
-                      </p>
                     )}
 
-                    {(cust.gstin || cust.gstNumber) && (
-                      <p className="text-[11px] text-muted-foreground font-mono truncate">
-                        GST: {cust.gstin || cust.gstNumber}
-                      </p>
-                    )}
-
-                    {cust.creditDays && (
-                      <p className="text-[11px] text-muted-foreground">
-                        Credit Terms: <strong>{cust.creditDays} Days</strong>
-                        {cust.creditLimit ? ` • Limit: ₹${formatInr(cust.creditLimit)}` : ""}
-                      </p>
-                    )}
-
-                    {cust.referredBy && (
-                      <p className="text-[11px] text-muted-foreground italic">
-                        Ref: {cust.referredBy}
-                      </p>
-                    )}
+                    <div className="flex items-center justify-between text-[11px] pt-1 text-muted-foreground">
+                      <span>{outletCount} {outletCount === 1 ? "Outlet" : "Outlets"}</span>
+                      {hasGst ? (
+                        <span className="font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
+                          GST: {cust.gstin || cust.gstNumber}
+                        </span>
+                      ) : (
+                        <span className="italic text-zinc-400">Unregistered</span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 {/* Bottom Actions */}
-                <div className="mt-4 pt-2.5 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between gap-2">
+                <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between gap-1.5">
                   <Button
                     size="sm"
-                    shape="pill"
                     variant="outline"
                     onClick={() => handleGenerateCustomerReport(cust)}
-                    className="text-xs h-7 px-2.5 font-medium text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-900/50 hover:bg-blue-50 dark:hover:bg-blue-950/40"
-                    title="Generate Customer Day Report & Statement"
+                    className="h-7 text-xs px-2 text-indigo-600 dark:text-indigo-400 font-medium"
+                    title="View Day Report & WhatsApp Copy"
                   >
                     <Printer className="h-3 w-3 mr-1" />
                     Report
@@ -511,21 +568,19 @@ export function CustomersView() {
 
                   <Button
                     size="sm"
-                    shape="pill"
                     variant="outline"
                     onClick={() => setViewProfileCustomer(cust)}
-                    className="flex-1 text-xs h-7 font-medium"
+                    className="flex-1 h-7 text-xs font-medium"
                   >
                     <Info className="h-3 w-3 mr-1" />
-                    Profile
+                    Full Profile
                   </Button>
 
                   <Button
                     size="sm"
-                    shape="pill"
                     variant="ghost"
                     onClick={() => handleOpenEdit(cust)}
-                    className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+                    className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900"
                     title="Edit Customer"
                   >
                     <Edit2 className="h-3.5 w-3.5" />
@@ -533,10 +588,9 @@ export function CustomersView() {
 
                   <Button
                     size="sm"
-                    shape="pill"
                     variant="ghost"
                     onClick={() => handleDelete(cust.id)}
-                    className="h-7 w-7 p-0 text-red-400 hover:text-red-600"
+                    className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
                     title="Delete Customer"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -552,50 +606,65 @@ export function CustomersView() {
       <Dialog
         open={isDialogOpen}
         onOpenChange={setIsDialogOpen}
-        title={editingId ? "Edit Customer / Buyer Profile" : "Register New Customer"}
-        description="Comprehensive client directory with multiple contacts, shops, and Ahmedabad markets"
+        title={editingId ? "Edit Customer / Retailer Master" : "Register Customer Master (Sales & CRM)"}
+        description="Standard retailer profile with multi-contacts, multiple shop outlets, KYC documents, and Tally export compliance."
       >
-        <div className="space-y-4 pt-1">
+        <div className="space-y-4 pt-1 max-h-[80vh] overflow-y-auto pr-1">
           {/* Form Tabs */}
           <Tabs
             value={activeFormTab}
             onValueChange={setActiveFormTab}
             options={[
-              { value: "basic", label: "1. Buyer & Firm" },
-              { value: "contact", label: "2. Contact & 5 Phones" },
-              { value: "address", label: "3. Address & Shops" },
-              { value: "markets", label: "4. Markets & Credit" },
+              { value: "basic", label: "1. Firm & Owner" },
+              { value: "contacts", label: "2. Contacts (Up to 5)" },
+              { value: "outlets", label: "3. Outlets & Addresses" },
+              { value: "crm", label: "4. Garments & Preferences" },
+              { value: "kyc", label: "5. KYC & Photos" },
             ]}
           />
 
-          {/* TAB 1: Buyer & Firm */}
+          {/* TAB 1: Firm & Owner */}
           {activeFormTab === "basic" && (
-            <div className="space-y-3.5">
-              <div>
-                <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                  Shop / Firm Name <span className="text-red-500">*</span>
-                </label>
-                <Input
-                  value={firmName}
-                  onChange={(e) => setFirmName(e.target.value)}
-                  placeholder="e.g. Balaji Sarees & Garments"
-                  className="mt-1"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-3.5 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                    Proprietor / Contact Person Name
+                    Shop / Firm Name <span className="text-red-500">*</span>
                   </label>
                   <Input
+                    required
+                    value={firmName}
+                    onChange={(e) => setFirmName(e.target.value)}
+                    placeholder="e.g. Balaji Sarees & Garments"
+                    className="mt-1 h-8 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                    Proprietor / Owner Name <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="e.g. Ramesh Bhai Patel"
-                    className="mt-1"
+                    className="mt-1 h-8 text-xs"
                   />
                 </div>
+              </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                    Customer ID
+                  </label>
+                  <Input
+                    value={customerId}
+                    onChange={(e) => setCustomerId(e.target.value)}
+                    placeholder="e.g. CUST-101"
+                    className="mt-1 h-8 text-xs font-mono"
+                  />
+                </div>
                 <div>
                   <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
                     GSTIN
@@ -604,282 +673,329 @@ export function CustomersView() {
                     value={gstin}
                     onChange={(e) => setGstin(e.target.value.toUpperCase())}
                     placeholder="e.g. 24ABCDE1234F1Z5"
-                    className="mt-1 font-mono uppercase"
+                    className="mt-1 h-8 text-xs font-mono uppercase"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                    PAN Card Number
+                  </label>
+                  <Input
+                    value={panNumber}
+                    onChange={(e) => setPanNumber(e.target.value.toUpperCase())}
+                    placeholder="e.g. ABCDE1234F"
+                    className="mt-1 h-8 text-xs font-mono uppercase"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                    City / Native Hub
+                    City *
                   </label>
                   <Input
+                    required
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
-                    placeholder="e.g. Ahmedabad"
-                    className="mt-1"
+                    placeholder="e.g. Ahmedabad / Delhi"
+                    className="mt-1 h-8 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                    District
+                  </label>
+                  <Input
+                    value={district}
+                    onChange={(e) => setDistrict(e.target.value)}
+                    placeholder="District name"
+                    className="mt-1 h-8 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                    State *
+                  </label>
+                  <Input
+                    required
+                    value={state}
+                    onChange={(e) => setState(e.target.value)}
+                    placeholder="e.g. Gujarat"
+                    className="mt-1 h-8 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                    Pincode
+                  </label>
+                  <Input
+                    value={pincode}
+                    onChange={(e) => setPincode(e.target.value)}
+                    placeholder="e.g. 380001"
+                    className="mt-1 h-8 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+                <div>
+                  <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                    Billing Terms (Cash / Credit)
+                  </label>
+                  <select
+                    value={customerType}
+                    onChange={(e) => setCustomerType(e.target.value)}
+                    className="mt-1 w-full h-8 rounded-md border border-zinc-300 bg-white px-2.5 text-xs text-zinc-900 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                  >
+                    <option value="Cash">Cash Customer</option>
+                    <option value="Credit">Credit Customer</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                    Credit Period (Days)
+                  </label>
+                  <Input
+                    type="number"
+                    value={creditDays}
+                    onChange={(e) => setCreditDays(e.target.value)}
+                    placeholder="30"
+                    className="mt-1 h-8 text-xs"
                   />
                 </div>
 
                 <div>
                   <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                    Referred By / Introducer
+                    Credit Limit (₹)
                   </label>
                   <Input
-                    value={referredBy}
-                    onChange={(e) => setReferredBy(e.target.value)}
-                    placeholder="e.g. Arvind Bhai / Sunil Verma (Salesman)"
-                    className="mt-1"
+                    type="number"
+                    value={creditLimit}
+                    onChange={(e) => setCreditLimit(e.target.value)}
+                    placeholder="e.g. 500000"
+                    className="mt-1 h-8 text-xs"
                   />
                 </div>
               </div>
             </div>
           )}
 
-          {/* TAB 2: Contact & Up to 5 Phones */}
-          {activeFormTab === "contact" && (
-            <div className="space-y-3.5 max-h-[350px] overflow-y-auto pr-1">
+          {/* TAB 2: Contacts (Up to 5) */}
+          {activeFormTab === "contacts" && (
+            <div className="space-y-3 text-xs">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                  Contact Phone Numbers (Up to 5)
-                </label>
-                {phoneCount < 5 && (
+                <div>
+                  <h4 className="font-semibold text-zinc-800 dark:text-zinc-200">Registered Contacts</h4>
+                  <p className="text-[11px] text-muted-foreground">Add up to 5 contact persons, numbers & roles</p>
+                </div>
+                {contacts.length < 5 && (
                   <Button
-                    size="sm"
+                    type="button"
                     variant="outline"
-                    shape="pill"
-                    onClick={() => setPhoneCount((prev) => Math.min(5, prev + 1))}
-                    className="h-6 text-[11px] px-2"
+                    size="sm"
+                    onClick={() =>
+                      setContacts([...contacts, { name: "", phone: "", designation: "Sales Incharge", email: "" }])
+                    }
+                    className="h-7 text-xs gap-1"
                   >
-                    <Plus className="h-3 w-3 mr-1" /> Add Another Phone
+                    <Plus className="h-3 w-3" />
+                    Add Contact
                   </Button>
                 )}
               </div>
 
-              {/* Phone 1 */}
-              <div>
-                <label className="text-[11px] text-muted-foreground">
-                  Phone 1 (Primary / WhatsApp) <span className="text-red-500">*</span>
-                </label>
-                <Input
-                  value={phone1}
-                  onChange={(e) => setPhone1(e.target.value)}
-                  placeholder="e.g. 9876543210"
-                  className="mt-1"
-                />
-              </div>
-
-              {/* Phone 2 */}
-              {phoneCount >= 2 && (
-                <div>
-                  <label className="text-[11px] text-muted-foreground">
-                    Phone 2 (Shop / Counter Desk)
-                  </label>
-                  <Input
-                    value={phone2}
-                    onChange={(e) => setPhone2(e.target.value)}
-                    placeholder="e.g. 9876543211"
-                    className="mt-1"
-                  />
-                </div>
-              )}
-
-              {/* Phone 3 */}
-              {phoneCount >= 3 && (
-                <div>
-                  <label className="text-[11px] text-muted-foreground">
-                    Phone 3 (Accountant / Billing)
-                  </label>
-                  <Input
-                    value={phone3}
-                    onChange={(e) => setPhone3(e.target.value)}
-                    placeholder="e.g. 9876543212"
-                    className="mt-1"
-                  />
-                </div>
-              )}
-
-              {/* Phone 4 */}
-              {phoneCount >= 4 && (
-                <div>
-                  <label className="text-[11px] text-muted-foreground">
-                    Phone 4 (Partner / Manager)
-                  </label>
-                  <Input
-                    value={phone4}
-                    onChange={(e) => setPhone4(e.target.value)}
-                    placeholder="e.g. 9876543213"
-                    className="mt-1"
-                  />
-                </div>
-              )}
-
-              {/* Phone 5 */}
-              {phoneCount >= 5 && (
-                <div>
-                  <label className="text-[11px] text-muted-foreground">
-                    Phone 5 (Residence / Personal)
-                  </label>
-                  <Input
-                    value={phone5}
-                    onChange={(e) => setPhone5(e.target.value)}
-                    placeholder="e.g. 9876543214"
-                    className="mt-1"
-                  />
-                </div>
-              )}
-
-              {/* Emails */}
-              <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800 space-y-3">
-                <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                  Email Addresses
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[11px] text-muted-foreground">Primary Email</label>
-                    <Input
-                      value={email1}
-                      onChange={(e) => setEmail1(e.target.value)}
-                      placeholder="e.g. purchase@balajisarees.com"
-                      className="mt-1 text-xs"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] text-muted-foreground">Accounts / Billing Email</label>
-                    <Input
-                      value={email2}
-                      onChange={(e) => setEmail2(e.target.value)}
-                      placeholder="e.g. accounts@balajisarees.com"
-                      className="mt-1 text-xs"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 3: Addresses & Shops */}
-          {activeFormTab === "address" && (
-            <div className="space-y-3.5 max-h-[350px] overflow-y-auto pr-1">
-              <div>
-                <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                  Shop / Business Address
-                </label>
-                <Input
-                  value={shopAddress}
-                  onChange={(e) => setShopAddress(e.target.value)}
-                  placeholder="e.g. Shop 24, Ground Floor, Maskati Cloth Market"
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                  Shop Location (Landmark / Google Maps Link)
-                </label>
-                <Input
-                  value={shopLocation}
-                  onChange={(e) => setShopLocation(e.target.value)}
-                  placeholder="e.g. Near Sakarkalupur Police Chowki, Gate 2"
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                  Home / Residence Address
-                </label>
-                <Input
-                  value={homeAddress}
-                  onChange={(e) => setHomeAddress(e.target.value)}
-                  placeholder="e.g. Bungalow 12, Shanti Nagar, Paldi, Ahmedabad"
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                  Personal Location / Native Town
-                </label>
-                <Input
-                  value={personalLocation}
-                  onChange={(e) => setPersonalLocation(e.target.value)}
-                  placeholder="e.g. Paldi / Nadiad / Mehsana"
-                  className="mt-1"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-zinc-100 dark:border-zinc-800">
-                <div>
-                  <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                    How Many Shops / Outlets?
-                  </label>
-                  <Input
-                    type="number"
-                    min="1"
-                    max="50"
-                    value={shopCount}
-                    onChange={(e) => setShopCount(e.target.value)}
-                    placeholder="e.g. 1"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                    Shop / Branch Locations
-                  </label>
-                  <Input
-                    value={shopLocations}
-                    onChange={(e) => setShopLocations(e.target.value)}
-                    placeholder="e.g. Maskati Mkt & 1 Branch in Bapunagar"
-                    className="mt-1"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 4: Ahmedabad Markets, Garments & Credit */}
-          {activeFormTab === "markets" && (
-            <div className="space-y-3.5 max-h-[350px] overflow-y-auto pr-1">
-              <div>
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                    Ahmedabad Textile Markets (Pre-provided)
-                  </label>
-                  <span className="text-[10px] text-muted-foreground">Select buyer's markets</span>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-2 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
-                  {AHMEDABAD_TEXTILE_MARKETS.map((mkt) => {
-                    const isSelected = selectedMarkets.includes(mkt)
-                    return (
+              {contacts.map((contact, idx) => (
+                <div key={idx} className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-xs text-indigo-600 dark:text-indigo-400">
+                      Contact #{idx + 1} {idx === 0 ? "(Primary)" : ""}
+                    </span>
+                    {contacts.length > 1 && (
                       <button
-                        key={mkt}
                         type="button"
-                        onClick={() => handleToggleMarket(mkt)}
-                        className={`text-[11px] px-2.5 py-1 rounded-full border transition-all flex items-center gap-1 ${
-                          isSelected
-                            ? "bg-zinc-900 text-white border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100 font-semibold shadow-sm"
-                            : "bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-400"
-                        }`}
+                        onClick={() => setContacts(contacts.filter((_, i) => i !== idx))}
+                        className="text-red-500 hover:text-red-700 text-xs flex items-center gap-0.5"
                       >
-                        {isSelected && <Check className="h-2.5 w-2.5" />}
-                        <span>{mkt}</span>
+                        <Trash2 className="h-3 w-3" /> Remove
                       </button>
-                    )
-                  })}
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[11px] text-muted-foreground">Phone Number *</label>
+                      <Input
+                        required={idx === 0}
+                        placeholder="+91 98..."
+                        value={contact.phone}
+                        onChange={(e) => {
+                          const updated = [...contacts]
+                          updated[idx].phone = e.target.value
+                          setContacts(updated)
+                        }}
+                        className="h-8 text-xs mt-0.5"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-muted-foreground">Contact Person Name</label>
+                      <Input
+                        placeholder="e.g. Ramesh Patel"
+                        value={contact.name || ""}
+                        onChange={(e) => {
+                          const updated = [...contacts]
+                          updated[idx].name = e.target.value
+                          setContacts(updated)
+                        }}
+                        className="h-8 text-xs mt-0.5"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[11px] text-muted-foreground">Designation / Note</label>
+                      <Input
+                        placeholder="Owner, Partner, Purchaser, Accounts"
+                        value={contact.designation || ""}
+                        onChange={(e) => {
+                          const updated = [...contacts]
+                          updated[idx].designation = e.target.value
+                          setContacts(updated)
+                        }}
+                        className="h-8 text-xs mt-0.5"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-muted-foreground">Email Address</label>
+                      <Input
+                        placeholder="email@domain.com"
+                        value={contact.email || ""}
+                        onChange={(e) => {
+                          const updated = [...contacts]
+                          updated[idx].email = e.target.value
+                          setContacts(updated)
+                        }}
+                        className="h-8 text-xs mt-0.5"
+                      />
+                    </div>
+                  </div>
                 </div>
+              ))}
+            </div>
+          )}
+
+          {/* TAB 3: Outlets & Addresses (Up to 5) */}
+          {activeFormTab === "outlets" && (
+            <div className="space-y-3 text-xs">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-semibold text-zinc-800 dark:text-zinc-200">Shop Outlets & Locations</h4>
+                  <p className="text-[11px] text-muted-foreground">Add up to 5 shop branches with addresses & Google Map links</p>
+                </div>
+                {outlets.length < 5 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setOutlets([...outlets, { name: `Outlet ${outlets.length + 1}`, address: "", pincode: "", mapLink: "" }])
+                    }
+                    className="h-7 text-xs gap-1"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Add Outlet
+                  </Button>
+                )}
               </div>
 
-              <div>
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                    Garment Categories Preferred / Bought
-                  </label>
-                  <span className="text-[10px] text-muted-foreground">Tap categories</span>
+              {outlets.map((outlet, idx) => (
+                <div key={idx} className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-xs text-emerald-600 dark:text-emerald-400">
+                      Outlet #{idx + 1} {idx === 0 ? "(Main Shop)" : ""}
+                    </span>
+                    {outlets.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setOutlets(outlets.filter((_, i) => i !== idx))}
+                        className="text-red-500 hover:text-red-700 text-xs flex items-center gap-0.5"
+                      >
+                        <Trash2 className="h-3 w-3" /> Remove
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="sm:col-span-2">
+                      <label className="text-[11px] text-muted-foreground">Outlet / Branch Name</label>
+                      <Input
+                        placeholder="e.g. Main Showroom, Branch 2"
+                        value={outlet.name}
+                        onChange={(e) => {
+                          const updated = [...outlets]
+                          updated[idx].name = e.target.value
+                          setOutlets(updated)
+                        }}
+                        className="h-8 text-xs mt-0.5"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-muted-foreground">Pincode</label>
+                      <Input
+                        placeholder="e.g. 110005"
+                        value={outlet.pincode || ""}
+                        onChange={(e) => {
+                          const updated = [...outlets]
+                          updated[idx].pincode = e.target.value
+                          setOutlets(updated)
+                        }}
+                        className="h-8 text-xs mt-0.5"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] text-muted-foreground">Full Address</label>
+                    <Input
+                      placeholder="Shop number, building, market, area, city"
+                      value={outlet.address}
+                      onChange={(e) => {
+                        const updated = [...outlets]
+                        updated[idx].address = e.target.value
+                        setOutlets(updated)
+                      }}
+                      className="h-8 text-xs mt-0.5"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] text-muted-foreground">Google Maps Link</label>
+                    <Input
+                      placeholder="https://maps.app.goo.gl/... or landmark coordinates"
+                      value={outlet.mapLink || ""}
+                      onChange={(e) => {
+                        const updated = [...outlets]
+                        updated[idx].mapLink = e.target.value
+                        setOutlets(updated)
+                      }}
+                      className="h-8 text-xs mt-0.5 font-mono text-[11px]"
+                    />
+                  </div>
                 </div>
-                <div className="mt-2 flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-2 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
+              ))}
+            </div>
+          )}
+
+          {/* TAB 4: Garments & Preferences */}
+          {activeFormTab === "crm" && (
+            <div className="space-y-3.5 text-xs">
+              <div>
+                <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                  Which type of garments they deal with mostly?
+                </label>
+                <div className="mt-2 flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-2 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
                   {GARMENT_CATEGORIES.map((cat) => {
                     const isSelected = selectedCategories.includes(cat)
                     return (
@@ -889,7 +1005,7 @@ export function CustomersView() {
                         onClick={() => handleToggleCategory(cat)}
                         className={`text-[11px] px-2.5 py-1 rounded-full border transition-all flex items-center gap-1 ${
                           isSelected
-                            ? "bg-zinc-900 text-white border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100 font-semibold"
+                            ? "bg-zinc-900 text-white border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 font-semibold shadow-sm"
                             : "bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-400"
                         }`}
                       >
@@ -899,112 +1015,243 @@ export function CustomersView() {
                     )
                   })}
                 </div>
-
                 <div className="mt-2">
                   <Input
                     value={customCategory}
                     onChange={(e) => setCustomCategory(e.target.value)}
-                    placeholder="+ Custom category (e.g. Rayon Kurti, Silk Dupattas)"
-                    className="text-xs"
+                    placeholder="+ Add custom garment type (e.g. Rayon Kurtis, Silk Sarees)"
+                    className="h-8 text-xs"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-zinc-100 dark:border-zinc-800">
                 <div>
                   <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                    Credit Period (Days)
+                    Transport / Logistics Preference
+                  </label>
+                  <select
+                    value={preferredTransporterName}
+                    onChange={(e) => setPreferredTransporterName(e.target.value)}
+                    className="mt-1 w-full h-8 rounded-md border border-zinc-300 bg-white px-2.5 text-xs text-zinc-900 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                  >
+                    <option value="">-- Select from Transporters Master --</option>
+                    {transporters.map((t) => (
+                      <option key={t.id} value={t.transporterName}>
+                        {t.transporterName} ({t.city || "Hub"})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                    Referred By (Select Master or Type)
+                  </label>
+                  <div className="flex gap-1.5 mt-1">
+                    <select
+                      value={referredBy}
+                      onChange={(e) => setReferredBy(e.target.value)}
+                      className="w-full h-8 rounded-md border border-zinc-300 bg-white px-2.5 text-xs text-zinc-900 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                    >
+                      <option value="">-- Select Referrer --</option>
+                      <optgroup label="Staff & Agents">
+                        {employees.map((e) => (
+                          <option key={`emp-${e.id}`} value={`Staff: ${e.name}`}>
+                            Staff: {e.name} ({e.role})
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Existing Customers">
+                        {customers.slice(0, 10).map((c) => (
+                          <option key={`cust-${c.id}`} value={`Customer: ${c.firmName || c.name}`}>
+                            Customer: {c.firmName || c.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Suppliers & Mills">
+                        {suppliers.slice(0, 10).map((s) => (
+                          <option key={`sup-${s.id}`} value={`Supplier: ${s.firmName || s.name}`}>
+                            Supplier: {s.firmName || s.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    </select>
+                  </div>
+                  <Input
+                    placeholder="Or type custom referrer..."
+                    value={referredBy}
+                    onChange={(e) => setReferredBy(e.target.value)}
+                    className="mt-1 h-7 text-[11px]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                    Added / Creator Agent
+                  </label>
+                  <select
+                    value={addedByAgentName}
+                    onChange={(e) => setAddedByAgentName(e.target.value)}
+                    className="mt-1 w-full h-8 rounded-md border border-zinc-300 bg-white px-2.5 text-xs text-zinc-900 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                  >
+                    <option value={user?.displayName || "Admin"}>{user?.displayName || "Current Logged-in User"}</option>
+                    {employees.map((e) => (
+                      <option key={e.id} value={e.name}>
+                        {e.name} ({e.role})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                    Date of Birth (DOB)
                   </label>
                   <Input
-                    type="number"
-                    value={creditDays}
-                    onChange={(e) => setCreditDays(e.target.value)}
-                    placeholder="e.g. 30"
-                    className="mt-1"
+                    type="date"
+                    value={dob}
+                    onChange={(e) => setDob(e.target.value)}
+                    className="mt-1 h-8 text-xs"
                   />
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                    Credit Limit (₹ Optional)
+                    Religion (CRM Demographic)
                   </label>
                   <Input
-                    type="number"
-                    value={creditLimit}
-                    onChange={(e) => setCreditLimit(e.target.value)}
-                    placeholder="e.g. 200000"
-                    className="mt-1"
+                    placeholder="e.g. Hindu, Jain, Muslim, Sikh"
+                    value={religion}
+                    onChange={(e) => setReligion(e.target.value)}
+                    className="mt-1 h-8 text-xs"
                   />
                 </div>
               </div>
 
               <div>
                 <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                  Special Notes / Payment Terms
+                  Special Notes & Sourcing Habits
                 </label>
-                <Input
+                <textarea
+                  rows={2}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="e.g. Good party, pays within 21 days with cheque"
-                  className="mt-1 text-xs"
+                  placeholder="Payment punctuality, preferred payment days, fabric preferences..."
+                  className="mt-1 w-full rounded-md border border-zinc-300 bg-white p-2 text-xs text-zinc-900 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
                 />
               </div>
             </div>
           )}
 
-          {/* Dialog Bottom Action Buttons */}
-          <div className="flex items-center justify-between pt-3 border-t border-zinc-100 dark:border-zinc-800">
-            <div className="flex gap-1.5">
-              {activeFormTab !== "basic" && (
-                <Button
-                  variant="outline"
-                  shape="pill"
-                  size="sm"
-                  onClick={() => {
-                    if (activeFormTab === "markets") setActiveFormTab("address")
-                    else if (activeFormTab === "address") setActiveFormTab("contact")
-                    else if (activeFormTab === "contact") setActiveFormTab("basic")
-                  }}
-                  className="h-8 text-xs"
-                >
-                  Previous
-                </Button>
-              )}
-              {activeFormTab !== "markets" && (
-                <Button
-                  variant="secondary"
-                  shape="pill"
-                  size="sm"
-                  onClick={() => {
-                    if (activeFormTab === "basic") setActiveFormTab("contact")
-                    else if (activeFormTab === "contact") setActiveFormTab("address")
-                    else if (activeFormTab === "address") setActiveFormTab("markets")
-                  }}
-                  className="h-8 text-xs"
-                >
-                  Next Step
-                </Button>
-              )}
-            </div>
+          {/* TAB 5: KYC & Documents */}
+          {activeFormTab === "kyc" && (
+            <div className="space-y-3.5 text-xs">
+              <p className="text-[11px] text-muted-foreground">
+                Attach or provide cloud photo links / storage URIs for KYC verification & fraud prevention.
+              </p>
 
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                shape="pill"
-                size="sm"
-                onClick={() => setIsDialogOpen(false)}
-                className="h-8 text-xs"
-              >
-                Cancel
-              </Button>
-              <Button
-                shape="pill"
-                size="sm"
-                onClick={handleSave}
-                className="h-8 text-xs font-semibold shadow-sm"
-              >
-                {editingId ? "Update Customer" : "Save Customer"}
-              </Button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 space-y-1">
+                  <label className="font-semibold text-xs text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
+                    <ShieldCheck className="h-3.5 w-3.5 text-blue-500" />
+                    <span>Aadhar Card Photo URI</span>
+                  </label>
+                  <Input
+                    placeholder="https://... or photo URI"
+                    value={aadharPhotoUri}
+                    onChange={(e) => setAadharPhotoUri(e.target.value)}
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 space-y-1">
+                  <label className="font-semibold text-xs text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
+                    <FileText className="h-3.5 w-3.5 text-emerald-500" />
+                    <span>GST Certificate Photo URI</span>
+                  </label>
+                  <Input
+                    placeholder="https://... or photo URI"
+                    value={gstCertPhotoUri}
+                    onChange={(e) => setGstCertPhotoUri(e.target.value)}
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 space-y-1">
+                  <label className="font-semibold text-xs text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
+                    <CreditCard className="h-3.5 w-3.5 text-purple-500" />
+                    <span>PAN Card Photo URI</span>
+                  </label>
+                  <Input
+                    placeholder="https://... or photo URI"
+                    value={panPhotoUri}
+                    onChange={(e) => setPanPhotoUri(e.target.value)}
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 space-y-1">
+                  <label className="font-semibold text-xs text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
+                    <Store className="h-3.5 w-3.5 text-amber-500" />
+                    <span>Shop Front Pic URI</span>
+                  </label>
+                  <Input
+                    placeholder="https://... or photo URI"
+                    value={shopPhotoUri}
+                    onChange={(e) => setShopPhotoUri(e.target.value)}
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 space-y-1">
+                  <label className="font-semibold text-xs text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
+                    <User className="h-3.5 w-3.5 text-blue-600" />
+                    <span>Purchaser / Owner Pic URI</span>
+                  </label>
+                  <Input
+                    placeholder="https://... or photo URI"
+                    value={purchaserPhotoUri}
+                    onChange={(e) => setPurchaserPhotoUri(e.target.value)}
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 space-y-1">
+                  <label className="font-semibold text-xs text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
+                    <FileText className="h-3.5 w-3.5 text-red-500" />
+                    <span>Cancelled Cheque Pic URI</span>
+                  </label>
+                  <Input
+                    placeholder="https://... or photo URI"
+                    value={cancelChequePhotoUri}
+                    onChange={(e) => setCancelChequePhotoUri(e.target.value)}
+                    className="h-8 text-xs"
+                  />
+                </div>
+              </div>
             </div>
+          )}
+
+          {/* Dialog Action Buttons */}
+          <div className="flex items-center justify-between pt-3 border-t border-zinc-200 dark:border-zinc-800">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsDialogOpen(false)}
+              className="h-8 text-xs"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleSave}
+              className="h-8 text-xs font-semibold bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900"
+            >
+              {editingId ? "Update Customer" : "Save Customer"}
+            </Button>
           </div>
         </div>
       </Dialog>
@@ -1015,210 +1262,97 @@ export function CustomersView() {
           open={!!viewProfileCustomer}
           onOpenChange={(open) => !open && setViewProfileCustomer(null)}
           title={`${viewProfileCustomer.firmName || viewProfileCustomer.name}`}
-          description={`Customer ID: ${viewProfileCustomer.customerId || "CUST"} • Market: ${viewProfileCustomer.marketArea || viewProfileCustomer.city || "Ahmedabad"}`}
+          description={`Customer ID: ${viewProfileCustomer.customerId || "CUST"} • Location: ${viewProfileCustomer.city || "Ahmedabad"}`}
         >
-          <div className="space-y-4 pt-1 max-h-[420px] overflow-y-auto pr-1 text-xs">
-            {/* Identity Banner */}
+          <div className="space-y-4 pt-1 max-h-[70vh] overflow-y-auto pr-1 text-xs">
             <div className="rounded-xl p-3 bg-zinc-100/70 dark:bg-zinc-900 border border-zinc-200/70 dark:border-zinc-800 flex items-center justify-between">
               <div>
                 <p className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
                   {viewProfileCustomer.firmName || viewProfileCustomer.name}
                 </p>
-                {viewProfileCustomer.firmName && viewProfileCustomer.name && (
-                  <p className="text-zinc-600 dark:text-zinc-400 font-medium mt-0.5">
-                    Owner / Contact Person: <strong>{viewProfileCustomer.name}</strong>
-                  </p>
-                )}
+                <p className="text-zinc-600 dark:text-zinc-400 font-medium mt-0.5">
+                  Owner: <strong>{viewProfileCustomer.name}</strong> • City: <strong>{viewProfileCustomer.city || "Ahmedabad"}</strong>
+                </p>
               </div>
-              <span className="text-[10px] font-mono font-semibold bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 px-2 py-0.5 rounded-full">
+              <Badge variant="outline" className="font-mono text-xs font-bold">
                 {viewProfileCustomer.customerId}
-              </span>
+              </Badge>
             </div>
 
-            {/* GSTIN, Credit Terms & Referral */}
             <div className="grid grid-cols-3 gap-2">
               <div className="p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
                 <span className="text-[10px] text-muted-foreground">GSTIN</span>
-                <p className="font-mono font-bold text-zinc-900 dark:text-zinc-100 truncate">
-                  {viewProfileCustomer.gstin || viewProfileCustomer.gstNumber || "Not Provided"}
+                <p className="font-mono font-bold truncate">
+                  {viewProfileCustomer.gstin || viewProfileCustomer.gstNumber || "Unregistered"}
                 </p>
               </div>
               <div className="p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
-                <span className="text-[10px] text-muted-foreground">Credit Period</span>
-                <p className="font-bold text-zinc-900 dark:text-zinc-100">
-                  {viewProfileCustomer.creditDays || 30} Days
+                <span className="text-[10px] text-muted-foreground">Terms</span>
+                <p className="font-bold">
+                  {viewProfileCustomer.customerType || "Cash"} ({viewProfileCustomer.creditDays || 30} Days)
                 </p>
               </div>
               <div className="p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
                 <span className="text-[10px] text-muted-foreground">Referred By</span>
-                <p className="font-bold text-zinc-900 dark:text-zinc-100 truncate">
+                <p className="font-bold truncate">
                   {viewProfileCustomer.referredBy || "Direct Walk-in"}
                 </p>
               </div>
             </div>
 
-            {/* All Contact Phone Numbers */}
-            <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
-                  <Phone className="h-3.5 w-3.5 text-zinc-500" />
-                  <span>Registered Contact Numbers</span>
-                </span>
-                <span className="text-[10px] text-muted-foreground">Up to 5 lines</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                {viewProfileCustomer.phone && (
-                  <div className="bg-zinc-50 dark:bg-zinc-900 p-2 rounded-lg">
-                    <span className="text-[10px] text-muted-foreground">Phone 1 (Primary):</span>
-                    <p className="font-bold text-zinc-900 dark:text-zinc-100">{viewProfileCustomer.phone}</p>
-                  </div>
-                )}
-                {viewProfileCustomer.phone2 && (
-                  <div className="bg-zinc-50 dark:bg-zinc-900 p-2 rounded-lg">
-                    <span className="text-[10px] text-muted-foreground">Phone 2 (Counter):</span>
-                    <p className="font-bold text-zinc-900 dark:text-zinc-100">{viewProfileCustomer.phone2}</p>
-                  </div>
-                )}
-                {viewProfileCustomer.phone3 && (
-                  <div className="bg-zinc-50 dark:bg-zinc-900 p-2 rounded-lg">
-                    <span className="text-[10px] text-muted-foreground">Phone 3 (Accounts):</span>
-                    <p className="font-bold text-zinc-900 dark:text-zinc-100">{viewProfileCustomer.phone3}</p>
-                  </div>
-                )}
-                {viewProfileCustomer.phone4 && (
-                  <div className="bg-zinc-50 dark:bg-zinc-900 p-2 rounded-lg">
-                    <span className="text-[10px] text-muted-foreground">Phone 4 (Partner):</span>
-                    <p className="font-bold text-zinc-900 dark:text-zinc-100">{viewProfileCustomer.phone4}</p>
-                  </div>
-                )}
-                {viewProfileCustomer.phone5 && (
-                  <div className="bg-zinc-50 dark:bg-zinc-900 p-2 rounded-lg">
-                    <span className="text-[10px] text-muted-foreground">Phone 5 (Residence):</span>
-                    <p className="font-bold text-zinc-900 dark:text-zinc-100">{viewProfileCustomer.phone5}</p>
-                  </div>
-                )}
-              </div>
-              {(viewProfileCustomer.email || viewProfileCustomer.email2) && (
-                <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800/60 text-muted-foreground space-y-0.5">
-                  {viewProfileCustomer.email && <p>Email: {viewProfileCustomer.email}</p>}
-                  {viewProfileCustomer.email2 && <p>Alt Email: {viewProfileCustomer.email2}</p>}
-                </div>
-              )}
-            </div>
-
-            {/* Addresses & Shop Outlets */}
+            {/* Outlets List */}
             <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 space-y-2">
               <span className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
-                <MapPin className="h-3.5 w-3.5 text-zinc-500" />
-                <span>Addresses & Outlets</span>
+                <Store className="h-3.5 w-3.5 text-emerald-600" />
+                <span>Shop Outlets & Addresses</span>
               </span>
-              <div className="space-y-1.5 text-xs text-muted-foreground">
-                {(viewProfileCustomer.shopAddress || viewProfileCustomer.address) && (
-                  <p>
-                    <strong className="text-zinc-700 dark:text-zinc-300">Shop / Office Address:</strong>{" "}
-                    {viewProfileCustomer.shopAddress || viewProfileCustomer.address}
-                  </p>
+              <div className="space-y-2">
+                {viewProfileCustomer.outlets && viewProfileCustomer.outlets.length > 0 ? (
+                  viewProfileCustomer.outlets.map((o, idx) => (
+                    <div key={idx} className="bg-zinc-50 dark:bg-zinc-900 p-2.5 rounded-lg space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-zinc-900 dark:text-zinc-100">{o.name}</span>
+                        {o.pincode && <span className="font-mono text-[10px] text-muted-foreground">PIN: {o.pincode}</span>}
+                      </div>
+                      <p className="text-zinc-600 dark:text-zinc-400">{o.address}</p>
+                      {o.mapLink && (
+                        <a href={o.mapLink} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline flex items-center gap-1 text-[11px] pt-0.5">
+                          <Navigation className="h-3 w-3" /> View on Google Maps
+                        </a>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="bg-zinc-50 dark:bg-zinc-900 p-2.5 rounded-lg">
+                    <p>{viewProfileCustomer.shopAddress || viewProfileCustomer.address || "No address on file"}</p>
+                  </div>
                 )}
-                {viewProfileCustomer.shopLocation && (
-                  <p>
-                    <strong className="text-zinc-700 dark:text-zinc-300">Shop Location / Landmark:</strong>{" "}
-                    {viewProfileCustomer.shopLocation}
-                  </p>
-                )}
-                {viewProfileCustomer.homeAddress && (
-                  <p>
-                    <strong className="text-zinc-700 dark:text-zinc-300">Home Residence Address:</strong>{" "}
-                    {viewProfileCustomer.homeAddress}
-                  </p>
-                )}
-                {viewProfileCustomer.personalLocation && (
-                  <p>
-                    <strong className="text-zinc-700 dark:text-zinc-300">Personal Location / Native:</strong>{" "}
-                    {viewProfileCustomer.personalLocation}
-                  </p>
-                )}
-                <div className="pt-1.5 border-t border-zinc-100 dark:border-zinc-800/60 flex items-center justify-between">
-                  <span>Number of Outlets: <strong>{viewProfileCustomer.shopCount || 1}</strong></span>
-                  {viewProfileCustomer.shopLocations && (
-                    <span className="text-[11px] truncate max-w-[200px]">
-                      Branches: {viewProfileCustomer.shopLocations}
-                    </span>
-                  )}
-                </div>
               </div>
             </div>
 
-            {/* Ahmedabad Markets & Preferred Products */}
+            {/* Garments & Preferences */}
             <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 space-y-2">
               <span className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
-                <Building2 className="h-3.5 w-3.5 text-zinc-500" />
-                <span>Ahmedabad Markets & Preferred Fabrics</span>
+                <Tag className="h-3.5 w-3.5 text-amber-600" />
+                <span>Garment Types Dealt With</span>
               </span>
-              <div>
-                <span className="text-[10px] text-muted-foreground">Markets:</span>
-                <p className="font-medium text-zinc-800 dark:text-zinc-200 mt-0.5">
-                  {viewProfileCustomer.markets || viewProfileCustomer.marketArea || "Ahmedabad Central"}
+              <p className="font-medium text-zinc-700 dark:text-zinc-300">
+                {viewProfileCustomer.garmentTypes || viewProfileCustomer.preferredCategories || "General Apparel"}
+              </p>
+              {viewProfileCustomer.preferredTransporterName && (
+                <p className="text-muted-foreground text-[11px]">
+                  Transport Preference: <strong>{viewProfileCustomer.preferredTransporterName}</strong>
                 </p>
-              </div>
-              {viewProfileCustomer.preferredCategories && (
-                <div className="pt-1.5 border-t border-zinc-100 dark:border-zinc-800/60">
-                  <span className="text-[10px] text-muted-foreground">Garment Preferences:</span>
-                  <p className="font-medium text-zinc-800 dark:text-zinc-200 mt-0.5">
-                    {viewProfileCustomer.preferredCategories}
-                  </p>
-                </div>
               )}
-              {viewProfileCustomer.notes && (
-                <div className="pt-1.5 border-t border-zinc-100 dark:border-zinc-800/60">
-                  <span className="text-[10px] text-muted-foreground">Terms / Notes:</span>
-                  <p className="italic text-muted-foreground mt-0.5">{viewProfileCustomer.notes}</p>
-                </div>
-              )}
-            </div>
-
-            {/* Modal Bottom Actions */}
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
-              <Button
-                variant="outline"
-                shape="pill"
-                size="sm"
-                onClick={() => handleGenerateCustomerReport(viewProfileCustomer)}
-                className="text-xs font-semibold gap-1.5 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-900/50 hover:bg-blue-50 dark:hover:bg-blue-950/40"
-              >
-                <Printer className="h-3.5 w-3.5" />
-                <span>Customer Report (PDF)</span>
-              </Button>
-
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  shape="pill"
-                  size="sm"
-                  onClick={() => setViewProfileCustomer(null)}
-                >
-                  Close
-                </Button>
-                <Button
-                  shape="pill"
-                  size="sm"
-                  onClick={() => {
-                    const c = viewProfileCustomer
-                    setViewProfileCustomer(null)
-                    handleOpenEdit(c)
-                  }}
-                >
-                  Edit Details
-                </Button>
-              </div>
             </div>
           </div>
         </Dialog>
       )}
 
-      {/* Report Viewer Modal */}
+      {/* Report Modal */}
       <ReportViewerModal
         open={reportModal.open}
-        onOpenChange={(open) => setReportModal((prev) => ({ ...prev, open }))}
+        onOpenChange={(open) => !open && setReportModal({ open: false, title: "", html: "", whatsAppText: "" })}
         title={reportModal.title}
         htmlContent={reportModal.html}
         whatsAppText={reportModal.whatsAppText}

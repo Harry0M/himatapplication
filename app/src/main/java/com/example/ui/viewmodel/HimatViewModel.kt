@@ -10,20 +10,24 @@ import com.example.data.auth.AuthRepository
 import com.example.data.remote.FirebaseRtdbService
 import com.google.firebase.auth.FirebaseUser
 import com.example.data.local.AppDatabase
+import com.example.data.local.entity.BrandEntity
 import com.example.data.local.entity.CustomerEntity
 import com.example.data.local.entity.EmployeeEntity
 import com.example.data.local.entity.GarmentItemEntity
+import com.example.data.local.entity.MarketEntity
 import com.example.data.local.entity.PackGroupEntity
 import com.example.data.local.entity.ProductEntity
 import com.example.data.local.entity.PurchaseEntryEntity
 import com.example.data.local.entity.SupplierEntity
 import com.example.data.local.entity.TransactionEntity
 import com.example.data.local.entity.TransactionLogEntity
+import com.example.data.local.entity.TransporterEntity
 import com.example.data.local.entity.VisitEntity
 import com.example.data.repository.HimatRepository
 import com.example.util.PdfGenerator
 import com.example.util.RecordValidator
 import com.example.util.ShareUtil
+import com.example.util.TallyExportUtil
 import com.example.util.ValidationResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -66,8 +70,11 @@ enum class AppScreen {
 enum class MasterTab {
     CUSTOMERS,
     SUPPLIERS,
-    PRODUCTS,
-    EMPLOYEES
+    BRANDS,
+    TRANSPORTERS,
+    EMPLOYEES,
+    MARKETS,
+    PRODUCTS
 }
 
 class HimatViewModel(application: Application) : AndroidViewModel(application) {
@@ -154,11 +161,29 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
     private val _editingEmployee = MutableStateFlow<EmployeeEntity?>(null)
     val editingEmployee: StateFlow<EmployeeEntity?> = _editingEmployee.asStateFlow()
 
+    private val _editingBrand = MutableStateFlow<BrandEntity?>(null)
+    val editingBrand: StateFlow<BrandEntity?> = _editingBrand.asStateFlow()
+
+    private val _editingTransporter = MutableStateFlow<TransporterEntity?>(null)
+    val editingTransporter: StateFlow<TransporterEntity?> = _editingTransporter.asStateFlow()
+
+    private val _editingMarket = MutableStateFlow<MarketEntity?>(null)
+    val editingMarket: StateFlow<MarketEntity?> = _editingMarket.asStateFlow()
+
     // Data streams from Repository
     val allCustomers: StateFlow<List<CustomerEntity>> = repository.allCustomers
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val allSuppliers: StateFlow<List<SupplierEntity>> = repository.allSuppliers
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allBrands: StateFlow<List<BrandEntity>> = repository.allBrands
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allTransporters: StateFlow<List<TransporterEntity>> = repository.allTransporters
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allMarkets: StateFlow<List<MarketEntity>> = repository.allMarkets
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val allProducts: StateFlow<List<ProductEntity>> = repository.allProducts
@@ -194,9 +219,22 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         .map { list -> list.filter { !it.isDeleted } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val visibleBrands: StateFlow<List<BrandEntity>> = allBrands
+        .map { list -> list.filter { !it.isDeleted } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val visibleTransporters: StateFlow<List<TransporterEntity>> = allTransporters
+        .map { list -> list.filter { !it.isDeleted } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val visibleMarkets: StateFlow<List<MarketEntity>> = allMarkets
+        .map { list -> list.filter { !it.isDeleted } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val visibleProducts: StateFlow<List<ProductEntity>> = allProducts
         .map { list -> list.filter { !it.isDeleted } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
 
     // Salesman sees only their own visits; Admin sees all visits
     val visibleVisits: StateFlow<List<VisitEntity>> = combine(allVisits, currentRole, currentEmployee) { visits, role, emp ->
@@ -306,6 +344,27 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         rtdbService.listenToPackGroups { packGroups ->
             viewModelScope.launch(Dispatchers.IO) {
                 repository.syncPackGroupsFromCloud(packGroups)
+            }
+        }
+
+        // Start listening to Brands
+        rtdbService.listenToBrands { brands ->
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.syncBrandsFromCloud(brands)
+            }
+        }
+
+        // Start listening to Transporters
+        rtdbService.listenToTransporters { transporters ->
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.syncTransportersFromCloud(transporters)
+            }
+        }
+
+        // Start listening to Markets
+        rtdbService.listenToMarkets { markets ->
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.syncMarketsFromCloud(markets)
             }
         }
 
@@ -516,6 +575,9 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         _editingSupplier.value = null
         _editingProduct.value = null
         _editingEmployee.value = null
+        _editingBrand.value = null
+        _editingTransporter.value = null
+        _editingMarket.value = null
         _currentScreen.value = AppScreen.ADD_EDIT_MASTER
     }
 
@@ -525,6 +587,9 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         _editingSupplier.value = null
         _editingProduct.value = null
         _editingEmployee.value = null
+        _editingBrand.value = null
+        _editingTransporter.value = null
+        _editingMarket.value = null
         _currentScreen.value = AppScreen.ADD_EDIT_MASTER
     }
 
@@ -534,6 +599,45 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         _editingSupplier.value = supplier
         _editingProduct.value = null
         _editingEmployee.value = null
+        _editingBrand.value = null
+        _editingTransporter.value = null
+        _editingMarket.value = null
+        _currentScreen.value = AppScreen.ADD_EDIT_MASTER
+    }
+
+    fun openEditBrand(brand: BrandEntity) {
+        _activeMasterTab.value = MasterTab.BRANDS
+        _editingCustomer.value = null
+        _editingSupplier.value = null
+        _editingProduct.value = null
+        _editingEmployee.value = null
+        _editingBrand.value = brand
+        _editingTransporter.value = null
+        _editingMarket.value = null
+        _currentScreen.value = AppScreen.ADD_EDIT_MASTER
+    }
+
+    fun openEditTransporter(transporter: TransporterEntity) {
+        _activeMasterTab.value = MasterTab.TRANSPORTERS
+        _editingCustomer.value = null
+        _editingSupplier.value = null
+        _editingProduct.value = null
+        _editingEmployee.value = null
+        _editingBrand.value = null
+        _editingTransporter.value = transporter
+        _editingMarket.value = null
+        _currentScreen.value = AppScreen.ADD_EDIT_MASTER
+    }
+
+    fun openEditMarket(market: MarketEntity) {
+        _activeMasterTab.value = MasterTab.MARKETS
+        _editingCustomer.value = null
+        _editingSupplier.value = null
+        _editingProduct.value = null
+        _editingEmployee.value = null
+        _editingBrand.value = null
+        _editingTransporter.value = null
+        _editingMarket.value = market
         _currentScreen.value = AppScreen.ADD_EDIT_MASTER
     }
 
@@ -543,6 +647,9 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         _editingSupplier.value = null
         _editingProduct.value = product
         _editingEmployee.value = null
+        _editingBrand.value = null
+        _editingTransporter.value = null
+        _editingMarket.value = null
         _currentScreen.value = AppScreen.ADD_EDIT_MASTER
     }
 
@@ -556,8 +663,12 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         _editingSupplier.value = null
         _editingProduct.value = null
         _editingEmployee.value = employee
+        _editingBrand.value = null
+        _editingTransporter.value = null
+        _editingMarket.value = null
         _currentScreen.value = AppScreen.ADD_EDIT_MASTER
     }
+
 
     fun advanceEntryDeliveryStatus(entry: PurchaseEntryEntity) {
         val nextStatus = when (entry.deliveryStatus.lowercase(Locale.getDefault())) {
@@ -610,6 +721,15 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 val packGroups = rtdbService.fetchPackGroups()
                 repository.syncPackGroupsFromCloud(packGroups)
 
+                val brands = rtdbService.fetchBrands()
+                repository.syncBrandsFromCloud(brands)
+
+                val transporters = rtdbService.fetchTransporters()
+                repository.syncTransportersFromCloud(transporters)
+
+                val markets = rtdbService.fetchMarkets()
+                repository.syncMarketsFromCloud(markets)
+
                 // Sync any local records that aren't yet in RTDB up to the cloud!
                 syncAllLocalMastersToCloud()
             }
@@ -633,6 +753,15 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 // Sync all suppliers & manufacturers
                 allSuppliers.value.filter { it.id > 0L }.forEach { rtdbService.syncSupplier(it) }
 
+                // Sync all brands
+                allBrands.value.filter { it.id > 0L }.forEach { rtdbService.syncBrand(it) }
+
+                // Sync all transporters
+                allTransporters.value.filter { it.id > 0L }.forEach { rtdbService.syncTransporter(it) }
+
+                // Sync all markets
+                allMarkets.value.filter { it.id > 0L }.forEach { rtdbService.syncMarket(it) }
+
                 // Sync all products
                 allProducts.value.filter { it.id > 0L }.forEach { rtdbService.syncProduct(it) }
 
@@ -647,6 +776,7 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
 
                 // Sync all purchase entries
                 allEntries.value.filter { it.id > 0L }.forEach { rtdbService.syncPurchaseEntry(it) }
+
 
                 // Sync all transactions
                 allTransactions.value.filter { it.id > 0L }.forEach { rtdbService.syncTransaction(it) }
@@ -747,6 +877,76 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+    }
+
+    // Brand Operations
+    fun saveBrand(brand: BrandEntity, onSuccess: (() -> Unit)? = null) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val generatedId = repository.saveBrand(brand)
+            val toSync = if (brand.id == 0L) brand.copy(id = generatedId) else brand
+            rtdbService.syncBrand(toSync)
+            launch(Dispatchers.Main) {
+                onSuccess?.invoke()
+            }
+        }
+    }
+
+    fun deleteBrand(brand: BrandEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.deleteBrand(brand)
+            rtdbService.deleteBrand(brand.id)
+        }
+    }
+
+    // Transporter Operations
+    fun saveTransporter(transporter: TransporterEntity, onSuccess: (() -> Unit)? = null) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val generatedId = repository.saveTransporter(transporter)
+            val toSync = if (transporter.id == 0L) transporter.copy(id = generatedId) else transporter
+            rtdbService.syncTransporter(toSync)
+            launch(Dispatchers.Main) {
+                onSuccess?.invoke()
+            }
+        }
+    }
+
+    fun deleteTransporter(transporter: TransporterEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.deleteTransporter(transporter)
+            rtdbService.deleteTransporter(transporter.id)
+        }
+    }
+
+    // Market Operations
+    fun saveMarket(market: MarketEntity, onSuccess: (() -> Unit)? = null) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val generatedId = repository.saveMarket(market)
+            val toSync = if (market.id == 0L) market.copy(id = generatedId) else market
+            rtdbService.syncMarket(toSync)
+            launch(Dispatchers.Main) {
+                onSuccess?.invoke()
+            }
+        }
+    }
+
+    fun deleteMarket(market: MarketEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.deleteMarket(market)
+            rtdbService.deleteMarket(market.id)
+        }
+    }
+
+    // Tally Export Operations
+    fun exportCustomersToTallyXml(context: Context) {
+        val list = visibleCustomers.value
+        val xml = TallyExportUtil.generateCustomersTallyXml(list)
+        TallyExportUtil.exportAndShareTallyXml(context, xml, "Himat_Customers_Tally")
+    }
+
+    fun exportSuppliersToTallyXml(context: Context) {
+        val list = visibleSuppliers.value
+        val xml = TallyExportUtil.generateSuppliersTallyXml(list)
+        TallyExportUtil.exportAndShareTallyXml(context, xml, "Himat_Suppliers_Tally")
     }
 
     // Product Operations
