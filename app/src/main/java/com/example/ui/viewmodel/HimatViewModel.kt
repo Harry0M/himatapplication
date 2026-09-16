@@ -138,6 +138,9 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectedVisit = MutableStateFlow<VisitEntity?>(null)
     val selectedVisit: StateFlow<VisitEntity?> = _selectedVisit.asStateFlow()
 
+    private val _visitDetailReturnScreen = MutableStateFlow<AppScreen>(AppScreen.VISITS)
+    val visitDetailReturnScreen: StateFlow<AppScreen> = _visitDetailReturnScreen.asStateFlow()
+
     private val _selectedSupplierForCopy = MutableStateFlow<SupplierEntity?>(null)
     val selectedSupplierForCopy: StateFlow<SupplierEntity?> = _selectedSupplierForCopy.asStateFlow()
 
@@ -517,8 +520,9 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         _currentScreen.value = screen
     }
 
-    fun openVisitDetail(visit: VisitEntity) {
+    fun openVisitDetail(visit: VisitEntity, returnScreen: AppScreen = AppScreen.VISITS) {
         _selectedVisit.value = visit
+        _visitDetailReturnScreen.value = returnScreen
         _currentScreen.value = AppScreen.VISIT_DETAIL
         observeVisitData(visit.id)
     }

@@ -304,6 +304,7 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
     val selectedCustomer by viewModel.selectedCustomer.collectAsStateWithLifecycle()
     val selectedSupplier by viewModel.selectedSupplier.collectAsStateWithLifecycle()
     val selectedEmployeeDetail by viewModel.selectedEmployeeDetail.collectAsStateWithLifecycle()
+    val visitDetailReturnScreen by viewModel.visitDetailReturnScreen.collectAsStateWithLifecycle()
 
     var showCreateVisitDialog by remember { mutableStateOf(false) }
     var showRoleSwitcherDialog by remember { mutableStateOf(false) }
@@ -353,7 +354,7 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
                 viewModel.navigateTo(AppScreen.VISIT_DETAIL)
             }
             AppScreen.VISIT_DETAIL -> {
-                viewModel.navigateTo(AppScreen.VISITS)
+                viewModel.navigateTo(visitDetailReturnScreen)
             }
             AppScreen.ADD_EDIT_MASTER,
             AppScreen.CUSTOMER_DETAIL,
@@ -502,14 +503,14 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
                         VisitDetailScreen(
                             viewModel = viewModel,
                             visit = visit,
-                            onBack = { viewModel.navigateTo(AppScreen.VISITS) },
+                            onBack = { viewModel.navigateTo(visitDetailReturnScreen) },
                             onOpenAddEntry = { viewModel.openAddStop(visit) },
                             onOpenMixedPack = { showMixedPackDialog = true },
                             onOpenCustomerReport = { viewModel.openCustomerReport(it) },
                             onOpenSupplierCopy = { v, sup -> viewModel.openSupplierCopy(v, sup) }
                         )
                     } ?: run {
-                        viewModel.navigateTo(AppScreen.VISITS)
+                        viewModel.navigateTo(visitDetailReturnScreen)
                     }
                 }
 
@@ -586,6 +587,9 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
                             onBack = { viewModel.navigateTo(AppScreen.CUSTOMER_MASTER) },
                             onCreateVisit = {
                                 showCreateVisitDialog = true
+                            },
+                            onOpenVisit = { visit ->
+                                viewModel.openVisitDetail(visit, returnScreen = AppScreen.CUSTOMER_DETAIL)
                             }
                         )
                     } else {

@@ -25,8 +25,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CheckCircle
@@ -97,7 +99,8 @@ fun CustomerDetailScreen(
     viewModel: HimatViewModel,
     customer: CustomerEntity,
     onBack: () -> Unit,
-    onCreateVisit: () -> Unit
+    onCreateVisit: () -> Unit,
+    onOpenVisit: (VisitEntity) -> Unit = {}
 ) {
     val context = LocalContext.current
     val allVisits by viewModel.allVisits.collectAsStateWithLifecycle()
@@ -463,99 +466,86 @@ fun CustomerDetailScreen(
 
                     Spacer(modifier = Modifier.height(9.dp))
 
-                    // Metrics Banner: TOTAL VISITS & TOTAL ORDERS prominently shown!
+                    // Cardless Clean Stat Numbers (Inline directly on background, NO cards/surfaces)
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Surface(
-                            color = Color(0xFFEEF2FF),
-                            shape = RoundedCornerShape(9.dp),
-                            border = BorderStroke(1.dp, Color(0xFFC7D2FE)),
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.weight(1f)
                         ) {
-                            Column(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    text = "TOTAL VISITS",
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF4338CA)
-                                )
-                                Text(
-                                    text = "$totalVisits",
-                                    fontSize = 17.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Color(0xFF312E81)
-                                )
-                                Text(
-                                    text = "Days Visited",
-                                    fontSize = 8.5.sp,
-                                    color = Color(0xFF6366F1)
-                                )
-                            }
+                            Text(
+                                text = "$totalVisits",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF1E293B)
+                            )
+                            Text(
+                                text = "Total Visits",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFF64748B)
+                            )
                         }
 
-                        Surface(
-                            color = Color(0xFFECFDF5),
-                            shape = RoundedCornerShape(9.dp),
-                            border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
+                        Box(
+                            modifier = Modifier
+                                .width(1.dp)
+                                .height(26.dp)
+                                .background(Color(0xFFCBD5E1))
+                        )
+
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.weight(1f)
                         ) {
-                            Column(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    text = "TOTAL ORDERS",
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF047857)
-                                )
-                                Text(
-                                    text = "$totalEntriesCount",
-                                    fontSize = 17.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Color(0xFF064E3B)
-                                )
-                                Text(
-                                    text = "${String.format("%,d", totalPieces)} pcs",
-                                    fontSize = 8.5.sp,
-                                    color = Color(0xFF059669)
-                                )
-                            }
+                            Text(
+                                text = "$totalEntriesCount",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF0F766E)
+                            )
+                            Text(
+                                text = "Total Orders",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFF64748B)
+                            )
+                            Text(
+                                text = "${String.format("%,d", totalPieces)} pcs",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF059669)
+                            )
                         }
 
-                        Surface(
-                            color = Color(0xFFFFFBEB),
-                            shape = RoundedCornerShape(9.dp),
-                            border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                        Box(
+                            modifier = Modifier
+                                .width(1.dp)
+                                .height(26.dp)
+                                .background(Color(0xFFCBD5E1))
+                        )
+
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.weight(1f)
                         ) {
-                            Column(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    text = "PENDING DISPATCH",
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFB45309)
-                                )
-                                Text(
-                                    text = "$pendingEntriesCount",
-                                    fontSize = 17.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Color(0xFF78350F)
-                                )
-                                Text(
-                                    text = "$deliveredEntriesCount Delivered",
-                                    fontSize = 8.5.sp,
-                                    color = Color(0xFFD97706)
-                                )
-                            }
+                            Text(
+                                text = "$pendingEntriesCount",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Black,
+                                color = if (pendingEntriesCount > 0) Color(0xFFD97706) else Color(0xFF059669)
+                            )
+                            Text(
+                                text = if (pendingEntriesCount > 0) "Pending" else "All Delivered",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFF64748B)
+                            )
                         }
                     }
 
@@ -765,45 +755,74 @@ fun CustomerDetailScreen(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // Compact Search Bar (20% smaller)
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        placeholder = {
-                            Text(
-                                "Search date, order #, item, supplier, transporter...",
-                                fontSize = 11.5.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                            )
-                        },
-                        leadingIcon = {
+                    // Compact Pill-Shaped Rounded Search Bar (height 36dp, fully rounded CircleShape)
+                    Surface(
+                        shape = CircleShape,
+                        color = Color.White,
+                        border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Icon(
-                                Icons.Default.Search,
+                                imageVector = Icons.Default.Search,
                                 contentDescription = null,
-                                modifier = Modifier.size(17.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                modifier = Modifier.size(16.dp),
+                                tint = Color(0xFF64748B)
                             )
-                        },
-                        trailingIcon = {
-                            if (searchQuery.isNotBlank()) {
-                                IconButton(
-                                    onClick = { searchQuery = "" },
-                                    modifier = Modifier.size(24.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Box(
+                                modifier = Modifier.weight(1f),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                if (searchQuery.isEmpty()) {
+                                    Text(
+                                        text = "Search date, order #, item, supplier...",
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF94A3B8),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                BasicTextField(
+                                    value = searchQuery,
+                                    onValueChange = { searchQuery = it },
+                                    singleLine = true,
+                                    textStyle = androidx.compose.ui.text.TextStyle(
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF0F172A),
+                                        fontWeight = FontWeight.Medium
+                                    ),
+                                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Color(0xFF2563EB)),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                            if (searchQuery.isNotEmpty()) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFE2E8F0))
+                                        .clickable { searchQuery = "" },
+                                    contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
-                                        Icons.Default.Close,
+                                        imageVector = Icons.Default.Close,
                                         contentDescription = "Clear Search",
-                                        modifier = Modifier.size(14.dp)
+                                        modifier = Modifier.size(11.dp),
+                                        tint = Color(0xFF475569)
                                     )
                                 }
                             }
-                        },
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .defaultMinSize(minHeight = 40.dp),
-                        singleLine = true
-                    )
+                        }
+                    }
 
                     // Single Row of Parent Filter Chips
                     val isAnyFilterActive = filterDateRange != "ALL" || filterStatus != "All" || filterSupplier != "All" || filterTransporter != "All"
@@ -965,22 +984,16 @@ fun CustomerDetailScreen(
                         }
                     }
 
-                    // Cascading Child Chips (shown dynamically below parent chips)
+                    // Cascading Child Chips (directly rendered without any enclosing card/box)
                     AnimatedVisibility(visible = activeFilterCategory != null) {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = Color(0xFFF8FAFC),
-                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                            modifier = Modifier.fillMaxWidth()
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 2.dp)
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
                                     when (activeFilterCategory) {
                                         "Date" -> {
                                             listOf(
@@ -1090,14 +1103,12 @@ fun CustomerDetailScreen(
                                                     }
                                                 )
                                             }
-                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
-            }
 
             // Section Header
             item {
@@ -1154,6 +1165,7 @@ fun CustomerDetailScreen(
                     DayVisitCard(
                         visit = visit,
                         entries = visitEntries,
+                        onOpenVisit = { onOpenVisit(visit) },
                         onOpenDayReport = { viewModel.openCustomerReport(visit) },
                         onShareWhatsApp = { viewModel.shareCustomerReportWhatsApp(visit) },
                         onSharePdf = { viewModel.shareCustomerDayReportPdf(visit) },
@@ -1169,6 +1181,7 @@ fun CustomerDetailScreen(
 fun DayVisitCard(
     visit: VisitEntity,
     entries: List<PurchaseEntryEntity>,
+    onOpenVisit: () -> Unit = {},
     onOpenDayReport: () -> Unit,
     onShareWhatsApp: () -> Unit,
     onSharePdf: () -> Unit,
@@ -1186,9 +1199,12 @@ fun DayVisitCard(
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            // Day Header Row
+            // Day Header Row - Clickable to open dedicated visit screen
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onOpenVisit() },
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1225,25 +1241,39 @@ fun DayVisitCard(
                     )
                 }
 
-                IconButton(
-                    onClick = { expanded = !expanded },
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = if (expanded) "Collapse" else "Expand"
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onOpenVisit,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = "Open Dedicated Trip Screen",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = { expanded = !expanded },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = if (expanded) "Collapse" else "Expand"
+                        )
+                    }
                 }
             }
 
-            // Summary Totals & Day Report Action Buttons
+            // Summary Totals & Action Buttons
             Spacer(modifier = Modifier.height(10.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f, fill = false)) {
                     Text(
                         text = "Day Volume: ${String.format("%,d", dayPieces)} pcs",
                         style = MaterialTheme.typography.titleSmall,
@@ -1262,16 +1292,39 @@ fun DayVisitCard(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Day Report full screen preview
+                    // Open Dedicated Trip Screen
                     Button(
-                        onClick = onOpenDayReport,
+                        onClick = onOpenVisit,
                         shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        contentPadding = PaddingValues(horizontal = 9.dp, vertical = 6.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B)),
                         modifier = Modifier.defaultMinSize(minHeight = 36.dp)
                     ) {
-                        Icon(Icons.Default.Assessment, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = null,
+                            modifier = Modifier.size(13.dp),
+                            tint = Color.White
+                        )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Day Report", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        Text(
+                            "Open Trip",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+
+                    // Day Report full screen preview
+                    OutlinedButton(
+                        onClick = onOpenDayReport,
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 9.dp, vertical = 6.dp),
+                        modifier = Modifier.defaultMinSize(minHeight = 36.dp)
+                    ) {
+                        Icon(Icons.Default.Assessment, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Report", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
                     }
 
                     // Share WhatsApp
