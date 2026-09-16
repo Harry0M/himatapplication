@@ -41,6 +41,10 @@ import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ShoppingBag
+import android.widget.Toast
+import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Store
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
@@ -104,6 +108,7 @@ fun CustomerDetailScreen(
     var filterDateRange by remember { mutableStateOf("ALL") } // "ALL", "TODAY", "LAST_7", "THIS_MONTH"
     var filterSupplier by remember { mutableStateOf("All") }
     var filterTransporter by remember { mutableStateOf("All") }
+    var activeFilterCategory by remember { mutableStateOf<String?>(null) } // "Date", "Status", "Supplier", "Transporter", or null
 
     // Date calculations for date filtering
     val todayStr = remember {
@@ -257,332 +262,323 @@ fun CustomerDetailScreen(
             contentPadding = PaddingValues(vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Customer Header Profile Card
+            // Cardless Hero Centered Profile Header
             item {
-                ElevatedCard(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
-                    modifier = Modifier.fillMaxWidth()
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(42.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(MaterialTheme.colorScheme.primaryContainer),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        Icons.Default.Person,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text(
-                                        text = customer.name,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            Icons.Default.Place,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = "${customer.city}${if (customer.address.isNotBlank()) " • ${customer.address}" else ""}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Spacer(modifier = Modifier.height(10.dp))
-                        // Badges: GSTIN, Credit Days, Credit Limit, Shop Outlets
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (customer.gstin.isNotBlank()) {
-                                Surface(
-                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                    shape = RoundedCornerShape(6.dp),
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                                ) {
-                                    Text(
-                                        text = "GSTIN: ${customer.gstin}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
-                                }
-                            }
-                            Surface(
-                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
-                                shape = RoundedCornerShape(6.dp)
-                            ) {
+                    // 1. Hero Centered Profile Picture in Circle
+                    val avatarPhoto = customer.purchaserPhotoUri.ifBlank { customer.shopPhotoUri }
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFFEFF6FF),
+                        border = BorderStroke(2.dp, Color(0xFFBFDBFE)),
+                        shadowElevation = 2.dp,
+                        modifier = Modifier
+                            .size(66.dp)
+                            .clip(CircleShape)
+                    ) {
+                        if (avatarPhoto.isNotBlank()) {
+                            AsyncImage(
+                                model = avatarPhoto,
+                                contentDescription = customer.name,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Box(contentAlignment = Alignment.Center) {
+                                val initials = (customer.firmName.ifBlank { customer.name }).take(2).uppercase()
                                 Text(
-                                    text = "Credit: ${customer.creditDays} Days",
-                                    style = MaterialTheme.typography.labelSmall,
+                                    text = if (initials.isNotBlank()) initials else "CU",
+                                    fontSize = 20.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    color = Color(0xFF1D4ED8)
                                 )
                             }
+                        }
+                    }
 
-                            if (customer.shopCount > 1) {
-                                Surface(
-                                    color = Color(0xFFFEF3C7),
-                                    shape = RoundedCornerShape(6.dp),
-                                    border = BorderStroke(1.dp, Color(0xFFFDE68A))
+                    Spacer(modifier = Modifier.height(7.dp))
+
+                    // Firm Name / Shop Name
+                    Text(
+                        text = customer.firmName.ifBlank { customer.name },
+                        fontSize = 16.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF0F172A),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    // Owner Name & Customer ID
+                    val ownerSubtitle = buildString {
+                        if (customer.name.isNotBlank() && customer.name != customer.firmName) {
+                            append("Prop: ${customer.name}")
+                        }
+                        if (customer.customerId.isNotBlank()) {
+                            if (isNotEmpty()) append(" • ")
+                            append("ID: ${customer.customerId}")
+                        }
+                        if (customer.city.isNotBlank()) {
+                            if (isNotEmpty()) append(" • ")
+                            append(customer.city)
+                        }
+                    }
+                    if (ownerSubtitle.isNotBlank()) {
+                        Text(
+                            text = ownerSubtitle,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF64748B),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Action Buttons Row: Phone, Direction (Map), Mail
+                    val mapTarget = customer.shopMapLink.ifBlank { customer.shopLocation.ifBlank { customer.address } }
+                    val primaryPhone = customer.phone.ifBlank { customer.phone2 }
+                    val primaryEmail = customer.email.ifBlank { customer.email2 }
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Call Button
+                        if (primaryPhone.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color(0xFFF0FDF4),
+                                border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                                modifier = Modifier.clickable {
+                                    val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$primaryPhone"))
+                                    context.startActivity(intent)
+                                }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
+                                    Icon(Icons.Default.Call, contentDescription = "Call", tint = Color(0xFF059669), modifier = Modifier.size(12.dp))
                                     Text(
-                                        text = "🏪 ${customer.shopCount} Outlets",
-                                        style = MaterialTheme.typography.labelSmall,
+                                        text = primaryPhone,
+                                        fontSize = 10.5.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFFD97706),
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        color = Color(0xFF065F46)
                                     )
                                 }
                             }
                         }
 
-                        // Contact Phones (up to 5 phones with 1-click dial chips)
-                        val customerPhones = listOfNotNull(
-                            customer.phone.takeIf { it.isNotBlank() },
-                            customer.phone2.takeIf { it.isNotBlank() },
-                            customer.phone3.takeIf { it.isNotBlank() },
-                            customer.phone4.takeIf { it.isNotBlank() },
-                            customer.phone5.takeIf { it.isNotBlank() }
-                        )
-                        if (customerPhones.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                customerPhones.forEachIndexed { idx, p ->
-                                    Surface(
-                                        color = Color(0xFFF0FDF4),
-                                        shape = RoundedCornerShape(8.dp),
-                                        border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
-                                        modifier = Modifier.clickable {
-                                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$p"))
-                                            context.startActivity(intent)
-                                        }
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Icon(Icons.Default.Call, contentDescription = null, tint = Color(0xFF059669), modifier = Modifier.size(12.dp))
-                                            Text(
-                                                text = if (idx == 0) p else "Alt ${idx + 1}: $p",
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Medium,
-                                                color = Color(0xFF065F46)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Emails
-                        val customerEmails = listOfNotNull(
-                            customer.email.takeIf { it.isNotBlank() },
-                            customer.email2.takeIf { it.isNotBlank() }
-                        )
-                        if (customerEmails.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                customerEmails.forEach { em ->
-                                    Surface(
-                                        color = Color(0xFFF1F5F9),
-                                        shape = RoundedCornerShape(8.dp),
-                                        border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                                        modifier = Modifier.clickable {
-                                            val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$em"))
-                                            context.startActivity(intent)
-                                        }
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Icon(Icons.Default.Email, contentDescription = null, tint = Color(0xFF475569), modifier = Modifier.size(12.dp))
-                                            Text(
-                                                text = em,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Medium,
-                                                color = Color(0xFF334155)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Extended details card: addresses, locations, markets, categories, referredBy
-                        val hasExtendedDetails = customer.homeAddress.isNotBlank() ||
-                                customer.shopLocation.isNotBlank() ||
-                                customer.personalLocation.isNotBlank() ||
-                                customer.shopLocations.isNotBlank() ||
-                                customer.markets.isNotBlank() ||
-                                customer.preferredCategories.isNotBlank() ||
-                                customer.referredBy.isNotBlank()
-
-                        if (hasExtendedDetails) {
-                            Spacer(modifier = Modifier.height(10.dp))
+                        // Direction Button for Map (if available)
+                        if (mapTarget.isNotBlank()) {
                             Surface(
-                                color = Color(0xFFF8FAFC),
-                                shape = RoundedCornerShape(10.dp),
-                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                                modifier = Modifier.fillMaxWidth()
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color(0xFFEFF6FF),
+                                border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                                modifier = Modifier.clickable {
+                                    val uri = if (mapTarget.startsWith("http")) {
+                                        Uri.parse(mapTarget)
+                                    } else {
+                                        Uri.parse("geo:0,0?q=" + Uri.encode(mapTarget))
+                                    }
+                                    try {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                                    } catch (_: Exception) {
+                                        Toast.makeText(context, "Location: $mapTarget", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
                             ) {
-                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    if (customer.shopLocation.isNotBlank() || customer.address.isNotBlank()) {
-                                        Row(verticalAlignment = Alignment.Top) {
-                                            Text("Shop: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
-                                            Text(
-                                                text = customer.shopLocation.ifBlank { customer.address },
-                                                fontSize = 11.sp,
-                                                color = Color(0xFF1E293B)
-                                            )
-                                        }
-                                    }
-                                    if (customer.homeAddress.isNotBlank() || customer.personalLocation.isNotBlank()) {
-                                        Row(verticalAlignment = Alignment.Top) {
-                                            Text("Home: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
-                                            Text(
-                                                text = listOfNotNull(customer.homeAddress.takeIf { it.isNotBlank() }, customer.personalLocation.takeIf { it.isNotBlank() }).joinToString(" • "),
-                                                fontSize = 11.sp,
-                                                color = Color(0xFF1E293B)
-                                            )
-                                        }
-                                    }
-                                    if (customer.shopLocations.isNotBlank()) {
-                                        Row(verticalAlignment = Alignment.Top) {
-                                            Text("Outlets: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
-                                            Text(customer.shopLocations, fontSize = 11.sp, color = Color(0xFF1E293B))
-                                        }
-                                    }
-                                    if (customer.markets.isNotBlank()) {
-                                        Row(verticalAlignment = Alignment.Top) {
-                                            Text("Markets: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
-                                            Text(customer.markets, fontSize = 11.sp, color = Color(0xFF0F766E), fontWeight = FontWeight.Medium)
-                                        }
-                                    }
-                                    if (customer.preferredCategories.isNotBlank()) {
-                                        Row(verticalAlignment = Alignment.Top) {
-                                            Text("Products: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
-                                            Text(customer.preferredCategories, fontSize = 11.sp, color = Color(0xFF6366F1), fontWeight = FontWeight.Medium)
-                                        }
-                                    }
-                                    if (customer.referredBy.isNotBlank()) {
-                                        Row(verticalAlignment = Alignment.Top) {
-                                            Text("Referred by: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
-                                            Text(customer.referredBy, fontSize = 11.sp, color = Color(0xFF1E293B))
-                                        }
-                                    }
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(Icons.Default.Place, contentDescription = "Directions", tint = Color(0xFF2563EB), modifier = Modifier.size(12.dp))
+                                    Text(
+                                        text = "Directions",
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF1D4ED8)
+                                    )
                                 }
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(14.dp))
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Operational Metric Statistics Cards (2x2 Grid - NO Payment Figures)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            CustomerSummaryChip(
-                                title = "Total Visits",
-                                value = "$totalVisits Days",
-                                subtitle = "$totalEntriesCount Total Orders",
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.weight(1f)
-                            )
-                            CustomerSummaryChip(
-                                title = "Total Volume",
-                                value = "${String.format("%,d", totalPieces)} pcs",
-                                subtitle = "$deliveredEntriesCount Fulfilled Orders",
-                                color = Color(0xFF059669),
-                                modifier = Modifier.weight(1f)
-                            )
+                        // Mail Button (if available)
+                        if (primaryEmail.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color(0xFFF8FAFC),
+                                border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                modifier = Modifier.clickable {
+                                    val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$primaryEmail"))
+                                    try {
+                                        context.startActivity(intent)
+                                    } catch (_: Exception) {}
+                                }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(Icons.Default.Email, contentDescription = "Email", tint = Color(0xFF475569), modifier = Modifier.size(12.dp))
+                                    Text(
+                                        text = "Mail",
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = Color(0xFF334155)
+                                    )
+                                }
+                            }
                         }
+                    }
 
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    // GSTIN below
+                    val gstin = customer.gstin
+                    if (gstin.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(5.dp))
+                        Surface(
+                            color = Color(0xFFF1F5F9),
+                            shape = RoundedCornerShape(6.dp),
+                            border = BorderStroke(0.8.dp, Color(0xFFE2E8F0))
                         ) {
-                            CustomerSummaryChip(
-                                title = "Ongoing Deliveries",
-                                value = "$pendingEntriesCount Pending",
-                                subtitle = "$deliveredEntriesCount Fulfilled",
-                                color = if (pendingEntriesCount > 0) MaterialTheme.colorScheme.secondary else Color(0xFF059669),
-                                modifier = Modifier.weight(1f)
-                            )
-                            CustomerSummaryChip(
-                                title = "Packaging Volume",
-                                value = "$totalCases Cases",
-                                subtitle = "$totalLoose Loose Pieces",
-                                color = MaterialTheme.colorScheme.tertiary,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        Button(
-                            onClick = onCreateVisit,
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .defaultMinSize(minHeight = 44.dp)
-                        ) {
-                            Icon(Icons.Default.ShoppingBag, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "+ Start New Visit for ${customer.name}",
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.labelLarge
+                                text = "GSTIN: $gstin",
+                                fontSize = 10.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF334155),
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
                             )
                         }
+                    }
+
+                    Spacer(modifier = Modifier.height(9.dp))
+
+                    // Metrics Banner: TOTAL VISITS & TOTAL ORDERS prominently shown!
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Surface(
+                            color = Color(0xFFEEF2FF),
+                            shape = RoundedCornerShape(9.dp),
+                            border = BorderStroke(1.dp, Color(0xFFC7D2FE)),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "TOTAL VISITS",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF4338CA)
+                                )
+                                Text(
+                                    text = "$totalVisits",
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFF312E81)
+                                )
+                                Text(
+                                    text = "Days Visited",
+                                    fontSize = 8.5.sp,
+                                    color = Color(0xFF6366F1)
+                                )
+                            }
+                        }
+
+                        Surface(
+                            color = Color(0xFFECFDF5),
+                            shape = RoundedCornerShape(9.dp),
+                            border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "TOTAL ORDERS",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF047857)
+                                )
+                                Text(
+                                    text = "$totalEntriesCount",
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFF064E3B)
+                                )
+                                Text(
+                                    text = "${String.format("%,d", totalPieces)} pcs",
+                                    fontSize = 8.5.sp,
+                                    color = Color(0xFF059669)
+                                )
+                            }
+                        }
+
+                        Surface(
+                            color = Color(0xFFFFFBEB),
+                            shape = RoundedCornerShape(9.dp),
+                            border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "PENDING DISPATCH",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFB45309)
+                                )
+                                Text(
+                                    text = "$pendingEntriesCount",
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFF78350F)
+                                )
+                                Text(
+                                    text = "$deliveredEntriesCount Delivered",
+                                    fontSize = 8.5.sp,
+                                    color = Color(0xFFD97706)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(9.dp))
+
+                    // Start New Visit Button (compact, 20% smaller height 38dp)
+                    Button(
+                        onClick = onCreateVisit,
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .defaultMinSize(minHeight = 36.dp)
+                    ) {
+                        Icon(Icons.Default.ShoppingBag, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFFFDE047))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "+ Start New Visit for ${customer.name}",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.5.sp,
+                            color = Color.White
+                        )
                     }
                 }
             }
@@ -763,166 +759,340 @@ fun CustomerDetailScreen(
                 }
             }
 
-            // Search and Date / Entity Filters
+            // Search and Cascading Filters (Single-line parent chips -> child chips on tap)
             item {
-                Column(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    // Compact Search Bar (20% smaller)
                     OutlinedTextField(
                         value = searchQuery,
                         onValueChange = { searchQuery = it },
-                        placeholder = { Text("Search date, order #, item code, supplier, transporter...") },
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                        shape = RoundedCornerShape(14.dp),
+                        placeholder = {
+                            Text(
+                                "Search date, order #, item, supplier, transporter...",
+                                fontSize = 11.5.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Default.Search,
+                                contentDescription = null,
+                                modifier = Modifier.size(17.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        trailingIcon = {
+                            if (searchQuery.isNotBlank()) {
+                                IconButton(
+                                    onClick = { searchQuery = "" },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = "Clear Search",
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .defaultMinSize(minHeight = 52.dp),
+                            .defaultMinSize(minHeight = 40.dp),
                         singleLine = true
                     )
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    // Single Row of Parent Filter Chips
+                    val isAnyFilterActive = filterDateRange != "ALL" || filterStatus != "All" || filterSupplier != "All" || filterTransporter != "All"
 
-                    // Date Filters Row
-                    Text(
-                        text = "Filter by Date:",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        listOf(
-                            "ALL" to "All Dates",
-                            "TODAY" to "Today",
-                            "LAST_7" to "Last 7 Days",
-                            "THIS_MONTH" to "This Month"
-                        ).forEach { (rangeKey, label) ->
-                            val isSelected = filterDateRange == rangeKey
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = { filterDateRange = rangeKey },
-                                shape = CircleShape,
-                                modifier = Modifier.defaultMinSize(minHeight = 36.dp),
-                                label = {
-                                    Text(
-                                        text = label,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                    )
-                                }
-                            )
+                        // Date Parent Chip
+                        val isDateActive = filterDateRange != "ALL"
+                        val dateLabel = when (filterDateRange) {
+                            "TODAY" -> "Today"
+                            "LAST_7" -> "7 Days"
+                            "THIS_MONTH" -> "This Month"
+                            else -> "Date"
                         }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Status Filters Row
-                    Text(
-                        text = "Filter by Delivery Status:",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf(
-                            "All" to "All Status ($totalVisits Days)",
-                            "Pending" to "Pending ($pendingEntriesCount)",
-                            "Delivered" to "Delivered ($deliveredEntriesCount)"
-                        ).forEach { (statusKey, label) ->
-                            val isSelected = filterStatus == statusKey
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = { filterStatus = statusKey },
-                                shape = CircleShape,
-                                modifier = Modifier.defaultMinSize(minHeight = 36.dp),
-                                label = {
-                                    Text(
-                                        text = label,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                    )
-                                }
-                            )
-                        }
-                    }
-
-                    // Entity Filters: Supplier filter
-                    if (distinctSuppliers.size > 1) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Filter by Supplier / Mill:",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            val allSelected = filterSupplier == "All"
-                            FilterChip(
-                                selected = allSelected,
-                                onClick = { filterSupplier = "All" },
-                                shape = CircleShape,
-                                modifier = Modifier.defaultMinSize(minHeight = 36.dp),
-                                label = { Text("All Suppliers (${distinctSuppliers.size})", fontWeight = if (allSelected) FontWeight.Bold else FontWeight.Normal) }
-                            )
-                            distinctSuppliers.forEach { sup ->
-                                val isSelected = filterSupplier == sup
-                                FilterChip(
-                                    selected = isSelected,
-                                    onClick = { filterSupplier = sup },
-                                    shape = CircleShape,
-                                    modifier = Modifier.defaultMinSize(minHeight = 36.dp),
-                                    label = { Text(sup, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) }
+                        FilterChip(
+                            selected = activeFilterCategory == "Date" || isDateActive,
+                            onClick = {
+                                activeFilterCategory = if (activeFilterCategory == "Date") null else "Date"
+                            },
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.defaultMinSize(minHeight = 30.dp),
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.CalendarToday,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(12.dp)
                                 )
+                            },
+                            label = {
+                                Text(
+                                    text = if (isDateActive) "Date: $dateLabel" else "Date",
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isDateActive || activeFilterCategory == "Date") FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
+                        )
+
+                        // Status Parent Chip
+                        val isStatusActive = filterStatus != "All"
+                        FilterChip(
+                            selected = activeFilterCategory == "Status" || isStatusActive,
+                            onClick = {
+                                activeFilterCategory = if (activeFilterCategory == "Status") null else "Status"
+                            },
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.defaultMinSize(minHeight = 30.dp),
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            },
+                            label = {
+                                Text(
+                                    text = if (isStatusActive) "Status: $filterStatus" else "Status",
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isStatusActive || activeFilterCategory == "Status") FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
+                        )
+
+                        // Supplier Parent Chip
+                        if (distinctSuppliers.size > 1) {
+                            val isSupplierActive = filterSupplier != "All"
+                            FilterChip(
+                                selected = activeFilterCategory == "Supplier" || isSupplierActive,
+                                onClick = {
+                                    activeFilterCategory = if (activeFilterCategory == "Supplier") null else "Supplier"
+                                },
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.defaultMinSize(minHeight = 30.dp),
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.Store,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                },
+                                label = {
+                                    val supName = if (filterSupplier.length > 10) filterSupplier.take(10) + "…" else filterSupplier
+                                    Text(
+                                        text = if (isSupplierActive) "Sup: $supName" else "Supplier",
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSupplierActive || activeFilterCategory == "Supplier") FontWeight.Bold else FontWeight.Medium
+                                    )
+                                }
+                            )
+                        }
+
+                        // Transporter Parent Chip
+                        if (distinctTransporters.isNotEmpty()) {
+                            val isTransporterActive = filterTransporter != "All"
+                            FilterChip(
+                                selected = activeFilterCategory == "Transporter" || isTransporterActive,
+                                onClick = {
+                                    activeFilterCategory = if (activeFilterCategory == "Transporter") null else "Transporter"
+                                },
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.defaultMinSize(minHeight = 30.dp),
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.LocalShipping,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                },
+                                label = {
+                                    val trName = if (filterTransporter.length > 10) filterTransporter.take(10) + "…" else filterTransporter
+                                    Text(
+                                        text = if (isTransporterActive) "Trans: $trName" else "Transporter",
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isTransporterActive || activeFilterCategory == "Transporter") FontWeight.Bold else FontWeight.Medium
+                                    )
+                                }
+                            )
+                        }
+
+                        // Reset / Clear All Filter Chip
+                        if (isAnyFilterActive) {
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color(0xFFFEE2E2),
+                                border = BorderStroke(1.dp, Color(0xFFFECACA)),
+                                modifier = Modifier
+                                    .defaultMinSize(minHeight = 28.dp)
+                                    .clickable {
+                                        filterDateRange = "ALL"
+                                        filterStatus = "All"
+                                        filterSupplier = "All"
+                                        filterTransporter = "All"
+                                        activeFilterCategory = null
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Clear,
+                                        contentDescription = "Reset Filters",
+                                        tint = Color(0xFFDC2626),
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Text(
+                                        text = "Reset",
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFB91C1C)
+                                    )
+                                }
                             }
                         }
                     }
 
-                    // Entity Filters: Transporter filter
-                    if (distinctTransporters.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Filter by Transporter:",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    // Cascading Child Chips (shown dynamically below parent chips)
+                    AnimatedVisibility(visible = activeFilterCategory != null) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFF8FAFC),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            val allSelected = filterTransporter == "All"
-                            FilterChip(
-                                selected = allSelected,
-                                onClick = { filterTransporter = "All" },
-                                shape = CircleShape,
-                                modifier = Modifier.defaultMinSize(minHeight = 36.dp),
-                                label = { Text("All Transporters", fontWeight = if (allSelected) FontWeight.Bold else FontWeight.Normal) }
-                            )
-                            distinctTransporters.forEach { tr ->
-                                val isSelected = filterTransporter == tr
-                                FilterChip(
-                                    selected = isSelected,
-                                    onClick = { filterTransporter = tr },
-                                    shape = CircleShape,
-                                    modifier = Modifier.defaultMinSize(minHeight = 36.dp),
-                                    label = { Text(tr, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) }
-                                )
+                            Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    when (activeFilterCategory) {
+                                        "Date" -> {
+                                            listOf(
+                                                "ALL" to "All Dates",
+                                                "TODAY" to "Today",
+                                                "LAST_7" to "Last 7 Days",
+                                                "THIS_MONTH" to "This Month"
+                                            ).forEach { (rangeKey, label) ->
+                                                val isSelected = filterDateRange == rangeKey
+                                                FilterChip(
+                                                    selected = isSelected,
+                                                    onClick = { filterDateRange = rangeKey },
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    modifier = Modifier.defaultMinSize(minHeight = 28.dp),
+                                                    label = {
+                                                        Text(
+                                                            text = label,
+                                                            fontSize = 10.5.sp,
+                                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                                        )
+                                                    }
+                                                )
+                                            }
+                                        }
+                                        "Status" -> {
+                                            listOf(
+                                                "All" to "All ($totalVisits Days)",
+                                                "Pending" to "Pending ($pendingEntriesCount)",
+                                                "Delivered" to "Delivered ($deliveredEntriesCount)"
+                                            ).forEach { (statusKey, label) ->
+                                                val isSelected = filterStatus == statusKey
+                                                FilterChip(
+                                                    selected = isSelected,
+                                                    onClick = { filterStatus = statusKey },
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    modifier = Modifier.defaultMinSize(minHeight = 28.dp),
+                                                    label = {
+                                                        Text(
+                                                            text = label,
+                                                            fontSize = 10.5.sp,
+                                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                                        )
+                                                    }
+                                                )
+                                            }
+                                        }
+                                        "Supplier" -> {
+                                            val allSelected = filterSupplier == "All"
+                                            FilterChip(
+                                                selected = allSelected,
+                                                onClick = { filterSupplier = "All" },
+                                                shape = RoundedCornerShape(12.dp),
+                                                modifier = Modifier.defaultMinSize(minHeight = 28.dp),
+                                                label = {
+                                                    Text(
+                                                        "All Suppliers",
+                                                        fontSize = 10.5.sp,
+                                                        fontWeight = if (allSelected) FontWeight.Bold else FontWeight.Normal
+                                                    )
+                                                }
+                                            )
+                                            distinctSuppliers.forEach { sup ->
+                                                val isSelected = filterSupplier == sup
+                                                FilterChip(
+                                                    selected = isSelected,
+                                                    onClick = { filterSupplier = sup },
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    modifier = Modifier.defaultMinSize(minHeight = 28.dp),
+                                                    label = {
+                                                        Text(
+                                                            sup,
+                                                            fontSize = 10.5.sp,
+                                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                                        )
+                                                    }
+                                                )
+                                            }
+                                        }
+                                        "Transporter" -> {
+                                            val allSelected = filterTransporter == "All"
+                                            FilterChip(
+                                                selected = allSelected,
+                                                onClick = { filterTransporter = "All" },
+                                                shape = RoundedCornerShape(12.dp),
+                                                modifier = Modifier.defaultMinSize(minHeight = 28.dp),
+                                                label = {
+                                                    Text(
+                                                        "All Transporters",
+                                                        fontSize = 10.5.sp,
+                                                        fontWeight = if (allSelected) FontWeight.Bold else FontWeight.Normal
+                                                    )
+                                                }
+                                            )
+                                            distinctTransporters.forEach { tr ->
+                                                val isSelected = filterTransporter == tr
+                                                FilterChip(
+                                                    selected = isSelected,
+                                                    onClick = { filterTransporter = tr },
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    modifier = Modifier.defaultMinSize(minHeight = 28.dp),
+                                                    label = {
+                                                        Text(
+                                                            tr,
+                                                            fontSize = 10.5.sp,
+                                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                                        )
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

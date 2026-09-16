@@ -1399,14 +1399,14 @@ fun MasterCardActions(
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+        horizontalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         if (canEdit) {
             Surface(
                 shape = CircleShape,
                 color = NavyPrimary.copy(alpha = 0.08f),
                 modifier = Modifier
-                    .size(30.dp)
+                    .size(26.dp)
                     .clip(CircleShape)
                     .clickable { onEdit() }
             ) {
@@ -1415,7 +1415,7 @@ fun MasterCardActions(
                         imageVector = Icons.Default.Edit,
                         contentDescription = "Edit",
                         tint = NavyPrimary,
-                        modifier = Modifier.size(14.5.dp)
+                        modifier = Modifier.size(13.dp)
                     )
                 }
             }
@@ -1425,7 +1425,7 @@ fun MasterCardActions(
                 shape = CircleShape,
                 color = Color(0xFFFEE2E2),
                 modifier = Modifier
-                    .size(30.dp)
+                    .size(26.dp)
                     .clip(CircleShape)
                     .clickable { onDelete() }
             ) {
@@ -1434,7 +1434,7 @@ fun MasterCardActions(
                         imageVector = Icons.Default.DeleteOutline,
                         contentDescription = "Delete",
                         tint = Color(0xFFDC2626),
-                        modifier = Modifier.size(15.dp)
+                        modifier = Modifier.size(13.dp)
                     )
                 }
             }
@@ -1443,7 +1443,7 @@ fun MasterCardActions(
             shape = CircleShape,
             color = Color(0xFFF1F5F9),
             modifier = Modifier
-                .size(30.dp)
+                .size(26.dp)
                 .clip(CircleShape)
                 .clickable { onClick() }
         ) {
@@ -1452,7 +1452,7 @@ fun MasterCardActions(
                     imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                     contentDescription = "Open Details",
                     tint = TextSecondary,
-                    modifier = Modifier.size(14.dp)
+                    modifier = Modifier.size(12.5.dp)
                 )
             }
         }
@@ -1485,17 +1485,17 @@ fun CustomerCard(
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(10.dp),
         border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(10.dp))
             .clickable { onClick() }
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(13.dp)
+                .padding(10.dp)
         ) {
             // Header: Avatar + Title & Subtitle + Actions
             Row(
@@ -1504,9 +1504,9 @@ fun CustomerCard(
             ) {
                 val custAvatarPhoto = customer.shopPhotoUri.ifBlank { customer.purchaserPhotoUri }
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(8.dp),
                     color = Color(0xFFEFF6FF),
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(32.dp)
                 ) {
                     if (custAvatarPhoto.isNotBlank()) {
                         AsyncImage(
@@ -1521,19 +1521,19 @@ fun CustomerCard(
                                 imageVector = Icons.Default.People,
                                 contentDescription = null,
                                 tint = Color(0xFF2563EB),
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(8.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = displayName,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 14.5.sp,
+                        fontSize = 13.sp,
                         color = TextPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -1547,14 +1547,14 @@ fun CustomerCard(
                     }
                     Text(
                         text = sub,
-                        fontSize = 11.5.sp,
+                        fontSize = 10.5.sp,
                         color = TextSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(6.dp))
 
                 MasterCardActions(
                     onEdit = onEdit,
@@ -1564,7 +1564,7 @@ fun CustomerCard(
             }
 
             HorizontalDivider(
-                modifier = Modifier.padding(vertical = 8.dp),
+                modifier = Modifier.padding(vertical = 6.dp),
                 color = Color(0xFFF1F5F9),
                 thickness = 0.8.dp
             )
@@ -1583,46 +1583,46 @@ fun CustomerCard(
                         Icons.Default.Place,
                         contentDescription = null,
                         tint = TextSecondary,
-                        modifier = Modifier.size(13.dp)
+                        modifier = Modifier.size(12.dp)
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
                     Text(
                         text = marketDisplay,
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         color = TextSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(8.dp))
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         Icons.Default.Phone,
                         contentDescription = null,
                         tint = TextSecondary,
-                        modifier = Modifier.size(13.dp)
+                        modifier = Modifier.size(12.dp)
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
                     Text(
                         text = customer.phone,
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         color = TextSecondary,
                         maxLines = 1
                     )
                     if (extraPhonesCount > 0) {
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
                         Surface(
                             color = Color(0xFFF1F5F9),
                             shape = CircleShape
                         ) {
                             Text(
                                 text = "+$extraPhonesCount",
-                                fontSize = 9.5.sp,
+                                fontSize = 8.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = NavyPrimary,
-                                modifier = Modifier.padding(horizontal = 4.5.dp, vertical = 1.dp)
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 0.5.dp)
                             )
                         }
                     }
@@ -1635,10 +1635,10 @@ fun CustomerCard(
             val hasCustomerId = customer.customerId.isNotBlank() && (customer.firmName.isNotBlank() && customer.name.isNotBlank() && customer.firmName != customer.name)
 
             if (hasOutlets || hasGstin || hasCustomerId) {
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(5.dp))
                 FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
                     if (hasOutlets) {
                         Surface(
@@ -1647,10 +1647,10 @@ fun CustomerCard(
                         ) {
                             Text(
                                 text = "🏪 ${customer.shopCount} Outlets",
-                                fontSize = 10.5.sp,
+                                fontSize = 9.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF92400E),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
                             )
                         }
                     }
@@ -1661,10 +1661,10 @@ fun CustomerCard(
                         ) {
                             Text(
                                 text = "GST: ${customer.gstin}",
-                                fontSize = 10.5.sp,
+                                fontSize = 9.5.sp,
                                 color = NavyPrimary,
                                 fontWeight = FontWeight.Medium,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -1677,10 +1677,10 @@ fun CustomerCard(
                         ) {
                             Text(
                                 text = "ID: ${customer.customerId}",
-                                fontSize = 10.5.sp,
+                                fontSize = 9.5.sp,
                                 color = TextSecondary,
                                 fontWeight = FontWeight.Medium,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
                             )
                         }
                     }
