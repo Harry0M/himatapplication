@@ -465,6 +465,32 @@ fun CustomerDetailScreen(
                         }
                     }
 
+                    // Linked references (Clean, normal inline text)
+                    if (customer.referredBy.isNotBlank() || customer.addedByAgentName.isNotBlank() || customer.preferredTransporterName.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            if (customer.referredBy.isNotBlank()) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Referred by: ", fontSize = 11.sp, color = Color(0xFF64748B))
+                                    Text(customer.referredBy, fontSize = 11.sp, color = Color(0xFF1E293B), fontWeight = FontWeight.Medium)
+                                }
+                            }
+                            if (customer.addedByAgentName.isNotBlank()) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Agent: ", fontSize = 11.sp, color = Color(0xFF64748B))
+                                    Text(customer.addedByAgentName, fontSize = 11.sp, color = Color(0xFF1E293B), fontWeight = FontWeight.Medium)
+                                }
+                            }
+                            val trans = customer.preferredTransporterName.ifBlank { customer.transportPreference }
+                            if (trans.isNotBlank()) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Transporter: ", fontSize = 11.sp, color = Color(0xFF64748B))
+                                    Text(trans, fontSize = 11.sp, color = Color(0xFF1E293B), fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(9.dp))
 
                     // Cardless Clean Stat Numbers (Inline directly on background, NO cards/surfaces)
@@ -570,179 +596,6 @@ fun CustomerDetailScreen(
                             fontSize = 11.5.sp,
                             color = Color.White
                         )
-                    }
-                }
-            }
-
-            // Master Relations & Entity Links Card
-            val hasEntityLinks = customer.referredBy.isNotBlank() ||
-                customer.addedByAgentName.isNotBlank() ||
-                customer.preferredTransporterName.isNotBlank() ||
-                customer.transportPreference.isNotBlank() ||
-                customer.notes.isNotBlank()
-
-            if (hasEntityLinks) {
-                item {
-                    ElevatedCard(
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        Icons.Default.Place,
-                                        contentDescription = null,
-                                        tint = Color(0xFF2563EB),
-                                        modifier = Modifier.size(17.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(7.dp))
-                                    Text(
-                                        text = "Master Links & References",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                                Surface(
-                                    color = Color(0xFFEFF6FF),
-                                    shape = RoundedCornerShape(6.dp),
-                                    border = BorderStroke(1.dp, Color(0xFFBFDBFE))
-                                ) {
-                                    Text(
-                                        text = "Relations",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF1D4ED8),
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-
-                            // 1. Referred By
-                            if (customer.referredBy.isNotBlank()) {
-                                val ref = customer.referredBy
-                                val lower = ref.lowercase()
-                                val (tagBg, tagFg, tagText) = when {
-                                    lower.startsWith("staff:") || lower.contains("(agent)") ->
-                                        Triple(Color(0xFFEFF6FF), Color(0xFF1D4ED8), "Staff Referrer")
-                                    lower.startsWith("customer:") || lower.contains("(customer)") ->
-                                        Triple(Color(0xFFECFDF5), Color(0xFF047857), "Customer Referrer")
-                                    lower.startsWith("supplier:") || lower.contains("(supplier)") ->
-                                        Triple(Color(0xFFF5F3FF), Color(0xFF6D28D9), "Supplier Referrer")
-                                    else ->
-                                        Triple(Color(0xFFFFFBEB), Color(0xFFB45309), "Introducer / Broker")
-                                }
-
-                                Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = tagBg,
-                                    border = BorderStroke(1.dp, tagFg.copy(alpha = 0.3f)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(10.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Column {
-                                            Text(
-                                                text = tagText,
-                                                fontSize = 9.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = tagFg
-                                            )
-                                            Text(
-                                                text = ref,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = Color(0xFF1E293B)
-                                            )
-                                        }
-                                        Icon(Icons.Default.Person, contentDescription = null, tint = tagFg, modifier = Modifier.size(18.dp))
-                                    }
-                                }
-                            }
-
-                            // 2. Handling Agent / Staff
-                            if (customer.addedByAgentName.isNotBlank()) {
-                                Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = Color(0xFFF8FAFC),
-                                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(10.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Column {
-                                            Text(
-                                                text = "Handling Agent / Added By",
-                                                fontSize = 9.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF475569)
-                                            )
-                                            Text(
-                                                text = customer.addedByAgentName,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = Color(0xFF0F172A)
-                                            )
-                                        }
-                                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF059669), modifier = Modifier.size(16.dp))
-                                    }
-                                }
-                            }
-
-                            // 3. Preferred Transporter
-                            val transName = customer.preferredTransporterName.ifBlank { customer.transportPreference }
-                            if (transName.isNotBlank()) {
-                                Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = Color(0xFFF8FAFC),
-                                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(10.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Column {
-                                            Text(
-                                                text = "Preferred Transporter",
-                                                fontSize = 9.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF475569)
-                                            )
-                                            Text(
-                                                text = transName,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = Color(0xFF0F172A)
-                                            )
-                                        }
-                                        Icon(Icons.Default.LocalShipping, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(18.dp))
-                                    }
-                                }
-                            }
-
-                            // 4. Commercial Terms / Notes
-                            if (customer.notes.isNotBlank()) {
-                                Column(modifier = Modifier.padding(top = 2.dp)) {
-                                    Text("Commercial Notes:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
-                                    Text(customer.notes, fontSize = 11.5.sp, color = Color(0xFF334155))
-                                }
-                            }
-                        }
                     }
                 }
             }

@@ -854,52 +854,24 @@ export function CustomerDetailView({
               <div className="grid grid-cols-2 gap-4 text-xs">
                 <div className="col-span-2">
                   <span className="text-muted-foreground block text-[11px]">Preferred Transporter</span>
-                  {customer.preferredTransporterName ? (
-                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 mt-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-semibold dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800">
-                      <Truck className="h-3 w-3" />
-                      {customer.preferredTransporterName}
-                    </div>
-                  ) : (
-                    <span className="font-semibold text-zinc-600 dark:text-zinc-400">Standard Transport</span>
-                  )}
+                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                    {customer.preferredTransporterName || "Standard Transport"}
+                  </span>
                   {customer.transportPreference && (
                     <p className="text-[11px] text-zinc-500 italic mt-0.5">"{customer.transportPreference}"</p>
                   )}
                 </div>
                 <div>
                   <span className="text-muted-foreground block text-[11px]">Handling Agent / Staff</span>
-                  {customer.addedByAgentName ? (
-                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 mt-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 text-xs font-semibold dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800">
-                      <User className="h-3 w-3" />
-                      {customer.addedByAgentName}
-                    </div>
-                  ) : (
-                    <span className="font-semibold text-zinc-600 dark:text-zinc-400">Direct / Admin</span>
-                  )}
+                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                    {customer.addedByAgentName || "Direct / Admin"}
+                  </span>
                 </div>
                 <div>
                   <span className="text-muted-foreground block text-[11px]">Referred By</span>
-                  {customer.referredBy ? (() => {
-                    const ref = customer.referredBy
-                    const lower = ref.toLowerCase()
-                    const badgeClass =
-                      lower.startsWith("staff:") || lower.includes("(agent)")
-                        ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800"
-                        : lower.startsWith("customer:") || lower.includes("(customer)")
-                        ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
-                        : lower.startsWith("supplier:") || lower.includes("(supplier)")
-                        ? "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800"
-                        : "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
-
-                    return (
-                      <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 mt-0.5 rounded-md border text-xs font-semibold ${badgeClass}`}>
-                        <span>🔗</span>
-                        <span>{ref}</span>
-                      </div>
-                    )
-                  })() : (
-                    <span className="font-semibold text-zinc-600 dark:text-zinc-400">Direct Inquiry</span>
-                  )}
+                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                    {customer.referredBy || "Direct Inquiry"}
+                  </span>
                 </div>
                 <div>
                   <span className="text-muted-foreground block text-[11px]">Credit Term Period</span>

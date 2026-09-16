@@ -1,4 +1,5 @@
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
+import { getMasterDraft, saveMasterDraft, clearMasterDraft } from "../lib/masterDrafts"
 import {
   Building2,
   Plus,
@@ -168,9 +169,81 @@ export function SuppliersView() {
   const [referredBy, setReferredBy] = useState<string>("")
   const [notes, setNotes] = useState<string>("")
 
+  // Draft state (strictly local browser storage)
+  const [hasDraft, setHasDraft] = useState<boolean>(false)
+
   // Open Add Dialog
   const handleOpenAdd = () => {
     setEditingId(null)
+    const draft = getMasterDraft<any>("supplier")
+    if (draft) {
+      setSupplierId(draft.supplierId || `SUP-${Math.floor(100 + Math.random() * 900)}`)
+      setName(draft.name || draft.firmName || "")
+      setFirmName(draft.firmName || "")
+      setType(draft.type || "Manufacturer")
+      setSelectedMarketName(draft.selectedMarketName || (markets[0]?.marketName || "Maskati Cloth Market"))
+      setSelectedBrandName(draft.selectedBrandName || "")
+      setContactPerson(draft.contactPerson || "")
+      setGstin(draft.gstin || "")
+      setPanNumber(draft.panNumber || "")
+      setCity(draft.city || "Ahmedabad")
+      setState(draft.state || "Gujarat")
+      setPhone1(draft.phone1 || "")
+      setPhone2(draft.phone2 || "")
+      setPhone3(draft.phone3 || "")
+      setPhone4(draft.phone4 || "")
+      setPhone5(draft.phone5 || "")
+      setPhoneCount(draft.phoneCount || 1)
+      setEmail(draft.email || "")
+      setFactories(draft.factories && draft.factories.length > 0 ? draft.factories : [{ name: "Main Factory", address: "", city: "Ahmedabad", pincode: "" }])
+      setOutlets(draft.outlets && draft.outlets.length > 0 ? draft.outlets : [{ name: "Market Outlet", address: "", city: "Ahmedabad", pincode: "" }])
+      setProductsMade(draft.productsMade || "")
+      setPriceRange(draft.priceRange || "₹250 - ₹1200")
+      setSelectedCategories(draft.selectedCategories || [])
+      setCustomCategory("")
+      setShopPhotoUri("")
+      setVisitingCardPhotoUri("")
+      setReferredBy(draft.referredBy || "")
+      setNotes(draft.notes || "")
+      setHasDraft(true)
+    } else {
+      setSupplierId(`SUP-${Math.floor(100 + Math.random() * 900)}`)
+      setName("")
+      setFirmName("")
+      setType("Manufacturer")
+      setSelectedMarketName(markets[0]?.marketName || "Maskati Cloth Market")
+      setSelectedBrandName(brands[0]?.brandName || "")
+      setContactPerson("")
+      setGstin("")
+      setPanNumber("")
+      setCity("Ahmedabad")
+      setState("Gujarat")
+      setPhone1("")
+      setPhone2("")
+      setPhone3("")
+      setPhone4("")
+      setPhone5("")
+      setPhoneCount(1)
+      setEmail("")
+      setFactories([{ name: "Main Factory", address: "", city: "Ahmedabad", pincode: "" }])
+      setOutlets([{ name: "Market Outlet", address: "", city: "Ahmedabad", pincode: "" }])
+      setProductsMade("")
+      setPriceRange("₹250 - ₹1200")
+      setSelectedCategories([])
+      setCustomCategory("")
+      setShopPhotoUri("")
+      setVisitingCardPhotoUri("")
+      setReferredBy("")
+      setNotes("")
+      setHasDraft(false)
+    }
+    setActiveFormTab("basic")
+    setIsDialogOpen(true)
+  }
+
+  const handleDiscardDraft = () => {
+    clearMasterDraft("supplier")
+    setHasDraft(false)
     setSupplierId(`SUP-${Math.floor(100 + Math.random() * 900)}`)
     setName("")
     setFirmName("")
@@ -195,13 +268,71 @@ export function SuppliersView() {
     setPriceRange("₹250 - ₹1200")
     setSelectedCategories([])
     setCustomCategory("")
-    setShopPhotoUri("")
-    setVisitingCardPhotoUri("")
     setReferredBy("")
     setNotes("")
-    setActiveFormTab("basic")
-    setIsDialogOpen(true)
   }
+
+  // Auto-save local draft
+  useEffect(() => {
+    if (!isDialogOpen || editingId !== null) return
+    if (firmName.trim() || contactPerson.trim() || gstin.trim() || phone1.trim()) {
+      saveMasterDraft("supplier", {
+        supplierId,
+        name,
+        firmName,
+        type,
+        selectedMarketName,
+        selectedBrandName,
+        contactPerson,
+        gstin,
+        panNumber,
+        city,
+        state,
+        phone1,
+        phone2,
+        phone3,
+        phone4,
+        phone5,
+        phoneCount,
+        email,
+        factories,
+        outlets,
+        productsMade,
+        priceRange,
+        selectedCategories,
+        referredBy,
+        notes,
+      })
+    }
+  }, [
+    isDialogOpen,
+    editingId,
+    supplierId,
+    name,
+    firmName,
+    type,
+    selectedMarketName,
+    selectedBrandName,
+    contactPerson,
+    gstin,
+    panNumber,
+    city,
+    state,
+    phone1,
+    phone2,
+    phone3,
+    phone4,
+    phone5,
+    phoneCount,
+    email,
+    factories,
+    outlets,
+    productsMade,
+    priceRange,
+    selectedCategories,
+    referredBy,
+    notes,
+  ])
 
   // Open Edit Dialog
   const handleOpenEdit = (s: Supplier) => {
@@ -335,6 +466,8 @@ export function SuppliersView() {
     }
 
     await saveSupplier(payload)
+    clearMasterDraft("supplier")
+    setHasDraft(false)
     setIsDialogOpen(false)
   }
 
@@ -657,6 +790,23 @@ export function SuppliersView() {
         description="Textile mill profile with market selection, brand mapping, multi-factories, price range, and visiting cards."
       >
         <div className="space-y-4 pt-1 max-h-[80vh] overflow-y-auto pr-1">
+          {/* Draft Notification Banner */}
+          {hasDraft && !editingId && (
+            <div className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-xs text-emerald-800">
+              <div className="flex items-center gap-2">
+                <Info className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span className="font-medium">Resumed from your local draft</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleDiscardDraft}
+                className="font-semibold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+              >
+                Discard Draft
+              </button>
+            </div>
+          )}
+
           <Tabs
             value={activeFormTab}
             onValueChange={setActiveFormTab}

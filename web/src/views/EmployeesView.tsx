@@ -1,4 +1,5 @@
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
+import { getMasterDraft, saveMasterDraft, clearMasterDraft } from "../lib/masterDrafts"
 import {
   UserCheck,
   Plus,
@@ -104,9 +105,61 @@ export function EmployeesView({ onNavigate }: EmployeesViewProps) {
   // Drill-down Profile & Full-Page View
   const [selectedStaffId, setSelectedStaffId] = useState<number | null>(null)
 
+  // Draft state (strictly local browser storage)
+  const [hasDraft, setHasDraft] = useState<boolean>(false)
+
   // Open Add Modal
   const handleOpenAdd = () => {
     setEditingId(null)
+    const draft = getMasterDraft<any>("employee")
+    if (draft) {
+      setName(draft.name || "")
+      setEmployeeId(draft.employeeId || `EMP-0${employees.length + 1}`)
+      setRole(draft.role || "Salesman")
+      setPhone1(draft.phone1 || "")
+      setPhone2(draft.phone2 || "")
+      setPhone3(draft.phone3 || "")
+      setPhone4(draft.phone4 || "")
+      setPhone5(draft.phone5 || "")
+      setPhoneCount(draft.phoneCount || 1)
+      setEmail(draft.email || "")
+      setAlternateEmail(draft.alternateEmail || "")
+      setCurrentAddress(draft.currentAddress || "")
+      setPermanentAddress(draft.permanentAddress || "")
+      setPersonalLocation(draft.personalLocation || "")
+      setEmergencyContactName(draft.emergencyContactName || "")
+      setEmergencyContactPhone(draft.emergencyContactPhone || "")
+      setReferredBy(draft.referredBy || "")
+      setSelectedMarkets(draft.selectedMarkets || ["New Cloth Market (Raipur)"])
+      setHasDraft(true)
+    } else {
+      setName("")
+      setEmployeeId(`EMP-0${employees.length + 1}`)
+      setRole("Salesman")
+      setPhone1("")
+      setPhone2("")
+      setPhone3("")
+      setPhone4("")
+      setPhone5("")
+      setPhoneCount(1)
+      setEmail("")
+      setAlternateEmail("")
+      setCurrentAddress("")
+      setPermanentAddress("")
+      setPersonalLocation("")
+      setEmergencyContactName("")
+      setEmergencyContactPhone("")
+      setReferredBy("")
+      setSelectedMarkets(["New Cloth Market (Raipur)"])
+      setHasDraft(false)
+    }
+    setActiveFormTab("basic")
+    setIsDialogOpen(true)
+  }
+
+  const handleDiscardDraft = () => {
+    clearMasterDraft("employee")
+    setHasDraft(false)
     setName("")
     setEmployeeId(`EMP-0${employees.length + 1}`)
     setRole("Salesman")
@@ -125,9 +178,55 @@ export function EmployeesView({ onNavigate }: EmployeesViewProps) {
     setEmergencyContactPhone("")
     setReferredBy("")
     setSelectedMarkets(["New Cloth Market (Raipur)"])
-    setActiveFormTab("basic")
-    setIsDialogOpen(true)
   }
+
+  // Auto-save local draft
+  useEffect(() => {
+    if (!isDialogOpen || editingId !== null) return
+    if (name.trim() || phone1.trim() || email.trim()) {
+      saveMasterDraft("employee", {
+        name,
+        employeeId,
+        role,
+        phone1,
+        phone2,
+        phone3,
+        phone4,
+        phone5,
+        phoneCount,
+        email,
+        alternateEmail,
+        currentAddress,
+        permanentAddress,
+        personalLocation,
+        emergencyContactName,
+        emergencyContactPhone,
+        referredBy,
+        selectedMarkets,
+      })
+    }
+  }, [
+    isDialogOpen,
+    editingId,
+    name,
+    employeeId,
+    role,
+    phone1,
+    phone2,
+    phone3,
+    phone4,
+    phone5,
+    phoneCount,
+    email,
+    alternateEmail,
+    currentAddress,
+    permanentAddress,
+    personalLocation,
+    emergencyContactName,
+    emergencyContactPhone,
+    referredBy,
+    selectedMarkets,
+  ])
 
   // Open Edit Modal
   const handleOpenEdit = (emp: Employee) => {
@@ -208,6 +307,8 @@ export function EmployeesView({ onNavigate }: EmployeesViewProps) {
     }
 
     await saveEmployee(newEmp)
+    clearMasterDraft("employee")
+    setHasDraft(false)
     setIsDialogOpen(false)
   }
 
@@ -726,6 +827,23 @@ export function EmployeesView({ onNavigate }: EmployeesViewProps) {
         description="Comprehensive team member profile with contacts, emergency numbers, and market territories"
       >
         <div className="space-y-4 pt-1">
+          {/* Draft Notification Banner */}
+          {hasDraft && !editingId && (
+            <div className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-xs text-emerald-800">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span className="font-medium">Resumed from your local draft</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleDiscardDraft}
+                className="font-semibold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+              >
+                Discard Draft
+              </button>
+            </div>
+          )}
+
           {/* Form Tabs */}
           <Tabs
             value={activeFormTab}

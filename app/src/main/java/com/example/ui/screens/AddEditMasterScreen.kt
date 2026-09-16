@@ -46,6 +46,7 @@ import com.example.ui.theme.TextSecondary
 import com.example.ui.viewmodel.HimatViewModel
 import com.example.ui.viewmodel.MasterTab
 import com.example.util.MasterConstants
+import com.example.util.MasterDraftManager
 import com.example.util.RecordValidator
 import com.example.util.ValidationResult
 import org.json.JSONArray
@@ -180,6 +181,29 @@ fun AddEditMasterScreen(
     val employees by viewModel.allEmployees.collectAsStateWithLifecycle()
     val currentEmployee by viewModel.currentEmployee.collectAsStateWithLifecycle()
     val isSuperAdmin by viewModel.isSuperAdmin.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    val custDraft = remember(editingCustomer) {
+        if (editingCustomer == null) MasterDraftManager.getDraft(context, "customer") else null
+    }
+    val supDraft = remember(editingSupplier) {
+        if (editingSupplier == null) MasterDraftManager.getDraft(context, "supplier") else null
+    }
+    val transDraft = remember(editingTransporter) {
+        if (editingTransporter == null) MasterDraftManager.getDraft(context, "transporter") else null
+    }
+    val brandDraft = remember(editingBrand) {
+        if (editingBrand == null) MasterDraftManager.getDraft(context, "brand") else null
+    }
+    val mktDraft = remember(editingMarket) {
+        if (editingMarket == null) MasterDraftManager.getDraft(context, "market") else null
+    }
+    val prodDraft = remember(editingProduct) {
+        if (editingProduct == null) MasterDraftManager.getDraft(context, "product") else null
+    }
+    val empDraft = remember(editingEmployee) {
+        if (editingEmployee == null) MasterDraftManager.getDraft(context, "employee") else null
+    }
 
     val screenTitle = when (activeTab) {
         MasterTab.CUSTOMERS -> if (editingCustomer == null) "New Customer" else "Edit Customer"
@@ -204,16 +228,16 @@ fun AddEditMasterScreen(
     // =========================================================================
     // CUSTOMER STATE
     // =========================================================================
-    var custFirmName by remember(editingCustomer) { mutableStateOf(editingCustomer?.firmName ?: "") }
-    var custName by remember(editingCustomer) { mutableStateOf(editingCustomer?.name ?: "") }
-    var custId by remember(editingCustomer) { mutableStateOf(editingCustomer?.customerId ?: "CUST-${(100..999).random()}") }
-    var custGstin by remember(editingCustomer) { mutableStateOf(editingCustomer?.gstin ?: "") }
-    var custPanNumber by remember(editingCustomer) { mutableStateOf(editingCustomer?.panNumber ?: "") }
-    var custCity by remember(editingCustomer) { mutableStateOf(editingCustomer?.city.takeIf { !it.isNullOrBlank() } ?: "Ahmedabad") }
-    var custDistrict by remember(editingCustomer) { mutableStateOf(editingCustomer?.district ?: "Ahmedabad") }
-    var custState by remember(editingCustomer) { mutableStateOf(editingCustomer?.state ?: "Gujarat") }
-    var custPincode by remember(editingCustomer) { mutableStateOf(editingCustomer?.pincode ?: "") }
-    var custCustomerType by remember(editingCustomer) { mutableStateOf(editingCustomer?.customerType ?: "Credit") }
+    var custFirmName by remember(editingCustomer) { mutableStateOf(editingCustomer?.firmName ?: custDraft?.get("firmName")?.toString() ?: "") }
+    var custName by remember(editingCustomer) { mutableStateOf(editingCustomer?.name ?: custDraft?.get("name")?.toString() ?: "") }
+    var custId by remember(editingCustomer) { mutableStateOf(editingCustomer?.customerId ?: custDraft?.get("customerId")?.toString() ?: "CUST-${(100..999).random()}") }
+    var custGstin by remember(editingCustomer) { mutableStateOf(editingCustomer?.gstin ?: custDraft?.get("gstin")?.toString() ?: "") }
+    var custPanNumber by remember(editingCustomer) { mutableStateOf(editingCustomer?.panNumber ?: custDraft?.get("panNumber")?.toString() ?: "") }
+    var custCity by remember(editingCustomer) { mutableStateOf(editingCustomer?.city.takeIf { !it.isNullOrBlank() } ?: custDraft?.get("city")?.toString() ?: "Ahmedabad") }
+    var custDistrict by remember(editingCustomer) { mutableStateOf(editingCustomer?.district ?: custDraft?.get("district")?.toString() ?: "Ahmedabad") }
+    var custState by remember(editingCustomer) { mutableStateOf(editingCustomer?.state ?: custDraft?.get("state")?.toString() ?: "Gujarat") }
+    var custPincode by remember(editingCustomer) { mutableStateOf(editingCustomer?.pincode ?: custDraft?.get("pincode")?.toString() ?: "") }
+    var custCustomerType by remember(editingCustomer) { mutableStateOf(editingCustomer?.customerType ?: custDraft?.get("customerType")?.toString() ?: "Credit") }
 
     // Contacts up to 5
     var custContacts by remember(editingCustomer) {
@@ -249,24 +273,24 @@ fun AddEditMasterScreen(
     var custCustomGarmentType by remember { mutableStateOf("") }
 
     // Referred By & Creator Agent
-    var custReferredBy by remember(editingCustomer) { mutableStateOf(editingCustomer?.referredBy ?: "") }
+    var custReferredBy by remember(editingCustomer) { mutableStateOf(editingCustomer?.referredBy ?: custDraft?.get("referredBy")?.toString() ?: "") }
     var custAddedByAgentId by remember(editingCustomer, currentEmployee) {
         mutableStateOf(editingCustomer?.addedByAgentId ?: currentEmployee?.id)
     }
     var custAddedByAgentName by remember(editingCustomer, currentEmployee) {
-        mutableStateOf(editingCustomer?.addedByAgentName ?: currentEmployee?.name ?: "Sales Agent")
+        mutableStateOf(editingCustomer?.addedByAgentName ?: custDraft?.get("addedByAgentName")?.toString() ?: currentEmployee?.name ?: "Sales Agent")
     }
 
     // Preferred Transporter
     var custPreferredTransporterId by remember(editingCustomer) { mutableStateOf(editingCustomer?.preferredTransporterId) }
-    var custPreferredTransporterName by remember(editingCustomer) { mutableStateOf(editingCustomer?.preferredTransporterName ?: "") }
-    var custTransportPreference by remember(editingCustomer) { mutableStateOf(editingCustomer?.transportPreference ?: "") }
+    var custPreferredTransporterName by remember(editingCustomer) { mutableStateOf(editingCustomer?.preferredTransporterName ?: custDraft?.get("preferredTransporterName")?.toString() ?: "") }
+    var custTransportPreference by remember(editingCustomer) { mutableStateOf(editingCustomer?.transportPreference ?: custDraft?.get("transportPreference")?.toString() ?: "") }
 
     // Personal & KYC
-    var custDob by remember(editingCustomer) { mutableStateOf(editingCustomer?.dob ?: "") }
-    var custReligion by remember(editingCustomer) { mutableStateOf(editingCustomer?.religion ?: "") }
-    var custHomeAddress by remember(editingCustomer) { mutableStateOf(editingCustomer?.homeAddress ?: "") }
-    var custPersonalLocation by remember(editingCustomer) { mutableStateOf(editingCustomer?.personalLocation ?: "") }
+    var custDob by remember(editingCustomer) { mutableStateOf(editingCustomer?.dob ?: custDraft?.get("dob")?.toString() ?: "") }
+    var custReligion by remember(editingCustomer) { mutableStateOf(editingCustomer?.religion ?: custDraft?.get("religion")?.toString() ?: "") }
+    var custHomeAddress by remember(editingCustomer) { mutableStateOf(editingCustomer?.homeAddress ?: custDraft?.get("homeAddress")?.toString() ?: "") }
+    var custPersonalLocation by remember(editingCustomer) { mutableStateOf(editingCustomer?.personalLocation ?: custDraft?.get("personalLocation")?.toString() ?: "") }
     var custAadharUri by remember(editingCustomer) { mutableStateOf(editingCustomer?.aadharPhotoUri ?: "") }
     var custGstCertUri by remember(editingCustomer) { mutableStateOf(editingCustomer?.gstCertPhotoUri ?: "") }
     var custPanUri by remember(editingCustomer) { mutableStateOf(editingCustomer?.panPhotoUri ?: "") }
@@ -274,30 +298,30 @@ fun AddEditMasterScreen(
     var custPurchaserPicUri by remember(editingCustomer) { mutableStateOf(editingCustomer?.purchaserPhotoUri ?: "") }
     var custCancelChequeUri by remember(editingCustomer) { mutableStateOf(editingCustomer?.cancelChequePhotoUri ?: "") }
 
-    var custCreditDays by remember(editingCustomer) { mutableStateOf((editingCustomer?.creditDays ?: 30).toString()) }
-    var custCreditLimit by remember(editingCustomer) { mutableStateOf(if ((editingCustomer?.creditLimit ?: 0.0) > 0.0) editingCustomer?.creditLimit?.toInt()?.toString() ?: "" else "") }
-    var custEmail by remember(editingCustomer) { mutableStateOf(editingCustomer?.email ?: "") }
+    var custCreditDays by remember(editingCustomer) { mutableStateOf(editingCustomer?.creditDays?.toString() ?: custDraft?.get("creditDays")?.toString() ?: "30") }
+    var custCreditLimit by remember(editingCustomer) { mutableStateOf(if ((editingCustomer?.creditLimit ?: 0.0) > 0.0) editingCustomer?.creditLimit?.toInt()?.toString() ?: "" else custDraft?.get("creditLimit")?.toString() ?: "") }
+    var custEmail by remember(editingCustomer) { mutableStateOf(editingCustomer?.email ?: custDraft?.get("email")?.toString() ?: "") }
     var custEmail2 by remember(editingCustomer) { mutableStateOf(editingCustomer?.email2 ?: "") }
-    var custNotes by remember(editingCustomer) { mutableStateOf(editingCustomer?.notes ?: "") }
+    var custNotes by remember(editingCustomer) { mutableStateOf(editingCustomer?.notes ?: custDraft?.get("notes")?.toString() ?: "") }
 
     // =========================================================================
     // SUPPLIER STATE
     // =========================================================================
-    var supFirmName by remember(editingSupplier) { mutableStateOf(editingSupplier?.firmName ?: "") }
-    var supContactPerson by remember(editingSupplier) { mutableStateOf(editingSupplier?.contactPerson ?: editingSupplier?.name ?: "") }
-    var supId by remember(editingSupplier) { mutableStateOf(editingSupplier?.supplierId ?: "SUP-${(100..999).random()}") }
-    var supType by remember(editingSupplier) { mutableStateOf(editingSupplier?.type ?: "Manufacturer") }
-    var supGstin by remember(editingSupplier) { mutableStateOf(editingSupplier?.gstin ?: "") }
-    var supPanNumber by remember(editingSupplier) { mutableStateOf(editingSupplier?.panNumber ?: "") }
-    var supCity by remember(editingSupplier) { mutableStateOf(editingSupplier?.city.takeIf { !it.isNullOrBlank() } ?: "Ahmedabad") }
+    var supFirmName by remember(editingSupplier) { mutableStateOf(editingSupplier?.firmName ?: supDraft?.get("firmName")?.toString() ?: "") }
+    var supContactPerson by remember(editingSupplier) { mutableStateOf(editingSupplier?.contactPerson ?: editingSupplier?.name ?: supDraft?.get("contactPerson")?.toString() ?: "") }
+    var supId by remember(editingSupplier) { mutableStateOf(editingSupplier?.supplierId ?: supDraft?.get("supplierId")?.toString() ?: "SUP-${(100..999).random()}") }
+    var supType by remember(editingSupplier) { mutableStateOf(editingSupplier?.type ?: supDraft?.get("type")?.toString() ?: "Manufacturer") }
+    var supGstin by remember(editingSupplier) { mutableStateOf(editingSupplier?.gstin ?: supDraft?.get("gstin")?.toString() ?: "") }
+    var supPanNumber by remember(editingSupplier) { mutableStateOf(editingSupplier?.panNumber ?: supDraft?.get("panNumber")?.toString() ?: "") }
+    var supCity by remember(editingSupplier) { mutableStateOf(editingSupplier?.city.takeIf { !it.isNullOrBlank() } ?: supDraft?.get("city")?.toString() ?: "Ahmedabad") }
 
     // Market selection with inline create
     var supMarketId by remember(editingSupplier) { mutableStateOf(editingSupplier?.marketId) }
-    var supMarketName by remember(editingSupplier) { mutableStateOf(editingSupplier?.marketName.takeIf { !it.isNullOrBlank() } ?: editingSupplier?.marketArea ?: "") }
+    var supMarketName by remember(editingSupplier) { mutableStateOf(editingSupplier?.marketName.takeIf { !it.isNullOrBlank() } ?: editingSupplier?.marketArea ?: supDraft?.get("marketName")?.toString() ?: "") }
 
     // Brand selection with inline create
     var supBrandId by remember(editingSupplier) { mutableStateOf(editingSupplier?.brandId) }
-    var supBrandName by remember(editingSupplier) { mutableStateOf(editingSupplier?.brand ?: "") }
+    var supBrandName by remember(editingSupplier) { mutableStateOf(editingSupplier?.brand ?: supDraft?.get("brand")?.toString() ?: "") }
 
     // Contacts up to 5
     var supContacts by remember(editingSupplier) {
@@ -312,8 +336,8 @@ fun AddEditMasterScreen(
     }
 
     // Manufacturing / Products made & Price range
-    var supProductsMade by remember(editingSupplier) { mutableStateOf(editingSupplier?.productsMade ?: "") }
-    var supPriceRange by remember(editingSupplier) { mutableStateOf(editingSupplier?.priceRange ?: "") }
+    var supProductsMade by remember(editingSupplier) { mutableStateOf(editingSupplier?.productsMade ?: supDraft?.get("productsMade")?.toString() ?: "") }
+    var supPriceRange by remember(editingSupplier) { mutableStateOf(editingSupplier?.priceRange ?: supDraft?.get("priceRange")?.toString() ?: "") }
     var supCategories by remember(editingSupplier) {
         val c = (editingSupplier?.categories.takeIf { !it.isNullOrBlank() } ?: editingSupplier?.garmentTypes ?: "")
             .split(",").map { it.trim() }.filter { it.isNotBlank() }
@@ -349,75 +373,75 @@ fun AddEditMasterScreen(
     var supShopPhotoUri by remember(editingSupplier) { mutableStateOf(editingSupplier?.shopPhotoUri ?: "") }
     var supVisitingCardPhotoUri by remember(editingSupplier) { mutableStateOf(editingSupplier?.visitingCardPhotoUri ?: "") }
 
-    var supOfficeAddress by remember(editingSupplier) { mutableStateOf(editingSupplier?.officeAddress ?: editingSupplier?.address ?: "") }
-    var supOfficeLocation by remember(editingSupplier) { mutableStateOf(editingSupplier?.officeLocation ?: "") }
-    var supHomeAddress by remember(editingSupplier) { mutableStateOf(editingSupplier?.homeAddress ?: "") }
-    var supPersonalLocation by remember(editingSupplier) { mutableStateOf(editingSupplier?.personalLocation ?: "") }
-    var supEmail by remember(editingSupplier) { mutableStateOf(editingSupplier?.email ?: "") }
-    var supEmail2 by remember(editingSupplier) { mutableStateOf(editingSupplier?.email2 ?: "") }
-    var supReferredBy by remember(editingSupplier) { mutableStateOf(editingSupplier?.referredBy ?: "") }
-    var supNotes by remember(editingSupplier) { mutableStateOf(editingSupplier?.notes ?: "") }
+    var supOfficeAddress by remember(editingSupplier) { mutableStateOf(editingSupplier?.officeAddress ?: editingSupplier?.address ?: supDraft?.get("officeAddress")?.toString() ?: "") }
+    var supOfficeLocation by remember(editingSupplier) { mutableStateOf(editingSupplier?.officeLocation ?: supDraft?.get("officeLocation")?.toString() ?: "") }
+    var supHomeAddress by remember(editingSupplier) { mutableStateOf(editingSupplier?.homeAddress ?: supDraft?.get("homeAddress")?.toString() ?: "") }
+    var supPersonalLocation by remember(editingSupplier) { mutableStateOf(editingSupplier?.personalLocation ?: supDraft?.get("personalLocation")?.toString() ?: "") }
+    var supEmail by remember(editingSupplier) { mutableStateOf(editingSupplier?.email ?: supDraft?.get("email")?.toString() ?: "") }
+    var supEmail2 by remember(editingSupplier) { mutableStateOf(editingSupplier?.email2 ?: supDraft?.get("email2")?.toString() ?: "") }
+    var supReferredBy by remember(editingSupplier) { mutableStateOf(editingSupplier?.referredBy ?: supDraft?.get("referredBy")?.toString() ?: "") }
+    var supNotes by remember(editingSupplier) { mutableStateOf(editingSupplier?.notes ?: supDraft?.get("notes")?.toString() ?: "") }
 
     // =========================================================================
     // BRAND STATE
     // =========================================================================
-    var brandName by remember(editingBrand) { mutableStateOf(editingBrand?.brandName ?: "") }
+    var brandName by remember(editingBrand) { mutableStateOf(editingBrand?.brandName ?: brandDraft?.get("brandName")?.toString() ?: "") }
     var brandManufacturerId by remember(editingBrand) { mutableStateOf(editingBrand?.manufacturerId) }
-    var brandManufacturerName by remember(editingBrand) { mutableStateOf(editingBrand?.manufacturerName ?: "") }
-    var brandCategory by remember(editingBrand) { mutableStateOf(editingBrand?.category ?: "Apparel") }
+    var brandManufacturerName by remember(editingBrand) { mutableStateOf(editingBrand?.manufacturerName ?: brandDraft?.get("manufacturerName")?.toString() ?: "") }
+    var brandCategory by remember(editingBrand) { mutableStateOf(editingBrand?.category ?: brandDraft?.get("category")?.toString() ?: "Apparel") }
     var brandLogoUri by remember(editingBrand) { mutableStateOf(editingBrand?.logoPhotoUri ?: "") }
-    var brandDescription by remember(editingBrand) { mutableStateOf(editingBrand?.description ?: "") }
+    var brandDescription by remember(editingBrand) { mutableStateOf(editingBrand?.description ?: brandDraft?.get("description")?.toString() ?: "") }
     var brandIsActive by remember(editingBrand) { mutableStateOf(editingBrand?.isActive ?: true) }
 
     // =========================================================================
     // TRANSPORTER STATE
     // =========================================================================
-    var transName by remember(editingTransporter) { mutableStateOf(editingTransporter?.transporterName ?: "") }
-    var transContactPerson by remember(editingTransporter) { mutableStateOf(editingTransporter?.contactPerson ?: "") }
-    var transPhone1 by remember(editingTransporter) { mutableStateOf(editingTransporter?.phone1 ?: "") }
-    var transPhone2 by remember(editingTransporter) { mutableStateOf(editingTransporter?.phone2 ?: "") }
-    var transPhone3 by remember(editingTransporter) { mutableStateOf(editingTransporter?.phone3 ?: "") }
-    var transOfficeAddress by remember(editingTransporter) { mutableStateOf(editingTransporter?.officeAddress ?: "") }
-    var transGodownAddress by remember(editingTransporter) { mutableStateOf(editingTransporter?.godownAddress ?: "") }
-    var transCity by remember(editingTransporter) { mutableStateOf(editingTransporter?.city ?: "Ahmedabad") }
-    var transDestinations by remember(editingTransporter) { mutableStateOf(editingTransporter?.destinationsCovered ?: "") }
-    var transGstin by remember(editingTransporter) { mutableStateOf(editingTransporter?.gstin ?: "") }
-    var transTrackingUrl by remember(editingTransporter) { mutableStateOf(editingTransporter?.trackingUrl ?: "") }
-    var transNotes by remember(editingTransporter) { mutableStateOf(editingTransporter?.notes ?: "") }
+    var transName by remember(editingTransporter) { mutableStateOf(editingTransporter?.transporterName ?: transDraft?.get("transporterName")?.toString() ?: "") }
+    var transContactPerson by remember(editingTransporter) { mutableStateOf(editingTransporter?.contactPerson ?: transDraft?.get("contactPerson")?.toString() ?: "") }
+    var transPhone1 by remember(editingTransporter) { mutableStateOf(editingTransporter?.phone1 ?: transDraft?.get("phone1")?.toString() ?: "") }
+    var transPhone2 by remember(editingTransporter) { mutableStateOf(editingTransporter?.phone2 ?: transDraft?.get("phone2")?.toString() ?: "") }
+    var transPhone3 by remember(editingTransporter) { mutableStateOf(editingTransporter?.phone3 ?: transDraft?.get("phone3")?.toString() ?: "") }
+    var transOfficeAddress by remember(editingTransporter) { mutableStateOf(editingTransporter?.officeAddress ?: transDraft?.get("officeAddress")?.toString() ?: "") }
+    var transGodownAddress by remember(editingTransporter) { mutableStateOf(editingTransporter?.godownAddress ?: transDraft?.get("godownAddress")?.toString() ?: "") }
+    var transCity by remember(editingTransporter) { mutableStateOf(editingTransporter?.city ?: transDraft?.get("city")?.toString() ?: "Ahmedabad") }
+    var transDestinations by remember(editingTransporter) { mutableStateOf(editingTransporter?.destinationsCovered ?: transDraft?.get("destinationsCovered")?.toString() ?: "") }
+    var transGstin by remember(editingTransporter) { mutableStateOf(editingTransporter?.gstin ?: transDraft?.get("gstin")?.toString() ?: "") }
+    var transTrackingUrl by remember(editingTransporter) { mutableStateOf(editingTransporter?.trackingUrl ?: transDraft?.get("trackingUrl")?.toString() ?: "") }
+    var transNotes by remember(editingTransporter) { mutableStateOf(editingTransporter?.notes ?: transDraft?.get("notes")?.toString() ?: "") }
 
     // =========================================================================
     // MARKET STATE
     // =========================================================================
-    var mktName by remember(editingMarket) { mutableStateOf(editingMarket?.marketName ?: "") }
-    var mktCity by remember(editingMarket) { mutableStateOf(editingMarket?.city ?: "Ahmedabad") }
-    var mktArea by remember(editingMarket) { mutableStateOf(editingMarket?.area ?: "") }
-    var mktLandmark by remember(editingMarket) { mutableStateOf(editingMarket?.landmark ?: "") }
-    var mktPincode by remember(editingMarket) { mutableStateOf(editingMarket?.pincode ?: "") }
-    var mktType by remember(editingMarket) { mutableStateOf(editingMarket?.marketType ?: "Wholesale") }
-    var mktDescription by remember(editingMarket) { mutableStateOf(editingMarket?.description ?: "") }
+    var mktName by remember(editingMarket) { mutableStateOf(editingMarket?.marketName ?: mktDraft?.get("marketName")?.toString() ?: "") }
+    var mktCity by remember(editingMarket) { mutableStateOf(editingMarket?.city ?: mktDraft?.get("city")?.toString() ?: "Ahmedabad") }
+    var mktArea by remember(editingMarket) { mutableStateOf(editingMarket?.area ?: mktDraft?.get("area")?.toString() ?: "") }
+    var mktLandmark by remember(editingMarket) { mutableStateOf(editingMarket?.landmark ?: mktDraft?.get("landmark")?.toString() ?: "") }
+    var mktPincode by remember(editingMarket) { mutableStateOf(editingMarket?.pincode ?: mktDraft?.get("pincode")?.toString() ?: "") }
+    var mktType by remember(editingMarket) { mutableStateOf(editingMarket?.marketType ?: mktDraft?.get("marketType")?.toString() ?: "Wholesale") }
+    var mktDescription by remember(editingMarket) { mutableStateOf(editingMarket?.description ?: mktDraft?.get("description")?.toString() ?: "") }
 
     // =========================================================================
     // PRODUCT STATE
     // =========================================================================
-    var prodCode by remember(editingProduct) { mutableStateOf(editingProduct?.productCode ?: "") }
-    var prodName by remember(editingProduct) { mutableStateOf(editingProduct?.name ?: "") }
-    var prodCategory by remember(editingProduct) { mutableStateOf(editingProduct?.category ?: "Apparel") }
+    var prodCode by remember(editingProduct) { mutableStateOf(editingProduct?.productCode ?: prodDraft?.get("productCode")?.toString() ?: "") }
+    var prodName by remember(editingProduct) { mutableStateOf(editingProduct?.name ?: prodDraft?.get("name")?.toString() ?: "") }
+    var prodCategory by remember(editingProduct) { mutableStateOf(editingProduct?.category ?: prodDraft?.get("category")?.toString() ?: "Apparel") }
     var prodSupplier by remember(editingProduct, suppliers) {
         mutableStateOf(suppliers.find { it.id == editingProduct?.supplierId } ?: suppliers.firstOrNull())
     }
     var prodSupplierExpanded by remember { mutableStateOf(false) }
-    var prodRate by remember(editingProduct) { mutableStateOf(editingProduct?.defaultRate?.toInt()?.toString() ?: "300") }
-    var prodCaseSize by remember(editingProduct) { mutableStateOf(editingProduct?.defaultCaseSize?.toString() ?: "24") }
-    var prodHsn by remember(editingProduct) { mutableStateOf(editingProduct?.hsnCode ?: "6203") }
-    var prodDescription by remember(editingProduct) { mutableStateOf(editingProduct?.description ?: "") }
+    var prodRate by remember(editingProduct) { mutableStateOf(editingProduct?.defaultRate?.toInt()?.toString() ?: prodDraft?.get("defaultRate")?.toString() ?: "300") }
+    var prodCaseSize by remember(editingProduct) { mutableStateOf(editingProduct?.defaultCaseSize?.toString() ?: prodDraft?.get("defaultCaseSize")?.toString() ?: "24") }
+    var prodHsn by remember(editingProduct) { mutableStateOf(editingProduct?.hsnCode ?: prodDraft?.get("hsnCode")?.toString() ?: "6203") }
+    var prodDescription by remember(editingProduct) { mutableStateOf(editingProduct?.description ?: prodDraft?.get("description")?.toString() ?: "") }
 
     // =========================================================================
     // EMPLOYEE STATE
     // =========================================================================
-    var empName by remember(editingEmployee) { mutableStateOf(editingEmployee?.name ?: "") }
-    var empId by remember(editingEmployee) { mutableStateOf(editingEmployee?.employeeId ?: "EMP-0${(1..9).random()}") }
-    var empRole by remember(editingEmployee) { mutableStateOf(editingEmployee?.role ?: "Salesman") }
-    var empPhone by remember(editingEmployee) { mutableStateOf(editingEmployee?.phone ?: "") }
+    var empName by remember(editingEmployee) { mutableStateOf(editingEmployee?.name ?: empDraft?.get("name")?.toString() ?: "") }
+    var empId by remember(editingEmployee) { mutableStateOf(editingEmployee?.employeeId ?: empDraft?.get("employeeId")?.toString() ?: "EMP-0${(1..9).random()}") }
+    var empRole by remember(editingEmployee) { mutableStateOf(editingEmployee?.role ?: empDraft?.get("role")?.toString() ?: "Salesman") }
+    var empPhone by remember(editingEmployee) { mutableStateOf(editingEmployee?.phone ?: empDraft?.get("phone")?.toString() ?: "") }
     var empPhone2 by remember(editingEmployee) { mutableStateOf(editingEmployee?.phone2 ?: "") }
     var empPhone3 by remember(editingEmployee) { mutableStateOf(editingEmployee?.phone3 ?: "") }
     var empPhone4 by remember(editingEmployee) { mutableStateOf(editingEmployee?.phone4 ?: "") }
@@ -432,14 +456,14 @@ fun AddEditMasterScreen(
         ).size
         mutableStateOf(maxOf(1, count))
     }
-    var empEmail by remember(editingEmployee) { mutableStateOf(editingEmployee?.email ?: "") }
+    var empEmail by remember(editingEmployee) { mutableStateOf(editingEmployee?.email ?: empDraft?.get("email")?.toString() ?: "") }
     var empAlternateEmail by remember(editingEmployee) { mutableStateOf(editingEmployee?.alternateEmail ?: "") }
-    var empCurrentAddress by remember(editingEmployee) { mutableStateOf(editingEmployee?.currentAddress ?: editingEmployee?.address ?: "") }
+    var empCurrentAddress by remember(editingEmployee) { mutableStateOf(editingEmployee?.currentAddress ?: editingEmployee?.address ?: empDraft?.get("currentAddress")?.toString() ?: "") }
     var empPermanentAddress by remember(editingEmployee) { mutableStateOf(editingEmployee?.permanentAddress ?: "") }
     var empPersonalLocation by remember(editingEmployee) { mutableStateOf(editingEmployee?.personalLocation ?: "") }
     var empEmergencyContactName by remember(editingEmployee) { mutableStateOf(editingEmployee?.emergencyContactName ?: "") }
     var empEmergencyContactPhone by remember(editingEmployee) { mutableStateOf(editingEmployee?.emergencyContactPhone ?: "") }
-    var empReferredBy by remember(editingEmployee) { mutableStateOf(editingEmployee?.referredBy ?: "") }
+    var empReferredBy by remember(editingEmployee) { mutableStateOf(editingEmployee?.referredBy ?: empDraft?.get("referredBy")?.toString() ?: "") }
     var empSelectedMarkets by remember(editingEmployee) {
         val m = editingEmployee?.assignedMarkets?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
         mutableStateOf(m.toSet())
@@ -451,6 +475,165 @@ fun AddEditMasterScreen(
 
     // Validation
     var validationErrors by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    // Local draft auto-savers (strictly local - never synced to cloud)
+    LaunchedEffect(
+        editingCustomer, custFirmName, custName, custId, custGstin, custPanNumber,
+        custCity, custDistrict, custState, custPincode, custCustomerType, custReferredBy,
+        custAddedByAgentName, custPreferredTransporterName, custTransportPreference,
+        custDob, custReligion, custHomeAddress, custPersonalLocation, custCreditDays,
+        custCreditLimit, custEmail, custNotes
+    ) {
+        if (editingCustomer == null && (custFirmName.isNotBlank() || custName.isNotBlank() || custGstin.isNotBlank() || custEmail.isNotBlank())) {
+            MasterDraftManager.saveDraft(
+                context, "customer", mapOf(
+                    "firmName" to custFirmName,
+                    "name" to custName,
+                    "customerId" to custId,
+                    "gstin" to custGstin,
+                    "panNumber" to custPanNumber,
+                    "city" to custCity,
+                    "district" to custDistrict,
+                    "state" to custState,
+                    "pincode" to custPincode,
+                    "customerType" to custCustomerType,
+                    "referredBy" to custReferredBy,
+                    "addedByAgentName" to custAddedByAgentName,
+                    "preferredTransporterName" to custPreferredTransporterName,
+                    "transportPreference" to custTransportPreference,
+                    "dob" to custDob,
+                    "religion" to custReligion,
+                    "homeAddress" to custHomeAddress,
+                    "personalLocation" to custPersonalLocation,
+                    "creditDays" to custCreditDays,
+                    "creditLimit" to custCreditLimit,
+                    "email" to custEmail,
+                    "notes" to custNotes
+                )
+            )
+        }
+    }
+
+    LaunchedEffect(
+        editingSupplier, supFirmName, supContactPerson, supId, supType, supGstin,
+        supPanNumber, supCity, supMarketName, supBrandName, supProductsMade,
+        supPriceRange, supOfficeAddress, supHomeAddress, supPersonalLocation,
+        supEmail, supReferredBy, supNotes
+    ) {
+        if (editingSupplier == null && (supFirmName.isNotBlank() || supContactPerson.isNotBlank() || supGstin.isNotBlank() || supEmail.isNotBlank())) {
+            MasterDraftManager.saveDraft(
+                context, "supplier", mapOf(
+                    "firmName" to supFirmName,
+                    "contactPerson" to supContactPerson,
+                    "supplierId" to supId,
+                    "type" to supType,
+                    "gstin" to supGstin,
+                    "panNumber" to supPanNumber,
+                    "city" to supCity,
+                    "marketName" to supMarketName,
+                    "brand" to supBrandName,
+                    "productsMade" to supProductsMade,
+                    "priceRange" to supPriceRange,
+                    "officeAddress" to supOfficeAddress,
+                    "homeAddress" to supHomeAddress,
+                    "personalLocation" to supPersonalLocation,
+                    "email" to supEmail,
+                    "referredBy" to supReferredBy,
+                    "notes" to supNotes
+                )
+            )
+        }
+    }
+
+    LaunchedEffect(
+        editingBrand, brandName, brandManufacturerName, brandCategory, brandDescription
+    ) {
+        if (editingBrand == null && brandName.isNotBlank()) {
+            MasterDraftManager.saveDraft(
+                context, "brand", mapOf(
+                    "brandName" to brandName,
+                    "manufacturerName" to brandManufacturerName,
+                    "category" to brandCategory,
+                    "description" to brandDescription
+                )
+            )
+        }
+    }
+
+    LaunchedEffect(
+        editingTransporter, transName, transContactPerson, transPhone1, transPhone2,
+        transOfficeAddress, transGodownAddress, transCity, transDestinations, transGstin, transNotes
+    ) {
+        if (editingTransporter == null && transName.isNotBlank()) {
+            MasterDraftManager.saveDraft(
+                context, "transporter", mapOf(
+                    "transporterName" to transName,
+                    "contactPerson" to transContactPerson,
+                    "phone1" to transPhone1,
+                    "phone2" to transPhone2,
+                    "officeAddress" to transOfficeAddress,
+                    "godownAddress" to transGodownAddress,
+                    "city" to transCity,
+                    "destinationsCovered" to transDestinations,
+                    "gstin" to transGstin,
+                    "notes" to transNotes
+                )
+            )
+        }
+    }
+
+    LaunchedEffect(
+        editingMarket, mktName, mktCity, mktArea, mktLandmark, mktPincode, mktType, mktDescription
+    ) {
+        if (editingMarket == null && mktName.isNotBlank()) {
+            MasterDraftManager.saveDraft(
+                context, "market", mapOf(
+                    "marketName" to mktName,
+                    "city" to mktCity,
+                    "area" to mktArea,
+                    "landmark" to mktLandmark,
+                    "pincode" to mktPincode,
+                    "marketType" to mktType,
+                    "description" to mktDescription
+                )
+            )
+        }
+    }
+
+    LaunchedEffect(
+        editingProduct, prodCode, prodName, prodCategory, prodRate, prodCaseSize, prodHsn, prodDescription
+    ) {
+        if (editingProduct == null && (prodCode.isNotBlank() || prodName.isNotBlank())) {
+            MasterDraftManager.saveDraft(
+                context, "product", mapOf(
+                    "productCode" to prodCode,
+                    "name" to prodName,
+                    "category" to prodCategory,
+                    "defaultRate" to prodRate,
+                    "defaultCaseSize" to prodCaseSize,
+                    "hsnCode" to prodHsn,
+                    "description" to prodDescription
+                )
+            )
+        }
+    }
+
+    LaunchedEffect(
+        editingEmployee, empName, empRole, empPhone, empEmail, empCurrentAddress, empReferredBy
+    ) {
+        if (editingEmployee == null && empName.isNotBlank()) {
+            MasterDraftManager.saveDraft(
+                context, "employee", mapOf(
+                    "name" to empName,
+                    "role" to empRole,
+                    "phone" to empPhone,
+                    "email" to empEmail,
+                    "currentAddress" to empCurrentAddress,
+                    "referredBy" to empReferredBy
+                )
+            )
+        }
+    }
 
     fun handleSave() {
         when (activeTab) {
@@ -518,6 +701,7 @@ fun AddEditMasterScreen(
                     notes = custNotes.trim()
                 )
                 viewModel.saveCustomer(candidate)
+                MasterDraftManager.clearDraft(context, "customer")
                 onBack()
             }
 
@@ -580,7 +764,10 @@ fun AddEditMasterScreen(
                     validationErrors = validation.errors
                 } else {
                     validationErrors = emptyList()
-                    viewModel.saveSupplier(candidate, onSuccess = onBack, onError = { err ->
+                    viewModel.saveSupplier(candidate, onSuccess = {
+                        MasterDraftManager.clearDraft(context, "supplier")
+                        onBack()
+                    }, onError = { err ->
                         validationErrors = listOf(err)
                     })
                 }
@@ -601,7 +788,10 @@ fun AddEditMasterScreen(
                     description = brandDescription.trim(),
                     isActive = brandIsActive
                 )
-                viewModel.saveBrand(candidate, onSuccess = onBack)
+                viewModel.saveBrand(candidate, onSuccess = {
+                    MasterDraftManager.clearDraft(context, "brand")
+                    onBack()
+                })
             }
 
             MasterTab.TRANSPORTERS -> {
@@ -624,7 +814,10 @@ fun AddEditMasterScreen(
                     trackingUrl = transTrackingUrl.trim(),
                     notes = transNotes.trim()
                 )
-                viewModel.saveTransporter(candidate, onSuccess = onBack)
+                viewModel.saveTransporter(candidate, onSuccess = {
+                    MasterDraftManager.clearDraft(context, "transporter")
+                    onBack()
+                })
             }
 
             MasterTab.MARKETS -> {
@@ -642,7 +835,10 @@ fun AddEditMasterScreen(
                     marketType = mktType,
                     description = mktDescription.trim()
                 )
-                viewModel.saveMarket(candidate, onSuccess = onBack)
+                viewModel.saveMarket(candidate, onSuccess = {
+                    MasterDraftManager.clearDraft(context, "market")
+                    onBack()
+                })
             }
 
             MasterTab.PRODUCTS -> {
@@ -675,7 +871,10 @@ fun AddEditMasterScreen(
                     validationErrors = validation.errors
                 } else {
                     validationErrors = emptyList()
-                    viewModel.saveProduct(candidate, onSuccess = onBack, onError = { err ->
+                    viewModel.saveProduct(candidate, onSuccess = {
+                        MasterDraftManager.clearDraft(context, "product")
+                        onBack()
+                    }, onError = { err ->
                         validationErrors = listOf(err)
                     })
                 }
@@ -713,6 +912,7 @@ fun AddEditMasterScreen(
                     markets = empSelectedMarkets.joinToString(", ")
                 )
                 viewModel.saveEmployee(candidate)
+                MasterDraftManager.clearDraft(context, "employee")
                 onBack()
             }
         }
@@ -885,6 +1085,67 @@ fun AddEditMasterScreen(
                                     text = "• $err",
                                     fontSize = 12.sp,
                                     color = Color(0xFF991B1B)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Resumed from draft notification banner
+                val currentDraftType = when (activeTab) {
+                    MasterTab.CUSTOMERS -> if (editingCustomer == null && custDraft != null) "customer" else null
+                    MasterTab.SUPPLIERS -> if (editingSupplier == null && supDraft != null) "supplier" else null
+                    MasterTab.BRANDS -> if (editingBrand == null && brandDraft != null) "brand" else null
+                    MasterTab.TRANSPORTERS -> if (editingTransporter == null && transDraft != null) "transporter" else null
+                    MasterTab.MARKETS -> if (editingMarket == null && mktDraft != null) "market" else null
+                    MasterTab.PRODUCTS -> if (editingProduct == null && prodDraft != null) "product" else null
+                    MasterTab.EMPLOYEES -> if (editingEmployee == null && empDraft != null) "employee" else null
+                }
+                var draftDismissed by remember(activeTab) { mutableStateOf(false) }
+
+                if (currentDraftType != null && !draftDismissed) {
+                    Surface(
+                        color = Color(0xFFF0FDF4),
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = Color(0xFF16A34A),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Resumed from your local draft",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color(0xFF166534)
+                                )
+                            }
+                            TextButton(
+                                onClick = {
+                                    MasterDraftManager.clearDraft(context, currentDraftType)
+                                    draftDismissed = true
+                                    onBack()
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "Discard Draft",
+                                    fontSize = 11.5.sp,
+                                    color = Color(0xFFDC2626),
+                                    fontWeight = FontWeight.SemiBold
                                 )
                             }
                         }

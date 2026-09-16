@@ -1,4 +1,5 @@
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
+import { getMasterDraft, saveMasterDraft, clearMasterDraft } from "../lib/masterDrafts"
 import {
   Building2,
   Plus,
@@ -170,9 +171,75 @@ export function CustomersView() {
   const [purchaserPhotoUri, setPurchaserPhotoUri] = useState<string>("")
   const [cancelChequePhotoUri, setCancelChequePhotoUri] = useState<string>("")
 
+  // Draft state (strictly local browser storage)
+  const [hasDraft, setHasDraft] = useState<boolean>(false)
+
   // Open Add Dialog
   const handleOpenAdd = () => {
     setEditingId(null)
+    const draft = getMasterDraft<any>("customer")
+    if (draft) {
+      setCustomerId(draft.customerId || `CUST-${Math.floor(100 + Math.random() * 900)}`)
+      setName(draft.name || "")
+      setFirmName(draft.firmName || "")
+      setGstin(draft.gstin || "")
+      setPanNumber(draft.panNumber || "")
+      setCity(draft.city || "Ahmedabad")
+      setDistrict(draft.district || "")
+      setState(draft.state || "Gujarat")
+      setPincode(draft.pincode || "")
+      setCustomerType(draft.customerType || "Cash")
+      setCreditDays(String(draft.creditDays || "30"))
+      setCreditLimit(draft.creditLimit ? String(draft.creditLimit) : "")
+      setContacts(draft.contacts && draft.contacts.length > 0 ? draft.contacts : [{ name: "", phone: "", designation: "Owner / Purchaser", email: "" }])
+      setOutlets(draft.outlets && draft.outlets.length > 0 ? draft.outlets : [{ name: "Main Outlet", address: "", pincode: "", mapLink: "" }])
+      setSelectedCategories(draft.selectedCategories || [])
+      setCustomCategory("")
+      setReferredBy(draft.referredBy || "")
+      setAddedByAgentName(user?.displayName || employees[0]?.name || "Himat Staff")
+      setPreferredTransporterName(draft.preferredTransporterName || "")
+      setDob(draft.dob || "")
+      setReligion(draft.religion || "")
+      setNotes(draft.notes || "")
+      setHasDraft(true)
+    } else {
+      setCustomerId(`CUST-${Math.floor(100 + Math.random() * 900)}`)
+      setName("")
+      setFirmName("")
+      setGstin("")
+      setPanNumber("")
+      setCity("Ahmedabad")
+      setDistrict("")
+      setState("Gujarat")
+      setPincode("")
+      setCustomerType("Cash")
+      setCreditDays("30")
+      setCreditLimit("")
+      setContacts([{ name: "", phone: "", designation: "Owner / Purchaser", email: "" }])
+      setOutlets([{ name: "Main Outlet", address: "", pincode: "", mapLink: "" }])
+      setSelectedCategories([])
+      setCustomCategory("")
+      setReferredBy("")
+      setAddedByAgentName(user?.displayName || employees[0]?.name || "Himat Staff")
+      setPreferredTransporterName("")
+      setDob("")
+      setReligion("")
+      setNotes("")
+      setHasDraft(false)
+    }
+    setAadharPhotoUri("")
+    setGstCertPhotoUri("")
+    setPanPhotoUri("")
+    setShopPhotoUri("")
+    setPurchaserPhotoUri("")
+    setCancelChequePhotoUri("")
+    setActiveFormTab("basic")
+    setIsDialogOpen(true)
+  }
+
+  const handleDiscardDraft = () => {
+    clearMasterDraft("customer")
+    setHasDraft(false)
     setCustomerId(`CUST-${Math.floor(100 + Math.random() * 900)}`)
     setName("")
     setFirmName("")
@@ -190,20 +257,63 @@ export function CustomersView() {
     setSelectedCategories([])
     setCustomCategory("")
     setReferredBy("")
-    setAddedByAgentName(user?.displayName || employees[0]?.name || "Himat Staff")
     setPreferredTransporterName("")
     setDob("")
     setReligion("")
     setNotes("")
-    setAadharPhotoUri("")
-    setGstCertPhotoUri("")
-    setPanPhotoUri("")
-    setShopPhotoUri("")
-    setPurchaserPhotoUri("")
-    setCancelChequePhotoUri("")
-    setActiveFormTab("basic")
-    setIsDialogOpen(true)
   }
+
+  // Auto-save local draft
+  useEffect(() => {
+    if (!isDialogOpen || editingId !== null) return
+    if (firmName.trim() || name.trim() || gstin.trim() || (contacts[0] && contacts[0].phone?.trim())) {
+      saveMasterDraft("customer", {
+        customerId,
+        name,
+        firmName,
+        gstin,
+        panNumber,
+        city,
+        district,
+        state,
+        pincode,
+        customerType,
+        creditDays,
+        creditLimit,
+        contacts,
+        outlets,
+        selectedCategories,
+        referredBy,
+        preferredTransporterName,
+        dob,
+        religion,
+        notes,
+      })
+    }
+  }, [
+    isDialogOpen,
+    editingId,
+    customerId,
+    name,
+    firmName,
+    gstin,
+    panNumber,
+    city,
+    district,
+    state,
+    pincode,
+    customerType,
+    creditDays,
+    creditLimit,
+    contacts,
+    outlets,
+    selectedCategories,
+    referredBy,
+    preferredTransporterName,
+    dob,
+    religion,
+    notes,
+  ])
 
   // Open Edit Dialog
   const handleOpenEdit = (c: Customer) => {
@@ -352,6 +462,8 @@ export function CustomersView() {
     }
 
     await saveCustomer(newCustomer)
+    clearMasterDraft("customer")
+    setHasDraft(false)
     setIsDialogOpen(false)
   }
 
@@ -628,6 +740,23 @@ export function CustomersView() {
         description="Standard retailer profile with multi-contacts, multiple shop outlets, KYC documents, and Tally export compliance."
       >
         <div className="space-y-4 pt-1 max-h-[80vh] overflow-y-auto pr-1">
+          {/* Draft Notification Banner */}
+          {hasDraft && !editingId && (
+            <div className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-xs text-emerald-800">
+              <div className="flex items-center gap-2">
+                <Info className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span className="font-medium">Resumed from your local draft</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleDiscardDraft}
+                className="font-semibold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+              >
+                Discard Draft
+              </button>
+            </div>
+          )}
+
           {/* Form Tabs */}
           <Tabs
             value={activeFormTab}
