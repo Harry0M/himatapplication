@@ -175,3 +175,22 @@ export function downloadXmlFile(xmlContent: string, filename: string): void {
   document.body.removeChild(link)
   URL.revokeObjectURL(url)
 }
+
+/**
+ * Export single customer ledger to Tally XML
+ */
+export function exportCustomerToTallyXml(customer: Customer, companyName = "Himat Textile"): void {
+  const xml = generateCustomersTallyXml([customer], companyName)
+  const cleanName = (customer.firmName || customer.name || "Customer").replace(/[^a-zA-Z0-9_-]/g, "_")
+  downloadXmlFile(xml, `Tally_Ledger_${cleanName}.xml`)
+}
+
+/**
+ * Export single supplier ledger to Tally XML
+ */
+export function exportSupplierToTallyXml(supplier: Supplier, companyName = "Himat Textile"): void {
+  const xml = generateSuppliersTallyXml([supplier], companyName)
+  const cleanName = (supplier.firmName || supplier.name || "Supplier").replace(/[^a-zA-Z0-9_-]/g, "_")
+  downloadXmlFile(xml, `Tally_Ledger_${cleanName}.xml`)
+}
+

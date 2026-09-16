@@ -39,7 +39,7 @@ import {
 } from "../lib/pdfReports"
 import { generateSuppliersTallyXml, downloadXmlFile } from "../lib/tallyExport"
 import { FileUpload } from "../components/ui/FileUpload"
-
+import { SupplierDetailView } from "./SupplierDetailView"
 
 export function SuppliersView() {
   const {
@@ -60,10 +60,12 @@ export function SuppliersView() {
   const [showSearch, setShowSearch] = useState<boolean>(false)
   const [typeFilter, setTypeFilter] = useState<string>("all")
 
+  // Master Detail Full Page State
+  const [selectedSupplierId, setSelectedSupplierId] = useState<number | null>(null)
+
   // Modal States
   const [isDialogOpen, setIsDialogOpen] = useState<boolean>(false)
   const [activeFormTab, setActiveFormTab] = useState<string>("basic")
-  const [viewProfileSupplier, setViewProfileSupplier] = useState<Supplier | null>(null)
 
   // Quick inline creation dialogs
   const [isQuickMarketOpen, setIsQuickMarketOpen] = useState<boolean>(false)
@@ -338,8 +340,8 @@ export function SuppliersView() {
   const handleDelete = async (id: number) => {
     if (window.confirm("Are you sure you want to remove this supplier/mill master record?")) {
       await deleteSupplier(id)
-      if (viewProfileSupplier?.id === id) {
-        setViewProfileSupplier(null)
+      if (selectedSupplierId === id) {
+        setSelectedSupplierId(null)
       }
     }
   }
@@ -403,212 +405,248 @@ export function SuppliersView() {
 
   return (
     <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
-              Suppliers & Textile Mills Master
-            </h2>
-            <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-700 border-amber-500/20 font-semibold">
-              {suppliers.length} Suppliers
-            </Badge>
-          </div>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Fabric mills, wholesale suppliers, manufacturing factories & visiting cards.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportTally}
-            className="h-8 px-3 text-xs gap-1.5 border-emerald-600/30 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 font-medium"
-            title="Export all supplier ledgers to Tally Prime / ERP 9 XML"
-          >
-            <FileDown className="h-3.5 w-3.5 text-emerald-600" />
-            <span>Export to Tally XML</span>
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setShowSearch(!showSearch)
-              if (showSearch) setSearch("")
-            }}
-            className="h-8 px-3 text-xs"
-          >
-            <Search className="h-3.5 w-3.5 mr-1" />
-            <span>Search</span>
-          </Button>
-
-          <Button
-            size="sm"
-            onClick={handleOpenAdd}
-            className="h-8 px-3 text-xs font-semibold shadow-sm bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 gap-1"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span>New Supplier</span>
-          </Button>
-        </div>
-      </div>
-
-      {/* Search Input Bar */}
-      {showSearch && (
-        <Card className="p-3 bg-zinc-50/70 dark:bg-zinc-900/70 border-zinc-200/80">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by mill name, brand, contact person, phone, market, GSTIN..."
-              className="pl-9 pr-8 text-xs h-9 bg-white dark:bg-zinc-950"
-              autoFocus
-            />
-            {search && (
-              <button
-                onClick={() => setSearch("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-zinc-800"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-        </Card>
-      )}
-
-      {/* Supplier Card Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredSuppliers.length === 0 ? (
-          <div className="col-span-full p-12 text-center border border-dashed rounded-2xl">
-            <Building2 className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-60" />
-            <h3 className="font-semibold text-sm">No suppliers found</h3>
-            <p className="text-xs text-muted-foreground max-w-sm mx-auto mt-1">
-              {search ? "No mills match your query." : "Register garment manufacturers & fabric suppliers."}
-            </p>
-            <Button onClick={handleOpenAdd} variant="outline" size="sm" className="mt-4 text-xs gap-1.5">
-              <Plus className="h-3.5 w-3.5" />
-              Add First Supplier
-            </Button>
-          </div>
-        ) : (
-          filteredSuppliers.map((sup) => (
-            <Card
-              key={sup.id}
-              className="group relative flex flex-col justify-between p-4 border border-zinc-200/80 dark:border-zinc-800 hover:shadow-md transition-all"
-            >
-              <div>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-700 font-bold text-sm dark:bg-amber-500/20 dark:text-amber-400">
-                      {(sup.firmName || sup.name || "S")[0].toUpperCase()}
-                    </div>
-                    <div className="min-w-0">
-                      <h4 className="font-bold text-sm text-zinc-900 dark:text-zinc-50 truncate">
-                        {sup.firmName || sup.name}
-                      </h4>
-                      <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 truncate">
-                        <User className="h-3 w-3 shrink-0" />
-                        <span>{sup.contactPerson || "In-charge"}</span>
-                        {sup.supplierId && (
-                          <span className="font-mono text-[10px] text-zinc-400 font-semibold">
-                            • {sup.supplierId}
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-
-                  <Badge variant="outline" className="text-[10px] uppercase font-bold shrink-0">
-                    {sup.type || "Supplier"}
-                  </Badge>
-                </div>
-
-                <div className="mt-3.5 space-y-1.5 text-xs text-zinc-600 dark:text-zinc-300">
-                  <div className="flex items-center gap-1.5">
-                    <Compass className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                    <span className="truncate font-medium text-amber-800 dark:text-amber-400">
-                      {sup.marketName || sup.marketArea || "Ahmedabad Market"}
-                    </span>
-                  </div>
-
-                  {sup.brand && (
-                    <div className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300 font-semibold">
-                      <Tag className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                      <span>Brand: {sup.brand}</span>
-                    </div>
-                  )}
-
-                  {sup.phone && (
-                    <div className="flex items-center gap-1.5 font-medium text-zinc-800 dark:text-zinc-200">
-                      <Phone className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                      <span>{sup.phone}</span>
-                    </div>
-                  )}
-
-                  {sup.priceRange && (
-                    <div className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 pt-0.5">
-                      Price Range: {sup.priceRange}
-                    </div>
-                  )}
-
-                  {sup.gstin && (
-                    <div className="text-[11px] font-mono text-zinc-400">
-                      GST: {sup.gstin}
-                    </div>
-                  )}
-                </div>
+      {selectedSupplierId !== null ? (
+        <SupplierDetailView
+          supplierId={selectedSupplierId}
+          onBack={() => setSelectedSupplierId(null)}
+          onEdit={(sup) => handleOpenEdit(sup)}
+        />
+      ) : (
+        <>
+          {/* Top Header */}
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+                  Suppliers & Textile Mills Master
+                </h2>
+                <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-700 border-amber-500/20 font-semibold">
+                  {suppliers.length} Suppliers
+                </Badge>
               </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Fabric mills, wholesale suppliers, manufacturing factories & visiting cards.
+              </p>
+            </div>
 
-              {/* Actions */}
-              <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between gap-1.5">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleOpenSupplierInvoice(sup)}
-                  className="h-7 text-xs px-2 text-amber-700 dark:text-amber-400 font-medium"
-                  title="Generate Purchase Order Copy"
-                >
-                  <Printer className="h-3 w-3 mr-1" />
-                  PO Copy
-                </Button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportTally}
+                className="h-8 px-3 text-xs gap-1.5 border-emerald-600/30 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 font-medium"
+                title="Export all supplier ledgers to Tally Prime / ERP 9 XML"
+              >
+                <FileDown className="h-3.5 w-3.5 text-emerald-600" />
+                <span>Export to Tally XML</span>
+              </Button>
 
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setViewProfileSupplier(sup)}
-                  className="flex-1 h-7 text-xs font-medium"
-                >
-                  <Info className="h-3 w-3 mr-1" />
-                  Full Profile
-                </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setShowSearch(!showSearch)
+                  if (showSearch) setSearch("")
+                }}
+                className="h-8 px-3 text-xs"
+              >
+                <Search className="h-3.5 w-3.5 mr-1" />
+                <span>Search</span>
+              </Button>
 
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => handleOpenEdit(sup)}
-                  className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900"
-                  title="Edit Supplier"
-                >
-                  <Edit2 className="h-3.5 w-3.5" />
-                </Button>
+              <Button
+                size="sm"
+                onClick={handleOpenAdd}
+                className="h-8 px-3 text-xs font-semibold shadow-sm bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 gap-1"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>New Supplier</span>
+              </Button>
+            </div>
+          </div>
 
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => handleDelete(sup.id)}
-                  className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
-                  title="Delete Supplier"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
+          {/* Search Input Bar */}
+          {showSearch && (
+            <Card className="p-3 bg-zinc-50/70 dark:bg-zinc-900/70 border-zinc-200/80">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search by firm name, contact, brand, market area, GSTIN, products..."
+                  className="pl-9 pr-8 text-xs h-9 bg-white dark:bg-zinc-950"
+                  autoFocus
+                />
+                {search && (
+                  <button
+                    onClick={() => setSearch("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-zinc-800"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             </Card>
-          ))
-        )}
-      </div>
+          )}
+
+          {/* Supplier Type Filter Tabs */}
+          <div className="flex gap-2 border-b border-zinc-200 dark:border-zinc-800 pb-2 overflow-x-auto text-xs">
+            {[
+              { id: "all", label: "All Suppliers" },
+              { id: "Manufacturer", label: "Fabric Mills / Manufacturers" },
+              { id: "Wholesaler", label: "Wholesalers / Traders" },
+              { id: "Processor", label: "Dyeing & Processors" },
+              { id: "Jobworker", label: "Job Workers" },
+            ].map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTypeFilter(t.id)}
+                className={`px-3 py-1.5 rounded-lg font-medium whitespace-nowrap transition-colors ${
+                  typeFilter === t.id
+                    ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-sm"
+                    : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Suppliers Card Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredSuppliers.length === 0 ? (
+              <div className="col-span-full p-12 text-center border border-dashed rounded-2xl">
+                <Building2 className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-60" />
+                <h3 className="font-semibold text-sm">No suppliers found</h3>
+                <p className="text-xs text-muted-foreground max-w-sm mx-auto mt-1">
+                  {search ? "No mills match your filter criteria." : "Start registering fabric suppliers & mills."}
+                </p>
+                <Button onClick={handleOpenAdd} variant="outline" size="sm" className="mt-4 text-xs gap-1.5">
+                  <Plus className="h-3.5 w-3.5" />
+                  Add First Supplier
+                </Button>
+              </div>
+            ) : (
+              filteredSuppliers.map((sup) => (
+                <Card
+                  key={sup.id}
+                  className="group relative flex flex-col justify-between p-4 border border-zinc-200/80 dark:border-zinc-800 hover:shadow-md transition-all"
+                >
+                  <div
+                    className="cursor-pointer"
+                    onClick={() => setSelectedSupplierId(sup.id)}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-700 font-bold text-sm dark:bg-amber-500/20 dark:text-amber-400 group-hover:bg-amber-600 group-hover:text-white transition-colors">
+                          {(sup.firmName || sup.name || "S")[0].toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="font-bold text-sm text-zinc-900 dark:text-zinc-50 truncate group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+                            {sup.firmName || sup.name}
+                          </h4>
+                          <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 truncate">
+                            <User className="h-3 w-3 shrink-0" />
+                            <span>{sup.contactPerson || "In-charge"}</span>
+                            {sup.supplierId && (
+                              <span className="font-mono text-[10px] text-zinc-400 font-semibold">
+                                • {sup.supplierId}
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+
+                      <Badge variant="outline" className="text-[10px] uppercase font-bold shrink-0">
+                        {sup.type || "Supplier"}
+                      </Badge>
+                    </div>
+
+                    <div className="mt-3.5 space-y-1.5 text-xs text-zinc-600 dark:text-zinc-300">
+                      <div className="flex items-center gap-1.5">
+                        <Compass className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                        <span className="truncate font-medium text-amber-800 dark:text-amber-400">
+                          {sup.marketName || sup.marketArea || "Ahmedabad Market"}
+                        </span>
+                      </div>
+
+                      {sup.brand && (
+                        <div className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300 font-semibold">
+                          <Tag className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                          <span>Brand: {sup.brand}</span>
+                        </div>
+                      )}
+
+                      {sup.phone && (
+                        <div className="flex items-center gap-1.5 font-medium text-zinc-800 dark:text-zinc-200">
+                          <Phone className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                          <span>{sup.phone}</span>
+                        </div>
+                      )}
+
+                      {sup.priceRange && (
+                        <div className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 pt-0.5">
+                          Price Range: {sup.priceRange}
+                        </div>
+                      )}
+
+                      {sup.gstin && (
+                        <div className="text-[11px] font-mono text-zinc-400">
+                          GST: {sup.gstin}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleOpenSupplierInvoice(sup)}
+                      className="h-7 text-xs px-2 text-amber-700 dark:text-amber-400 font-medium"
+                      title="Generate Purchase Order Copy"
+                    >
+                      <Printer className="h-3 w-3 mr-1" />
+                      PO Copy
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setSelectedSupplierId(sup.id)}
+                      className="flex-1 h-7 text-xs font-medium"
+                    >
+                      <Info className="h-3 w-3 mr-1" />
+                      Full Profile
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleOpenEdit(sup)}
+                      className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900"
+                      title="Edit Supplier"
+                    >
+                      <Edit2 className="h-3.5 w-3.5" />
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleDelete(sup.id)}
+                      className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
+                      title="Delete Supplier"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </Card>
+              ))
+            )}
+          </div>
+        </>
+      )}
 
       {/* Add / Edit Supplier Multi-Tab Dialog */}
       <Dialog
@@ -1210,102 +1248,6 @@ export function SuppliersView() {
           </div>
         </form>
       </Dialog>
-
-      {/* Profile Modal */}
-      {viewProfileSupplier && (
-        <Dialog
-          open={!!viewProfileSupplier}
-          onOpenChange={(open) => !open && setViewProfileSupplier(null)}
-          title={`${viewProfileSupplier.firmName || viewProfileSupplier.name}`}
-          description={`Supplier ID: ${viewProfileSupplier.supplierId || "SUP"} • Market: ${viewProfileSupplier.marketName || viewProfileSupplier.marketArea || "Ahmedabad"}`}
-        >
-          <div className="space-y-4 pt-1 max-h-[70vh] overflow-y-auto pr-1 text-xs">
-            <div className="rounded-xl p-3 bg-zinc-100/70 dark:bg-zinc-900 border border-zinc-200/70 dark:border-zinc-800 flex items-center justify-between">
-              <div>
-                <p className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
-                  {viewProfileSupplier.firmName || viewProfileSupplier.name}
-                </p>
-                <p className="text-zinc-600 dark:text-zinc-400 font-medium mt-0.5">
-                  Contact: <strong>{viewProfileSupplier.contactPerson || "Owner"}</strong> • Market: <strong>{viewProfileSupplier.marketName || viewProfileSupplier.marketArea}</strong>
-                </p>
-              </div>
-              <Badge variant="outline" className="font-mono text-xs font-bold">
-                {viewProfileSupplier.supplierId}
-              </Badge>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
-              <div className="p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
-                <span className="text-[10px] text-muted-foreground">GSTIN</span>
-                <p className="font-mono font-bold truncate">
-                  {viewProfileSupplier.gstin || viewProfileSupplier.gstNumber || "Unregistered"}
-                </p>
-              </div>
-              <div className="p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
-                <span className="text-[10px] text-muted-foreground">Brand</span>
-                <p className="font-bold truncate">
-                  {viewProfileSupplier.brand || "Unbranded / Direct"}
-                </p>
-              </div>
-              <div className="p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
-                <span className="text-[10px] text-muted-foreground">Price Range</span>
-                <p className="font-bold truncate">
-                  {viewProfileSupplier.priceRange || "On Request"}
-                </p>
-              </div>
-            </div>
-
-            {viewProfileSupplier.productsMade && (
-              <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800">
-                <span className="font-semibold text-zinc-800 dark:text-zinc-200">What They Make:</span>
-                <p className="mt-1 font-medium text-zinc-700 dark:text-zinc-300">{viewProfileSupplier.productsMade}</p>
-              </div>
-            )}
-
-            {/* Cloud Verification Photos */}
-            {Boolean(viewProfileSupplier.visitingCardPhotoUri || viewProfileSupplier.shopPhotoUri) && (
-              <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 space-y-2.5">
-                <span className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
-                  <Store className="h-3.5 w-3.5 text-amber-600" />
-                  <span>Cloud Verification Photos</span>
-                </span>
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { label: "Visiting Card", uri: viewProfileSupplier.visitingCardPhotoUri },
-                    { label: "Shop / Mill Front", uri: viewProfileSupplier.shopPhotoUri },
-                  ].filter(doc => Boolean(doc.uri)).map((doc, idx) => (
-                    <a
-                      key={idx}
-                      href={doc.uri}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="group relative block rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden bg-zinc-50 dark:bg-zinc-900 hover:border-indigo-400 transition-colors p-1"
-                    >
-                      <div className="h-24 w-full overflow-hidden rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
-                        <img
-                          src={doc.uri}
-                          alt={doc.label}
-                          className="h-full w-full object-cover group-hover:scale-105 transition-transform"
-                          onError={(e) => {
-                            (e.target as HTMLElement).style.display = "none"
-                          }}
-                        />
-                      </div>
-                      <p className="mt-1 text-[11px] font-semibold text-zinc-800 dark:text-zinc-200 text-center truncate">
-                        {doc.label}
-                      </p>
-                      <p className="text-[10px] text-indigo-600 dark:text-indigo-400 text-center flex items-center justify-center gap-0.5">
-                        <span>View</span> <ExternalLink className="h-2.5 w-2.5" />
-                      </p>
-                    </a>
-                  ))}
-                </div>
-              </div>
-            )}
-
-          </div>
-        </Dialog>
-      )}
 
       {/* Invoice Modal */}
       <ReportViewerModal

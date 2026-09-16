@@ -43,7 +43,7 @@ import {
 } from "../lib/pdfReports"
 import { generateCustomersTallyXml, downloadXmlFile } from "../lib/tallyExport"
 import { FileUpload } from "../components/ui/FileUpload"
-
+import { CustomerDetailView } from "./CustomerDetailView"
 
 export function CustomersView() {
   const { user } = useAuth()
@@ -62,10 +62,12 @@ export function CustomersView() {
   const [search, setSearch] = useState<string>("")
   const [showSearch, setShowSearch] = useState<boolean>(false)
 
+  // Master Detail Full Page State
+  const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null)
+
   // Modal States
   const [isDialogOpen, setIsDialogOpen] = useState<boolean>(false)
   const [activeFormTab, setActiveFormTab] = useState<string>("basic")
-  const [viewProfileCustomer, setViewProfileCustomer] = useState<Customer | null>(null)
 
   // Report Modal State
   const [reportModal, setReportModal] = useState<{
@@ -355,8 +357,8 @@ export function CustomersView() {
   const handleDelete = async (id: number) => {
     if (window.confirm("Are you sure you want to remove this customer master record?")) {
       await deleteCustomer(id)
-      if (viewProfileCustomer?.id === id) {
-        setViewProfileCustomer(null)
+      if (selectedCustomerId === id) {
+        setSelectedCustomerId(null)
       }
     }
   }
@@ -388,221 +390,234 @@ export function CustomersView() {
 
   return (
     <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
-              Customer Master & CRM Directory
-            </h2>
-            <Badge variant="outline" className="text-xs bg-indigo-500/10 text-indigo-700 border-indigo-500/20 font-semibold">
-              {customers.length} Retailers
-            </Badge>
-          </div>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Manage buyer shops across India, multi-outlets, KYC documents, credit rules, and Tally ledgers.
-          </p>
-        </div>
+      {selectedCustomerId !== null ? (
+        <CustomerDetailView
+          customerId={selectedCustomerId}
+          onBack={() => setSelectedCustomerId(null)}
+          onEdit={(cust) => handleOpenEdit(cust)}
+        />
+      ) : (
+        <>
+          {/* Top Header */}
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+                  Customer Master & CRM Directory
+                </h2>
+                <Badge variant="outline" className="text-xs bg-indigo-500/10 text-indigo-700 border-indigo-500/20 font-semibold">
+                  {customers.length} Retailers
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Manage buyer shops across India, multi-outlets, KYC documents, credit rules, and Tally ledgers.
+              </p>
+            </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportTally}
-            className="h-8 px-3 text-xs gap-1.5 border-emerald-600/30 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 font-medium"
-            title="Export all customer ledgers to Tally Prime / ERP 9 XML"
-          >
-            <FileDown className="h-3.5 w-3.5 text-emerald-600" />
-            <span>Export to Tally XML</span>
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setShowSearch(!showSearch)
-              if (showSearch) setSearch("")
-            }}
-            className="h-8 px-3 text-xs"
-          >
-            <Search className="h-3.5 w-3.5 mr-1" />
-            <span>Search</span>
-          </Button>
-
-          <Button
-            size="sm"
-            onClick={handleOpenAdd}
-            className="h-8 px-3 text-xs font-semibold shadow-sm bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 gap-1"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span>New Customer</span>
-          </Button>
-        </div>
-      </div>
-
-      {/* Search Input Bar */}
-      {showSearch && (
-        <Card className="p-3 bg-zinc-50/70 dark:bg-zinc-900/70 border-zinc-200/80">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by firm name, owner name, ID, phone, GSTIN, city, state..."
-              className="pl-9 pr-8 text-xs h-9 bg-white dark:bg-zinc-950"
-              autoFocus
-            />
-            {search && (
-              <button
-                onClick={() => setSearch("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-zinc-800"
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportTally}
+                className="h-8 px-3 text-xs gap-1.5 border-emerald-600/30 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 font-medium"
+                title="Export all customer ledgers to Tally Prime / ERP 9 XML"
               >
-                <X className="h-4 w-4" />
-              </button>
+                <FileDown className="h-3.5 w-3.5 text-emerald-600" />
+                <span>Export to Tally XML</span>
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setShowSearch(!showSearch)
+                  if (showSearch) setSearch("")
+                }}
+                className="h-8 px-3 text-xs"
+              >
+                <Search className="h-3.5 w-3.5 mr-1" />
+                <span>Search</span>
+              </Button>
+
+              <Button
+                size="sm"
+                onClick={handleOpenAdd}
+                className="h-8 px-3 text-xs font-semibold shadow-sm bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 gap-1"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>New Customer</span>
+              </Button>
+            </div>
+          </div>
+
+          {/* Search Input Bar */}
+          {showSearch && (
+            <div className="flex items-center gap-2 p-3 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-200 dark:border-zinc-800">
+              <Search className="h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by shop name, owner, city, GST, garment categories, phone..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="border-none bg-transparent shadow-none focus-visible:ring-0 text-xs h-7"
+                autoFocus
+              />
+              {search && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSearch("")}
+                  className="h-6 w-6 p-0 text-muted-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* Customer Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredCustomers.length === 0 ? (
+              <div className="col-span-full p-12 text-center border border-dashed rounded-2xl">
+                <Store className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-60" />
+                <h3 className="font-semibold text-sm">No customer records found</h3>
+                <p className="text-xs text-muted-foreground max-w-sm mx-auto mt-1">
+                  {search ? "No retailers match your search filters." : "Start registering buyer retail shops."}
+                </p>
+                <Button onClick={handleOpenAdd} variant="outline" size="sm" className="mt-4 text-xs gap-1.5">
+                  <Plus className="h-3.5 w-3.5" />
+                  Add First Customer
+                </Button>
+              </div>
+            ) : (
+              filteredCustomers.map((cust) => {
+                const hasGst = Boolean(cust.gstin || cust.gstNumber)
+                const outletCount = (cust.outlets && cust.outlets.length) || cust.shopCount || 1
+                const primaryPhone = cust.phone || (cust.contacts && cust.contacts[0]?.phone) || ""
+
+                return (
+                  <Card
+                    key={cust.id}
+                    className="group relative flex flex-col justify-between p-4 border border-zinc-200/80 dark:border-zinc-800 hover:shadow-md transition-all"
+                  >
+                    <div
+                      className="cursor-pointer"
+                      onClick={() => setSelectedCustomerId(cust.id)}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-700 font-bold text-sm dark:bg-indigo-500/20 dark:text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                            {(cust.firmName || cust.name || "C")[0].toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="font-bold text-sm text-zinc-900 dark:text-zinc-50 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                              {cust.firmName || cust.name}
+                            </h4>
+                            <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 truncate">
+                              <User className="h-3 w-3 shrink-0" />
+                              <span>{cust.name || "Proprietor"}</span>
+                              {cust.customerId && (
+                                <span className="font-mono text-[10px] text-zinc-400 font-semibold">
+                                  • {cust.customerId}
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+
+                        <Badge
+                          variant={cust.customerType === "Credit" ? "warning" : "default"}
+                          className="text-[10px] uppercase font-bold shrink-0"
+                        >
+                          {cust.customerType || "Cash"}
+                        </Badge>
+                      </div>
+
+                      <div className="mt-3.5 space-y-1.5 text-xs text-zinc-600 dark:text-zinc-300">
+                        <div className="flex items-center gap-1.5">
+                          <MapPin className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                          <span className="truncate">
+                            {cust.city || "Ahmedabad"}{cust.state ? `, ${cust.state}` : ""}
+                            {cust.pincode ? ` (${cust.pincode})` : ""}
+                          </span>
+                        </div>
+
+                        {primaryPhone && (
+                          <div className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-1.5 font-medium text-zinc-800 dark:text-zinc-200">
+                              <Phone className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                              <span>{primaryPhone}</span>
+                            </div>
+                            {cust.contacts && cust.contacts.length > 1 && (
+                              <span className="text-[10px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 px-1.5 py-0.5 rounded-full">
+                                +{cust.contacts.length - 1} lines
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between text-[11px] pt-1 text-muted-foreground">
+                          <span>{outletCount} {outletCount === 1 ? "Outlet" : "Outlets"}</span>
+                          {hasGst ? (
+                            <span className="font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
+                              GST: {cust.gstin || cust.gstNumber}
+                            </span>
+                          ) : (
+                            <span className="italic text-zinc-400">Unregistered</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Bottom Actions */}
+                    <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleGenerateCustomerReport(cust)}
+                        className="h-7 text-xs px-2 text-indigo-600 dark:text-indigo-400 font-medium"
+                        title="View Day Report & WhatsApp Copy"
+                      >
+                        <Printer className="h-3 w-3 mr-1" />
+                        Report
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setSelectedCustomerId(cust.id)}
+                        className="flex-1 h-7 text-xs font-medium"
+                      >
+                        <Info className="h-3 w-3 mr-1" />
+                        Full Profile
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleOpenEdit(cust)}
+                        className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900"
+                        title="Edit Customer"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDelete(cust.id)}
+                        className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
+                        title="Delete Customer"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </Card>
+                )
+              })
             )}
           </div>
-        </Card>
+        </>
       )}
-
-      {/* Customers Card Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredCustomers.length === 0 ? (
-          <div className="col-span-full p-12 text-center border border-dashed rounded-2xl">
-            <Store className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-60" />
-            <h3 className="font-semibold text-sm">No customer records found</h3>
-            <p className="text-xs text-muted-foreground max-w-sm mx-auto mt-1">
-              {search ? "No retailers match your search filters." : "Start registering buyer retail shops."}
-            </p>
-            <Button onClick={handleOpenAdd} variant="outline" size="sm" className="mt-4 text-xs gap-1.5">
-              <Plus className="h-3.5 w-3.5" />
-              Add First Customer
-            </Button>
-          </div>
-        ) : (
-          filteredCustomers.map((cust) => {
-            const hasGst = Boolean(cust.gstin || cust.gstNumber)
-            const outletCount = (cust.outlets && cust.outlets.length) || cust.shopCount || 1
-            const primaryPhone = cust.phone || (cust.contacts && cust.contacts[0]?.phone) || ""
-
-            return (
-              <Card
-                key={cust.id}
-                className="group relative flex flex-col justify-between p-4 border border-zinc-200/80 dark:border-zinc-800 hover:shadow-md transition-all"
-              >
-                <div>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-700 font-bold text-sm dark:bg-indigo-500/20 dark:text-indigo-400">
-                        {(cust.firmName || cust.name || "C")[0].toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <h4 className="font-bold text-sm text-zinc-900 dark:text-zinc-50 truncate">
-                          {cust.firmName || cust.name}
-                        </h4>
-                        <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 truncate">
-                          <User className="h-3 w-3 shrink-0" />
-                          <span>{cust.name || "Proprietor"}</span>
-                          {cust.customerId && (
-                            <span className="font-mono text-[10px] text-zinc-400 font-semibold">
-                              • {cust.customerId}
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                    </div>
-
-                    <Badge
-                      variant={cust.customerType === "Credit" ? "warning" : "default"}
-                      className="text-[10px] uppercase font-bold shrink-0"
-                    >
-                      {cust.customerType || "Cash"}
-                    </Badge>
-                  </div>
-
-                  <div className="mt-3.5 space-y-1.5 text-xs text-zinc-600 dark:text-zinc-300">
-                    <div className="flex items-center gap-1.5">
-                      <MapPin className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                      <span className="truncate">
-                        {cust.city || "Ahmedabad"}{cust.state ? `, ${cust.state}` : ""}
-                        {cust.pincode ? ` (${cust.pincode})` : ""}
-                      </span>
-                    </div>
-
-                    {primaryPhone && (
-                      <div className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-1.5 font-medium text-zinc-800 dark:text-zinc-200">
-                          <Phone className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                          <span>{primaryPhone}</span>
-                        </div>
-                        {cust.contacts && cust.contacts.length > 1 && (
-                          <span className="text-[10px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 px-1.5 py-0.5 rounded-full">
-                            +{cust.contacts.length - 1} lines
-                          </span>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-between text-[11px] pt-1 text-muted-foreground">
-                      <span>{outletCount} {outletCount === 1 ? "Outlet" : "Outlets"}</span>
-                      {hasGst ? (
-                        <span className="font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
-                          GST: {cust.gstin || cust.gstNumber}
-                        </span>
-                      ) : (
-                        <span className="italic text-zinc-400">Unregistered</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Bottom Actions */}
-                <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between gap-1.5">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleGenerateCustomerReport(cust)}
-                    className="h-7 text-xs px-2 text-indigo-600 dark:text-indigo-400 font-medium"
-                    title="View Day Report & WhatsApp Copy"
-                  >
-                    <Printer className="h-3 w-3 mr-1" />
-                    Report
-                  </Button>
-
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setViewProfileCustomer(cust)}
-                    className="flex-1 h-7 text-xs font-medium"
-                  >
-                    <Info className="h-3 w-3 mr-1" />
-                    Full Profile
-                  </Button>
-
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleOpenEdit(cust)}
-                    className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900"
-                    title="Edit Customer"
-                  >
-                    <Edit2 className="h-3.5 w-3.5" />
-                  </Button>
-
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleDelete(cust.id)}
-                    className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
-                    title="Delete Customer"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </Card>
-            )
-          })
-        )}
-      </div>
 
       {/* Add / Edit Customer Multi-Tab Dialog */}
       <Dialog
@@ -1228,152 +1243,6 @@ export function CustomersView() {
           </div>
         </div>
       </Dialog>
-
-      {/* View Full Profile Modal */}
-      {viewProfileCustomer && (
-        <Dialog
-          open={!!viewProfileCustomer}
-          onOpenChange={(open) => !open && setViewProfileCustomer(null)}
-          title={`${viewProfileCustomer.firmName || viewProfileCustomer.name}`}
-          description={`Customer ID: ${viewProfileCustomer.customerId || "CUST"} • Location: ${viewProfileCustomer.city || "Ahmedabad"}`}
-        >
-          <div className="space-y-4 pt-1 max-h-[70vh] overflow-y-auto pr-1 text-xs">
-            <div className="rounded-xl p-3 bg-zinc-100/70 dark:bg-zinc-900 border border-zinc-200/70 dark:border-zinc-800 flex items-center justify-between">
-              <div>
-                <p className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
-                  {viewProfileCustomer.firmName || viewProfileCustomer.name}
-                </p>
-                <p className="text-zinc-600 dark:text-zinc-400 font-medium mt-0.5">
-                  Owner: <strong>{viewProfileCustomer.name}</strong> • City: <strong>{viewProfileCustomer.city || "Ahmedabad"}</strong>
-                </p>
-              </div>
-              <Badge variant="outline" className="font-mono text-xs font-bold">
-                {viewProfileCustomer.customerId}
-              </Badge>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
-              <div className="p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
-                <span className="text-[10px] text-muted-foreground">GSTIN</span>
-                <p className="font-mono font-bold truncate">
-                  {viewProfileCustomer.gstin || viewProfileCustomer.gstNumber || "Unregistered"}
-                </p>
-              </div>
-              <div className="p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
-                <span className="text-[10px] text-muted-foreground">Terms</span>
-                <p className="font-bold">
-                  {viewProfileCustomer.customerType || "Cash"} ({viewProfileCustomer.creditDays || 30} Days)
-                </p>
-              </div>
-              <div className="p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
-                <span className="text-[10px] text-muted-foreground">Referred By</span>
-                <p className="font-bold truncate">
-                  {viewProfileCustomer.referredBy || "Direct Walk-in"}
-                </p>
-              </div>
-            </div>
-
-            {/* Outlets List */}
-            <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 space-y-2">
-              <span className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
-                <Store className="h-3.5 w-3.5 text-emerald-600" />
-                <span>Shop Outlets & Addresses</span>
-              </span>
-              <div className="space-y-2">
-                {viewProfileCustomer.outlets && viewProfileCustomer.outlets.length > 0 ? (
-                  viewProfileCustomer.outlets.map((o, idx) => (
-                    <div key={idx} className="bg-zinc-50 dark:bg-zinc-900 p-2.5 rounded-lg space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-zinc-900 dark:text-zinc-100">{o.name}</span>
-                        {o.pincode && <span className="font-mono text-[10px] text-muted-foreground">PIN: {o.pincode}</span>}
-                      </div>
-                      <p className="text-zinc-600 dark:text-zinc-400">{o.address}</p>
-                      {o.mapLink && (
-                        <a href={o.mapLink} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline flex items-center gap-1 text-[11px] pt-0.5">
-                          <Navigation className="h-3 w-3" /> View on Google Maps
-                        </a>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <div className="bg-zinc-50 dark:bg-zinc-900 p-2.5 rounded-lg">
-                    <p>{viewProfileCustomer.shopAddress || viewProfileCustomer.address || "No address on file"}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Garments & Preferences */}
-            <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 space-y-2">
-              <span className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
-                <Tag className="h-3.5 w-3.5 text-amber-600" />
-                <span>Garment Types Dealt With</span>
-              </span>
-              <p className="font-medium text-zinc-700 dark:text-zinc-300">
-                {viewProfileCustomer.garmentTypes || viewProfileCustomer.preferredCategories || "General Apparel"}
-              </p>
-              {viewProfileCustomer.preferredTransporterName && (
-                <p className="text-muted-foreground text-[11px]">
-                  Transport Preference: <strong>{viewProfileCustomer.preferredTransporterName}</strong>
-                </p>
-              )}
-            </div>
-
-            {/* KYC Documents & Cloud Photos */}
-            {Boolean(
-              viewProfileCustomer.aadharPhotoUri ||
-              viewProfileCustomer.gstCertPhotoUri ||
-              viewProfileCustomer.panPhotoUri ||
-              viewProfileCustomer.shopPhotoUri ||
-              viewProfileCustomer.purchaserPhotoUri ||
-              viewProfileCustomer.cancelChequePhotoUri
-            ) && (
-              <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 space-y-2.5">
-                <span className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
-                  <ShieldCheck className="h-3.5 w-3.5 text-blue-600" />
-                  <span>Cloud KYC Documents & Photos</span>
-                </span>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                  {[
-                    { label: "Aadhaar Card", uri: viewProfileCustomer.aadharPhotoUri },
-                    { label: "GST Certificate", uri: viewProfileCustomer.gstCertPhotoUri },
-                    { label: "PAN Card", uri: viewProfileCustomer.panPhotoUri },
-                    { label: "Shop Front", uri: viewProfileCustomer.shopPhotoUri },
-                    { label: "Purchaser Pic", uri: viewProfileCustomer.purchaserPhotoUri },
-                    { label: "Cancelled Cheque", uri: viewProfileCustomer.cancelChequePhotoUri },
-                  ].filter(doc => Boolean(doc.uri)).map((doc, idx) => (
-                    <a
-                      key={idx}
-                      href={doc.uri}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="group relative block rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden bg-zinc-50 dark:bg-zinc-900 hover:border-indigo-400 transition-colors p-1"
-                    >
-                      <div className="h-20 w-full overflow-hidden rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
-                        <img
-                          src={doc.uri}
-                          alt={doc.label}
-                          className="h-full w-full object-cover group-hover:scale-105 transition-transform"
-                          onError={(e) => {
-                            (e.target as HTMLElement).style.display = "none"
-                          }}
-                        />
-                      </div>
-                      <p className="mt-1 text-[10.5px] font-semibold text-zinc-800 dark:text-zinc-200 text-center truncate">
-                        {doc.label}
-                      </p>
-                      <p className="text-[9.5px] text-indigo-600 dark:text-indigo-400 text-center flex items-center justify-center gap-0.5">
-                        <span>View</span> <ExternalLink className="h-2.5 w-2.5" />
-                      </p>
-                    </a>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </Dialog>
-
-      )}
 
       {/* Report Modal */}
       <ReportViewerModal
