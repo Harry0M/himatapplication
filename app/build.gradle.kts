@@ -104,11 +104,13 @@ dependencies {
   implementation(libs.androidx.navigation.compose)
   implementation(libs.androidx.room.ktx)
   implementation(libs.androidx.room.runtime)
-  // implementation(libs.coil.compose)
+  implementation(libs.coil.compose)
   implementation(libs.converter.moshi)
   implementation(libs.firebase.ai)
-  // Firebase Realtime Database
+  // Firebase Realtime Database and Cloud Storage
   implementation(libs.firebase.database)
+  implementation(libs.firebase.storage)
+
 
   // Firebase Auth and Google Sign-In via Credential Manager
   implementation(libs.firebase.auth)

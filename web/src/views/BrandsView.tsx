@@ -16,6 +16,7 @@ import { Button } from "../components/ui/Button"
 import { Badge } from "../components/ui/Badge"
 import { Dialog } from "../components/ui/Dialog"
 import { Input } from "../components/ui/Input"
+import { FileUpload } from "../components/ui/FileUpload"
 import { Brand } from "../types"
 import { GARMENT_CATEGORIES } from "../lib/constants"
 
@@ -30,7 +31,9 @@ export function BrandsView() {
   const [manufacturerId, setManufacturerId] = useState<number | "">("")
   const [category, setCategory] = useState("Denim & Jeans")
   const [description, setDescription] = useState("")
+  const [logoPhotoUri, setLogoPhotoUri] = useState("")
   const [isActive, setIsActive] = useState(true)
+
 
   const openAddModal = () => {
     setEditingBrand(null)
@@ -38,6 +41,7 @@ export function BrandsView() {
     setManufacturerId("")
     setCategory(GARMENT_CATEGORIES[0] || "Denim & Jeans")
     setDescription("")
+    setLogoPhotoUri("")
     setIsActive(true)
     setIsModalOpen(true)
   }
@@ -48,6 +52,7 @@ export function BrandsView() {
     setManufacturerId(b.manufacturerId || "")
     setCategory(b.category || GARMENT_CATEGORIES[0] || "Denim & Jeans")
     setDescription(b.description || "")
+    setLogoPhotoUri(b.logoPhotoUri || "")
     setIsActive(b.isActive ?? true)
     setIsModalOpen(true)
   }
@@ -64,6 +69,7 @@ export function BrandsView() {
       manufacturerId: manufacturerId ? Number(manufacturerId) : null,
       manufacturerName: selectedSupplier?.firmName || selectedSupplier?.name || "",
       category,
+      logoPhotoUri,
       description: description.trim(),
       isActive,
       createdAt: editingBrand?.createdAt || Date.now(),
@@ -72,6 +78,7 @@ export function BrandsView() {
     await saveBrand(brandPayload)
     setIsModalOpen(false)
   }
+
 
   const handleDelete = async (id: number) => {
     if (confirm("Are you sure you want to delete this brand?")) {
@@ -145,8 +152,19 @@ export function BrandsView() {
             <Card key={brand.id} className="group relative overflow-hidden border border-zinc-200/80 p-4 transition-all hover:shadow-md dark:border-zinc-800">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-700 font-bold text-base dark:bg-amber-500/20 dark:text-amber-400">
-                    {brand.brandName ? brand.brandName[0].toUpperCase() : "B"}
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-700 font-bold text-base dark:bg-amber-500/20 dark:text-amber-400 overflow-hidden border border-amber-200/50 dark:border-amber-800/50">
+                    {brand.logoPhotoUri ? (
+                      <img
+                        src={brand.logoPhotoUri}
+                        alt={brand.brandName}
+                        className="h-full w-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = "none"
+                        }}
+                      />
+                    ) : (
+                      brand.brandName ? brand.brandName[0].toUpperCase() : "B"
+                    )}
                   </div>
                   <div>
                     <h4 className="text-sm font-bold text-zinc-900 dark:text-zinc-50 line-clamp-1">
@@ -157,6 +175,7 @@ export function BrandsView() {
                     </span>
                   </div>
                 </div>
+
 
                 <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
                   <Button
@@ -255,6 +274,14 @@ export function BrandsView() {
             </select>
           </div>
 
+          <FileUpload
+            label="Brand Logo / Monogram Photo"
+            folder={`brands/${(brandName || "unnamed").trim().replace(/\s+/g, "_")}`}
+            prefix="logo"
+            value={logoPhotoUri}
+            onChange={setLogoPhotoUri}
+          />
+
           <div>
             <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
               Brand Notes & Description
@@ -267,6 +294,7 @@ export function BrandsView() {
               className="w-full rounded-md border border-zinc-300 bg-white p-2 text-xs text-zinc-900 focus:border-zinc-900 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
             />
           </div>
+
 
           <div className="flex justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">
             <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)} className="h-8 text-xs">

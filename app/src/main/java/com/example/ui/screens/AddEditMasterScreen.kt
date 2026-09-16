@@ -1,10 +1,12 @@
 package com.example.ui.screens
 
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -13,6 +15,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import coil.compose.AsyncImage
+import com.example.data.remote.FirebaseStorageService
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -24,9 +30,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import kotlinx.coroutines.launch
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.local.entity.*
 import com.example.ui.theme.GoldAccent
@@ -1847,46 +1855,60 @@ private fun CustomerMasterForm(
                     color = NavyPrimary
                 )
 
+                val safeCustFolder = "customers/${customerId.ifBlank { "cust_${System.currentTimeMillis()}" }.replace("/", "_")}"
+
                 PhotoUploadCard(
                     title = "Aadhaar Card Photo",
                     uriString = aadharPhotoUri,
                     onUriSelected = onAadharPhotoChange,
-                    onClear = { onAadharPhotoChange("") }
+                    onClear = { onAadharPhotoChange("") },
+                    folder = "$safeCustFolder/kyc",
+                    prefix = "aadhar"
                 )
 
                 PhotoUploadCard(
                     title = "GST Registration Certificate",
                     uriString = gstCertPhotoUri,
                     onUriSelected = onGstCertPhotoChange,
-                    onClear = { onGstCertPhotoChange("") }
+                    onClear = { onGstCertPhotoChange("") },
+                    folder = "$safeCustFolder/kyc",
+                    prefix = "gst"
                 )
 
                 PhotoUploadCard(
                     title = "PAN Card Photo",
                     uriString = panPhotoUri,
                     onUriSelected = onPanPhotoChange,
-                    onClear = { onPanPhotoChange("") }
+                    onClear = { onPanPhotoChange("") },
+                    folder = "$safeCustFolder/kyc",
+                    prefix = "pan"
                 )
 
                 PhotoUploadCard(
                     title = "Shop Front / Signboard Photo",
                     uriString = shopPhotoUri,
                     onUriSelected = onShopPhotoChange,
-                    onClear = { onShopPhotoChange("") }
+                    onClear = { onShopPhotoChange("") },
+                    folder = "$safeCustFolder/photos",
+                    prefix = "shop_front"
                 )
 
                 PhotoUploadCard(
                     title = "Purchaser / Owner Photo",
                     uriString = purchaserPhotoUri,
                     onUriSelected = onPurchaserPhotoChange,
-                    onClear = { onPurchaserPhotoChange("") }
+                    onClear = { onPurchaserPhotoChange("") },
+                    folder = "$safeCustFolder/photos",
+                    prefix = "purchaser"
                 )
 
                 PhotoUploadCard(
                     title = "Cancelled Cheque Photo",
                     uriString = cancelChequePhotoUri,
                     onUriSelected = onCancelChequePhotoChange,
-                    onClear = { onCancelChequePhotoChange("") }
+                    onClear = { onCancelChequePhotoChange("") },
+                    folder = "$safeCustFolder/kyc",
+                    prefix = "cheque"
                 )
             }
         }
@@ -2649,18 +2671,24 @@ private fun SupplierMasterForm(
                     color = NavyPrimary
                 )
 
+                val safeSuppFolder = "suppliers/${supplierId.ifBlank { "supp_${System.currentTimeMillis()}" }.replace("/", "_")}/photos"
+
                 PhotoUploadCard(
                     title = "Shop / Mill Front Photo",
                     uriString = shopPhotoUri,
                     onUriSelected = onShopPhotoChange,
-                    onClear = { onShopPhotoChange("") }
+                    onClear = { onShopPhotoChange("") },
+                    folder = safeSuppFolder,
+                    prefix = "mill_front"
                 )
 
                 PhotoUploadCard(
                     title = "Visiting Card Photo",
                     uriString = visitingCardPhotoUri,
                     onUriSelected = onVisitingCardPhotoChange,
-                    onClear = { onVisitingCardPhotoChange("") }
+                    onClear = { onVisitingCardPhotoChange("") },
+                    folder = safeSuppFolder,
+                    prefix = "visiting_card"
                 )
             }
         }
@@ -2795,11 +2823,15 @@ private fun BrandMasterForm(
                 colors = defaultTextFieldColors()
             )
 
+            val safeBrandFolder = "brands/${brandName.ifBlank { "brand_${System.currentTimeMillis()}" }.replace(" ", "_").replace("/", "_")}/logo"
+
             PhotoUploadCard(
                 title = "Brand Logo / Label Photo",
                 uriString = logoPhotoUri,
                 onUriSelected = onLogoPhotoChange,
-                onClear = { onLogoPhotoChange("") }
+                onClear = { onLogoPhotoChange("") },
+                folder = safeBrandFolder,
+                prefix = "logo"
             )
 
             OutlinedTextField(
@@ -3583,11 +3615,29 @@ private fun PhotoUploadCard(
     uriString: String,
     onUriSelected: (String) -> Unit,
     onClear: () -> Unit,
+    folder: String = "uploads",
+    prefix: String = "doc",
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val storageService = remember { FirebaseStorageService() }
+    var isUploading by remember { mutableStateOf(false) }
+    var showPreviewDialog by remember { mutableStateOf(false) }
+
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
-            onUriSelected(uri.toString())
+            isUploading = true
+            coroutineScope.launch {
+                val result = storageService.uploadFile(context, uri, folder, prefix)
+                isUploading = false
+                result.onSuccess { downloadUrl ->
+                    onUriSelected(downloadUrl)
+                    Toast.makeText(context, "$title uploaded to Cloud!", Toast.LENGTH_SHORT).show()
+                }.onFailure { err ->
+                    Toast.makeText(context, "Upload failed: ${err.localizedMessage}", Toast.LENGTH_LONG).show()
+                }
+            }
         }
     }
 
@@ -3600,7 +3650,7 @@ private fun PhotoUploadCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -3608,52 +3658,194 @@ private fun PhotoUploadCard(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
             ) {
-                Icon(
-                    imageVector = if (uriString.isNotBlank()) Icons.Default.CheckCircle else Icons.Default.AddPhotoAlternate,
-                    contentDescription = null,
-                    tint = if (uriString.isNotBlank()) Color(0xFF10B981) else Color(0xFF64748B),
-                    modifier = Modifier.size(22.dp)
-                )
+                if (uriString.isNotBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(1.dp, Color(0xFF10B981), RoundedCornerShape(8.dp))
+                            .clickable { showPreviewDialog = true }
+                    ) {
+                        AsyncImage(
+                            model = uriString,
+                            contentDescription = title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                } else {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFEFF6FF),
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.CloudUpload,
+                                contentDescription = null,
+                                tint = NavyPrimary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.width(10.dp))
-                Column {
+
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = title,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 12.sp,
-                        color = NavyPrimary
+                        color = NavyPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = if (uriString.isNotBlank()) "Photo Attached ✓" else "Tap to upload / capture",
+                        text = when {
+                            isUploading -> "Uploading to Firebase Cloud..."
+                            uriString.startsWith("http") -> "Cloud Storage ✓"
+                            uriString.isNotBlank() -> "Photo Attached ✓"
+                            else -> "Tap to upload to cloud"
+                        },
                         fontSize = 10.5.sp,
-                        color = if (uriString.isNotBlank()) Color(0xFF059669) else TextSecondary
+                        fontWeight = if (uriString.isNotBlank()) FontWeight.Medium else FontWeight.Normal,
+                        color = when {
+                            isUploading -> Color(0xFFD97706)
+                            uriString.isNotBlank() -> Color(0xFF059669)
+                            else -> TextSecondary
+                        }
                     )
                 }
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (uriString.isNotBlank()) {
-                    IconButton(
-                        onClick = onClear,
-                        modifier = Modifier.size(28.dp)
+            Spacer(modifier = Modifier.width(6.dp))
+
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (isUploading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.5.dp,
+                        color = NavyPrimary
+                    )
+                } else {
+                    if (uriString.isNotBlank()) {
+                        IconButton(
+                            onClick = { showPreviewDialog = true },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Visibility,
+                                contentDescription = "View Photo",
+                                tint = NavyPrimary,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+                        IconButton(
+                            onClick = onClear,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Remove",
+                                tint = Color(0xFFEF4444),
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+                    }
+                    Button(
+                        onClick = { launcher.launch("image/*") },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (uriString.isNotBlank()) Color(0xFFE2E8F0) else NavyPrimary
+                        ),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.defaultMinSize(minHeight = 28.dp)
                     ) {
-                        Icon(Icons.Default.Close, contentDescription = "Remove", tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
+                        Text(
+                            text = if (uriString.isNotBlank()) "Change" else "Upload",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (uriString.isNotBlank()) NavyPrimary else GoldAccent
+                        )
                     }
                 }
-                Button(
-                    onClick = { launcher.launch("image/*") },
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (uriString.isNotBlank()) Color(0xFFE2E8F0) else NavyPrimary
-                    ),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                    modifier = Modifier.defaultMinSize(minHeight = 28.dp)
+            }
+        }
+    }
+
+    if (showPreviewDialog && uriString.isNotBlank()) {
+        Dialog(onDismissRequest = { showPreviewDialog = false }) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text(
-                        text = if (uriString.isNotBlank()) "Change" else "Upload",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (uriString.isNotBlank()) NavyPrimary else GoldAccent
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = title,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = NavyPrimary
+                        )
+                        IconButton(
+                            onClick = { showPreviewDialog = false },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(280.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFF1F5F9)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        AsyncImage(
+                            model = uriString,
+                            contentDescription = title,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        if (uriString.startsWith("http")) {
+                            OutlinedButton(
+                                onClick = {
+                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse(uriString))
+                                    context.startActivity(intent)
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.padding(end = 8.dp)
+                            ) {
+                                Text("Open in Browser", fontSize = 11.sp)
+                            }
+                        }
+                        Button(
+                            onClick = { showPreviewDialog = false },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary)
+                        ) {
+                            Text("Done", fontSize = 11.sp, color = Color.White)
+                        }
+                    }
                 }
             }
         }

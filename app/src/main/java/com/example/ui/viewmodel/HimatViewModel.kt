@@ -3,11 +3,14 @@ package com.example.ui.viewmodel
 import android.app.Activity
 import android.app.Application
 import android.content.Context
+import android.net.Uri
 import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.auth.AuthRepository
 import com.example.data.remote.FirebaseRtdbService
+import com.example.data.remote.FirebaseStorageService
+
 import com.google.firebase.auth.FirebaseUser
 import com.example.data.local.AppDatabase
 import com.example.data.local.entity.BrandEntity
@@ -82,6 +85,8 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
     val repository = HimatRepository(database)
     val authRepository = AuthRepository()
     val rtdbService = FirebaseRtdbService()
+    val storageService = FirebaseStorageService()
+
 
     val currentUser: StateFlow<FirebaseUser?> = authRepository.currentUser
 
@@ -949,6 +954,26 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         TallyExportUtil.exportAndShareTallyXml(context, xml, "Himat_Suppliers_Tally")
     }
 
+    // Cloud Object Storage Operations
+    fun uploadFileToStorage(
+        context: Context,
+        fileUri: Uri,
+        folder: String,
+        prefix: String = "doc",
+        onSuccess: (String) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val result = storageService.uploadFile(context, fileUri, folder, prefix)
+            result.onSuccess { downloadUrl ->
+                onSuccess(downloadUrl)
+            }.onFailure { exc ->
+                onError(exc.message ?: "Upload failed")
+            }
+        }
+    }
+
+
     // Product Operations
     fun saveProduct(
         product: ProductEntity,
@@ -1483,3 +1508,4 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         ShareUtil.shareWhatsAppText(getApplication(), text)
     }
 }
+

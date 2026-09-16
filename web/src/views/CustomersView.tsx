@@ -42,6 +42,8 @@ import {
   buildCustomerReportWhatsAppText,
 } from "../lib/pdfReports"
 import { generateCustomersTallyXml, downloadXmlFile } from "../lib/tallyExport"
+import { FileUpload } from "../components/ui/FileUpload"
+
 
 export function CustomersView() {
   const { user } = useAuth()
@@ -1148,90 +1150,61 @@ export function CustomersView() {
           {activeFormTab === "kyc" && (
             <div className="space-y-3.5 text-xs">
               <p className="text-[11px] text-muted-foreground">
-                Attach or provide cloud photo links / storage URIs for KYC verification & fraud prevention.
+                Upload photos directly to Firebase Cloud Storage for KYC verification, fraud prevention, and instant cross-platform viewing.
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 space-y-1">
-                  <label className="font-semibold text-xs text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
-                    <ShieldCheck className="h-3.5 w-3.5 text-blue-500" />
-                    <span>Aadhar Card Photo URI</span>
-                  </label>
-                  <Input
-                    placeholder="https://... or photo URI"
-                    value={aadharPhotoUri}
-                    onChange={(e) => setAadharPhotoUri(e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                </div>
+                <FileUpload
+                  label="Aadhaar Card Photo"
+                  folder={`customers/${customerId || "temp"}/kyc`}
+                  prefix="aadhar"
+                  value={aadharPhotoUri}
+                  onChange={setAadharPhotoUri}
+                />
 
-                <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 space-y-1">
-                  <label className="font-semibold text-xs text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
-                    <FileText className="h-3.5 w-3.5 text-emerald-500" />
-                    <span>GST Certificate Photo URI</span>
-                  </label>
-                  <Input
-                    placeholder="https://... or photo URI"
-                    value={gstCertPhotoUri}
-                    onChange={(e) => setGstCertPhotoUri(e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                </div>
+                <FileUpload
+                  label="GST Certificate Photo"
+                  folder={`customers/${customerId || "temp"}/kyc`}
+                  prefix="gst_cert"
+                  value={gstCertPhotoUri}
+                  onChange={setGstCertPhotoUri}
+                />
 
-                <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 space-y-1">
-                  <label className="font-semibold text-xs text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
-                    <CreditCard className="h-3.5 w-3.5 text-purple-500" />
-                    <span>PAN Card Photo URI</span>
-                  </label>
-                  <Input
-                    placeholder="https://... or photo URI"
-                    value={panPhotoUri}
-                    onChange={(e) => setPanPhotoUri(e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                </div>
+                <FileUpload
+                  label="PAN Card Photo"
+                  folder={`customers/${customerId || "temp"}/kyc`}
+                  prefix="pan"
+                  value={panPhotoUri}
+                  onChange={setPanPhotoUri}
+                />
 
-                <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 space-y-1">
-                  <label className="font-semibold text-xs text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
-                    <Store className="h-3.5 w-3.5 text-amber-500" />
-                    <span>Shop Front Pic URI</span>
-                  </label>
-                  <Input
-                    placeholder="https://... or photo URI"
-                    value={shopPhotoUri}
-                    onChange={(e) => setShopPhotoUri(e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                </div>
+                <FileUpload
+                  label="Shop Front / Signboard Photo"
+                  folder={`customers/${customerId || "temp"}/photos`}
+                  prefix="shop"
+                  value={shopPhotoUri}
+                  onChange={setShopPhotoUri}
+                />
 
-                <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 space-y-1">
-                  <label className="font-semibold text-xs text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
-                    <User className="h-3.5 w-3.5 text-blue-600" />
-                    <span>Purchaser / Owner Pic URI</span>
-                  </label>
-                  <Input
-                    placeholder="https://... or photo URI"
-                    value={purchaserPhotoUri}
-                    onChange={(e) => setPurchaserPhotoUri(e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                </div>
+                <FileUpload
+                  label="Purchaser / Owner Photo"
+                  folder={`customers/${customerId || "temp"}/photos`}
+                  prefix="purchaser"
+                  value={purchaserPhotoUri}
+                  onChange={setPurchaserPhotoUri}
+                />
 
-                <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 space-y-1">
-                  <label className="font-semibold text-xs text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
-                    <FileText className="h-3.5 w-3.5 text-red-500" />
-                    <span>Cancelled Cheque Pic URI</span>
-                  </label>
-                  <Input
-                    placeholder="https://... or photo URI"
-                    value={cancelChequePhotoUri}
-                    onChange={(e) => setCancelChequePhotoUri(e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                </div>
+                <FileUpload
+                  label="Cancelled Cheque Photo"
+                  folder={`customers/${customerId || "temp"}/kyc`}
+                  prefix="cheque"
+                  value={cancelChequePhotoUri}
+                  onChange={setCancelChequePhotoUri}
+                />
               </div>
             </div>
           )}
+
 
           {/* Dialog Action Buttons */}
           <div className="flex items-center justify-between pt-3 border-t border-zinc-200 dark:border-zinc-800">
@@ -1345,8 +1318,61 @@ export function CustomersView() {
                 </p>
               )}
             </div>
+
+            {/* KYC Documents & Cloud Photos */}
+            {Boolean(
+              viewProfileCustomer.aadharPhotoUri ||
+              viewProfileCustomer.gstCertPhotoUri ||
+              viewProfileCustomer.panPhotoUri ||
+              viewProfileCustomer.shopPhotoUri ||
+              viewProfileCustomer.purchaserPhotoUri ||
+              viewProfileCustomer.cancelChequePhotoUri
+            ) && (
+              <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 space-y-2.5">
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
+                  <ShieldCheck className="h-3.5 w-3.5 text-blue-600" />
+                  <span>Cloud KYC Documents & Photos</span>
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                  {[
+                    { label: "Aadhaar Card", uri: viewProfileCustomer.aadharPhotoUri },
+                    { label: "GST Certificate", uri: viewProfileCustomer.gstCertPhotoUri },
+                    { label: "PAN Card", uri: viewProfileCustomer.panPhotoUri },
+                    { label: "Shop Front", uri: viewProfileCustomer.shopPhotoUri },
+                    { label: "Purchaser Pic", uri: viewProfileCustomer.purchaserPhotoUri },
+                    { label: "Cancelled Cheque", uri: viewProfileCustomer.cancelChequePhotoUri },
+                  ].filter(doc => Boolean(doc.uri)).map((doc, idx) => (
+                    <a
+                      key={idx}
+                      href={doc.uri}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="group relative block rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden bg-zinc-50 dark:bg-zinc-900 hover:border-indigo-400 transition-colors p-1"
+                    >
+                      <div className="h-20 w-full overflow-hidden rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
+                        <img
+                          src={doc.uri}
+                          alt={doc.label}
+                          className="h-full w-full object-cover group-hover:scale-105 transition-transform"
+                          onError={(e) => {
+                            (e.target as HTMLElement).style.display = "none"
+                          }}
+                        />
+                      </div>
+                      <p className="mt-1 text-[10.5px] font-semibold text-zinc-800 dark:text-zinc-200 text-center truncate">
+                        {doc.label}
+                      </p>
+                      <p className="text-[9.5px] text-indigo-600 dark:text-indigo-400 text-center flex items-center justify-center gap-0.5">
+                        <span>View</span> <ExternalLink className="h-2.5 w-2.5" />
+                      </p>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </Dialog>
+
       )}
 
       {/* Report Modal */}

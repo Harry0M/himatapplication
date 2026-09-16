@@ -67,6 +67,7 @@ import com.example.ui.theme.GoldAccent
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.NavyPrimary
 import com.example.ui.viewmodel.AppScreen
+import com.example.ui.viewmodel.MasterTab
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -561,7 +562,12 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
                 AppScreen.CUSTOMER_MASTER,
                 AppScreen.SUPPLIER_MASTER,
                 AppScreen.EMPLOYEE_MASTER -> {
-                    MastersScreen(viewModel = viewModel)
+                    val initialTab = when (currentScreen) {
+                        AppScreen.SUPPLIER_MASTER -> MasterTab.SUPPLIERS
+                        AppScreen.EMPLOYEE_MASTER -> MasterTab.EMPLOYEES
+                        else -> null
+                    }
+                    MastersScreen(viewModel = viewModel, initialTab = initialTab)
                 }
 
                 AppScreen.ADD_EDIT_MASTER -> {

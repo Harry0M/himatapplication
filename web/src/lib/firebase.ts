@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from "firebase/app"
 import { getAuth, GoogleAuthProvider } from "firebase/auth"
 import { getDatabase } from "firebase/database"
+import { getStorage } from "firebase/storage"
 
 const firebaseConfig = {
   apiKey: "AIzaSyBQ9oIGJwamcd3__6NNqd_Ds-SAyYoicpY",
@@ -19,4 +20,6 @@ export const googleProvider = new GoogleAuthProvider()
 googleProvider.setCustomParameters({ prompt: 'select_account' })
 
 export const rtdb = getDatabase(app, "https://himatsms-default-rtdb.firebaseio.com")
+export const storage = getStorage(app, "gs://himatsms.firebasestorage.app")
 export default app
+

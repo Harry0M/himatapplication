@@ -38,6 +38,8 @@ import {
   buildSupplierInvoiceWhatsAppText,
 } from "../lib/pdfReports"
 import { generateSuppliersTallyXml, downloadXmlFile } from "../lib/tallyExport"
+import { FileUpload } from "../components/ui/FileUpload"
+
 
 export function SuppliersView() {
   const {
@@ -1077,32 +1079,23 @@ export function SuppliersView() {
           {activeFormTab === "photos" && (
             <div className="space-y-3.5 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 space-y-1">
-                  <label className="font-semibold text-xs text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
-                    <CreditCard className="h-3.5 w-3.5 text-blue-600" />
-                    <span>Photo of Visiting Card (URI)</span>
-                  </label>
-                  <Input
-                    placeholder="https://... or photo URI"
-                    value={visitingCardPhotoUri}
-                    onChange={(e) => setVisitingCardPhotoUri(e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                </div>
+                <FileUpload
+                  label="Visiting Card Photo"
+                  folder={`suppliers/${supplierId || "temp"}/photos`}
+                  prefix="visiting_card"
+                  value={visitingCardPhotoUri}
+                  onChange={setVisitingCardPhotoUri}
+                />
 
-                <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 space-y-1">
-                  <label className="font-semibold text-xs text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
-                    <Store className="h-3.5 w-3.5 text-amber-600" />
-                    <span>Photo of Shop / Mill Front (URI)</span>
-                  </label>
-                  <Input
-                    placeholder="https://... or photo URI"
-                    value={shopPhotoUri}
-                    onChange={(e) => setShopPhotoUri(e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                </div>
+                <FileUpload
+                  label="Shop / Mill Front Photo"
+                  folder={`suppliers/${supplierId || "temp"}/photos`}
+                  prefix="shop"
+                  value={shopPhotoUri}
+                  onChange={setShopPhotoUri}
+                />
               </div>
+
 
               <div>
                 <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
@@ -1268,6 +1261,48 @@ export function SuppliersView() {
                 <p className="mt-1 font-medium text-zinc-700 dark:text-zinc-300">{viewProfileSupplier.productsMade}</p>
               </div>
             )}
+
+            {/* Cloud Verification Photos */}
+            {Boolean(viewProfileSupplier.visitingCardPhotoUri || viewProfileSupplier.shopPhotoUri) && (
+              <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 space-y-2.5">
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
+                  <Store className="h-3.5 w-3.5 text-amber-600" />
+                  <span>Cloud Verification Photos</span>
+                </span>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { label: "Visiting Card", uri: viewProfileSupplier.visitingCardPhotoUri },
+                    { label: "Shop / Mill Front", uri: viewProfileSupplier.shopPhotoUri },
+                  ].filter(doc => Boolean(doc.uri)).map((doc, idx) => (
+                    <a
+                      key={idx}
+                      href={doc.uri}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="group relative block rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden bg-zinc-50 dark:bg-zinc-900 hover:border-indigo-400 transition-colors p-1"
+                    >
+                      <div className="h-24 w-full overflow-hidden rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
+                        <img
+                          src={doc.uri}
+                          alt={doc.label}
+                          className="h-full w-full object-cover group-hover:scale-105 transition-transform"
+                          onError={(e) => {
+                            (e.target as HTMLElement).style.display = "none"
+                          }}
+                        />
+                      </div>
+                      <p className="mt-1 text-[11px] font-semibold text-zinc-800 dark:text-zinc-200 text-center truncate">
+                        {doc.label}
+                      </p>
+                      <p className="text-[10px] text-indigo-600 dark:text-indigo-400 text-center flex items-center justify-center gap-0.5">
+                        <span>View</span> <ExternalLink className="h-2.5 w-2.5" />
+                      </p>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
           </div>
         </Dialog>
       )}
