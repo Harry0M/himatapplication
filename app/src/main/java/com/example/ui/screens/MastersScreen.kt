@@ -32,6 +32,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -379,49 +380,75 @@ fun MastersScreen(
                         }
                     }
 
-                    // Search bar on Masters Directory
-                    OutlinedTextField(
-                        value = hubSearchQuery,
-                        onValueChange = { hubSearchQuery = it },
-                        placeholder = {
-                            Text(
-                                text = "Search master categories...",
-                                fontSize = 13.5.sp,
-                                color = TextSecondary
-                            )
-                        },
-                        leadingIcon = {
+                    // Compact Pill Search Bar on Masters Directory
+                    Surface(
+                        shape = CircleShape,
+                        color = Color.White,
+                        border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.Search,
                                 contentDescription = null,
-                                tint = NavyPrimary,
-                                modifier = Modifier.size(19.dp)
+                                modifier = Modifier.size(16.dp),
+                                tint = Color(0xFF64748B)
                             )
-                        },
-                        trailingIcon = {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Box(
+                                modifier = Modifier.weight(1f),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                if (hubSearchQuery.isEmpty()) {
+                                    Text(
+                                        text = "Search master categories...",
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF94A3B8),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                BasicTextField(
+                                    value = hubSearchQuery,
+                                    onValueChange = { hubSearchQuery = it },
+                                    singleLine = true,
+                                    textStyle = androidx.compose.ui.text.TextStyle(
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF0F172A),
+                                        fontWeight = FontWeight.Medium
+                                    ),
+                                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Color(0xFF2563EB)),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
                             if (hubSearchQuery.isNotEmpty()) {
-                                IconButton(onClick = { hubSearchQuery = "" }) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFE2E8F0))
+                                        .clickable { hubSearchQuery = "" },
+                                    contentAlignment = Alignment.Center
+                                ) {
                                     Icon(
                                         imageVector = Icons.Default.Clear,
                                         contentDescription = "Clear",
-                                        tint = TextSecondary,
-                                        modifier = Modifier.size(18.dp)
+                                        modifier = Modifier.size(11.dp),
+                                        tint = Color(0xFF475569)
                                     )
                                 }
                             }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 12.dp),
-                        singleLine = true,
-                        shape = CircleShape,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White,
-                            focusedBorderColor = NavyPrimary,
-                            unfocusedBorderColor = Color(0xFFE2E8F0)
-                        )
-                    )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     // Master Categories List
                     val filteredCategories = categories.filter {
@@ -619,7 +646,7 @@ fun MastersScreen(
                                     }
                                 }
                             }
-                            // Search Bar for Current Master
+                            // Compact Pill Search Bar for Current Master
                             AnimatedVisibility(
                                 visible = isSearchVisible || searchQuery.isNotBlank(),
                                 enter = expandVertically(tween(200)) + fadeIn(tween(180)),
@@ -627,46 +654,73 @@ fun MastersScreen(
                             ) {
                                 Column {
                                     Spacer(modifier = Modifier.height(8.dp))
-                                    OutlinedTextField(
-                                        value = searchQuery,
-                                        onValueChange = { searchQuery = it },
-                                        placeholder = {
-                                            Text(
-                                                text = "Search in ${currentCategoryMeta.title}...",
-                                                fontSize = 13.sp,
-                                                color = TextSecondary
-                                            )
-                                        },
-                                        leadingIcon = {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = Color.White,
+                                        border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(36.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(horizontal = 12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
                                             Icon(
                                                 imageVector = Icons.Default.Search,
                                                 contentDescription = null,
-                                                tint = NavyPrimary,
-                                                modifier = Modifier.size(18.dp)
+                                                modifier = Modifier.size(16.dp),
+                                                tint = Color(0xFF64748B)
                                             )
-                                        },
-                                        trailingIcon = {
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Box(
+                                                modifier = Modifier.weight(1f),
+                                                contentAlignment = Alignment.CenterStart
+                                            ) {
+                                                if (searchQuery.isEmpty()) {
+                                                    Text(
+                                                        text = "Search in ${currentCategoryMeta.title}...",
+                                                        fontSize = 12.sp,
+                                                        color = Color(0xFF94A3B8),
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                                BasicTextField(
+                                                    value = searchQuery,
+                                                    onValueChange = { searchQuery = it },
+                                                    singleLine = true,
+                                                    textStyle = androidx.compose.ui.text.TextStyle(
+                                                        fontSize = 12.sp,
+                                                        color = Color(0xFF0F172A),
+                                                        fontWeight = FontWeight.Medium
+                                                    ),
+                                                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Color(0xFF2563EB)),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+                                            }
                                             if (searchQuery.isNotEmpty()) {
-                                                IconButton(onClick = { searchQuery = "" }) {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(18.dp)
+                                                        .clip(CircleShape)
+                                                        .background(Color(0xFFE2E8F0))
+                                                        .clickable { searchQuery = "" },
+                                                    contentAlignment = Alignment.Center
+                                                ) {
                                                     Icon(
                                                         imageVector = Icons.Default.Clear,
                                                         contentDescription = "Clear",
-                                                        tint = TextSecondary,
-                                                        modifier = Modifier.size(17.dp)
+                                                        modifier = Modifier.size(11.dp),
+                                                        tint = Color(0xFF475569)
                                                     )
                                                 }
                                             }
-                                        },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        singleLine = true,
-                                        shape = CircleShape,
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedContainerColor = Color.White,
-                                            unfocusedContainerColor = Color.White,
-                                            focusedBorderColor = NavyPrimary,
-                                            unfocusedBorderColor = Color(0xFFE2E8F0)
-                                        )
-                                    )
+                                        }
+                                    }
                                 }
                             }
 
@@ -1460,10 +1514,9 @@ fun MasterCardActions(
 }
 
 // -------------------------------------------------------------
-// Component: CustomerCard (with View, Edit, Delete)
+// Component: CustomerCard (Minimalist & Compact)
 // -------------------------------------------------------------
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CustomerCard(
     customer: CustomerEntity,
@@ -1472,19 +1525,25 @@ fun CustomerCard(
     onDelete: () -> Unit
 ) {
     val displayName = customer.firmName.ifBlank { customer.name }
-    val extraPhonesCount = listOfNotNull(
-        customer.phone2.takeIf { it.isNotBlank() },
-        customer.phone3.takeIf { it.isNotBlank() },
-        customer.phone4.takeIf { it.isNotBlank() },
-        customer.phone5.takeIf { it.isNotBlank() }
-    ).size
     val marketDisplay = customer.marketArea.ifBlank {
-        customer.markets.split(",").firstOrNull()?.trim() ?: customer.city.ifBlank { "Ahmedabad" }
+        customer.markets.split(",").firstOrNull()?.trim() ?: customer.city.ifBlank { "" }
     }
+    val subtitle = buildString {
+        if (customer.firmName.isNotBlank() && customer.name.isNotBlank() && customer.firmName != customer.name) {
+            append(customer.name)
+        }
+        if (marketDisplay.isNotBlank()) {
+            if (isNotEmpty()) append(" • ")
+            append(marketDisplay)
+        } else if (customer.phone.isNotBlank()) {
+            if (isNotEmpty()) append(" • ")
+            append(customer.phone)
+        }
+    }.ifBlank { "Customer" }
 
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
         shape = RoundedCornerShape(10.dp),
         border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
         modifier = Modifier
@@ -1492,209 +1551,72 @@ fun CustomerCard(
             .clip(RoundedCornerShape(10.dp))
             .clickable { onClick() }
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(10.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Header: Avatar + Title & Subtitle + Actions
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+            val custAvatarPhoto = customer.shopPhotoUri.ifBlank { customer.purchaserPhotoUri }
+            Surface(
+                shape = CircleShape,
+                color = Color(0xFFEFF6FF),
+                modifier = Modifier.size(36.dp)
             ) {
-                val custAvatarPhoto = customer.shopPhotoUri.ifBlank { customer.purchaserPhotoUri }
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFFEFF6FF),
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    if (custAvatarPhoto.isNotBlank()) {
-                        AsyncImage(
-                            model = custAvatarPhoto,
-                            contentDescription = customer.name,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
+                if (custAvatarPhoto.isNotBlank()) {
+                    AsyncImage(
+                        model = custAvatarPhoto,
+                        contentDescription = customer.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.People,
+                            contentDescription = null,
+                            tint = Color(0xFF2563EB),
+                            modifier = Modifier.size(18.dp)
                         )
-                    } else {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.People,
-                                contentDescription = null,
-                                tint = Color(0xFF2563EB),
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
                     }
                 }
+            }
 
-                Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(10.dp))
 
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = displayName,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = TextPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    val sub = if (customer.firmName.isNotBlank() && customer.name.isNotBlank() && customer.firmName != customer.name) {
-                        "Owner: ${customer.name}"
-                    } else if (customer.customerId.isNotBlank()) {
-                        "ID: ${customer.customerId}"
-                    } else {
-                        "Customer"
-                    }
-                    Text(
-                        text = sub,
-                        fontSize = 10.5.sp,
-                        color = TextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(6.dp))
-
-                MasterCardActions(
-                    onEdit = onEdit,
-                    onDelete = onDelete,
-                    onClick = onClick
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = displayName,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp,
+                    color = TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = subtitle,
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = 6.dp),
-                color = Color(0xFFF1F5F9),
-                thickness = 0.8.dp
+            Spacer(modifier = Modifier.width(6.dp))
+
+            MasterCardActions(
+                onEdit = onEdit,
+                onDelete = onDelete,
+                onClick = onClick
             )
-
-            // Info Row: Market / City on Left, Phone on Right
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    modifier = Modifier.weight(1f, fill = false),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.Place,
-                        contentDescription = null,
-                        tint = TextSecondary,
-                        modifier = Modifier.size(12.dp)
-                    )
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text(
-                        text = marketDisplay,
-                        fontSize = 11.sp,
-                        color = TextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Phone,
-                        contentDescription = null,
-                        tint = TextSecondary,
-                        modifier = Modifier.size(12.dp)
-                    )
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text(
-                        text = customer.phone,
-                        fontSize = 11.sp,
-                        color = TextSecondary,
-                        maxLines = 1
-                    )
-                    if (extraPhonesCount > 0) {
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Surface(
-                            color = Color(0xFFF1F5F9),
-                            shape = CircleShape
-                        ) {
-                            Text(
-                                text = "+$extraPhonesCount",
-                                fontSize = 8.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = NavyPrimary,
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 0.5.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Badges Row using FlowRow: Outlets, GSTIN, CustomerId
-            val hasOutlets = customer.shopCount > 1
-            val hasGstin = customer.gstin.isNotBlank()
-            val hasCustomerId = customer.customerId.isNotBlank() && (customer.firmName.isNotBlank() && customer.name.isNotBlank() && customer.firmName != customer.name)
-
-            if (hasOutlets || hasGstin || hasCustomerId) {
-                Spacer(modifier = Modifier.height(5.dp))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                    verticalArrangement = Arrangement.spacedBy(3.dp)
-                ) {
-                    if (hasOutlets) {
-                        Surface(
-                            color = Color(0xFFFEF3C7),
-                            shape = RoundedCornerShape(4.dp)
-                        ) {
-                            Text(
-                                text = "🏪 ${customer.shopCount} Outlets",
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF92400E),
-                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
-                            )
-                        }
-                    }
-                    if (hasGstin) {
-                        Surface(
-                            color = NavyPrimary.copy(alpha = 0.07f),
-                            shape = RoundedCornerShape(4.dp)
-                        ) {
-                            Text(
-                                text = "GST: ${customer.gstin}",
-                                fontSize = 9.5.sp,
-                                color = NavyPrimary,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                    if (hasCustomerId) {
-                        Surface(
-                            color = Color(0xFFF1F5F9),
-                            shape = RoundedCornerShape(4.dp)
-                        ) {
-                            Text(
-                                text = "ID: ${customer.customerId}",
-                                fontSize = 9.5.sp,
-                                color = TextSecondary,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
-                            )
-                        }
-                    }
-                }
-            }
         }
     }
 }
 
 // -------------------------------------------------------------
-// Component: SupplierCard (with View, Edit, Delete)
+// Component: SupplierCard (Minimalist & Compact)
 // -------------------------------------------------------------
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SupplierCard(
     supplier: SupplierEntity,
@@ -1703,222 +1625,98 @@ fun SupplierCard(
     onDelete: () -> Unit
 ) {
     val displayName = supplier.firmName.ifBlank { supplier.name }
-    val extraPhonesCount = listOfNotNull(
-        supplier.phone2.takeIf { it.isNotBlank() },
-        supplier.phone3.takeIf { it.isNotBlank() },
-        supplier.phone4.takeIf { it.isNotBlank() }
-    ).size
     val marketDisplay = supplier.marketArea.ifBlank {
-        supplier.markets.split(",").firstOrNull()?.trim() ?: supplier.city.ifBlank { "Ahmedabad" }
+        supplier.markets.split(",").firstOrNull()?.trim() ?: supplier.city.ifBlank { "" }
     }
+    val subtitle = buildString {
+        if (supplier.type.isNotBlank()) {
+            append(supplier.type)
+        }
+        if (supplier.firmName.isNotBlank() && supplier.name.isNotBlank() && supplier.firmName != supplier.name) {
+            if (isNotEmpty()) append(" • ")
+            append(supplier.name)
+        } else if (marketDisplay.isNotBlank()) {
+            if (isNotEmpty()) append(" • ")
+            append(marketDisplay)
+        }
+    }.ifBlank { "Supplier / Mill" }
 
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
+        shape = RoundedCornerShape(10.dp),
         border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(10.dp))
             .clickable { onClick() }
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(13.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Header: Avatar + Title & Subtitle + Actions
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+            val suppAvatarPhoto = supplier.shopPhotoUri.ifBlank { supplier.visitingCardPhotoUri }
+            Surface(
+                shape = CircleShape,
+                color = Color(0xFFECFDF5),
+                modifier = Modifier.size(36.dp)
             ) {
-                val suppAvatarPhoto = supplier.shopPhotoUri.ifBlank { supplier.visitingCardPhotoUri }
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFFECFDF5),
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    if (suppAvatarPhoto.isNotBlank()) {
-                        AsyncImage(
-                            model = suppAvatarPhoto,
-                            contentDescription = supplier.name,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
+                if (suppAvatarPhoto.isNotBlank()) {
+                    AsyncImage(
+                        model = suppAvatarPhoto,
+                        contentDescription = supplier.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Store,
+                            contentDescription = null,
+                            tint = Color(0xFF059669),
+                            modifier = Modifier.size(18.dp)
                         )
-                    } else {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.Store,
-                                contentDescription = null,
-                                tint = Color(0xFF059669),
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
                     }
                 }
+            }
 
-                Spacer(modifier = Modifier.width(10.dp))
+            Spacer(modifier = Modifier.width(10.dp))
 
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = displayName,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.5.sp,
-                        color = TextPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    val sub = if (supplier.firmName.isNotBlank() && supplier.name.isNotBlank() && supplier.firmName != supplier.name) {
-                        "Contact: ${supplier.name}"
-                    } else if (supplier.brand.isNotBlank()) {
-                        "Brand: ${supplier.brand}"
-                    } else {
-                        "Supplier / Mill"
-                    }
-                    Text(
-                        text = sub,
-                        fontSize = 11.5.sp,
-                        color = TextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                MasterCardActions(
-                    onEdit = onEdit,
-                    onDelete = onDelete,
-                    onClick = onClick
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = displayName,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp,
+                    color = TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = subtitle,
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = 8.dp),
-                color = Color(0xFFF1F5F9),
-                thickness = 0.8.dp
+            Spacer(modifier = Modifier.width(6.dp))
+
+            MasterCardActions(
+                onEdit = onEdit,
+                onDelete = onDelete,
+                onClick = onClick
             )
-
-            // Info Row: Market / City on Left, Phone on Right
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    modifier = Modifier.weight(1f, fill = false),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.Place,
-                        contentDescription = null,
-                        tint = TextSecondary,
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = marketDisplay,
-                        fontSize = 12.sp,
-                        color = TextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(10.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Phone,
-                        contentDescription = null,
-                        tint = TextSecondary,
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = supplier.phone,
-                        fontSize = 12.sp,
-                        color = TextSecondary,
-                        maxLines = 1
-                    )
-                    if (extraPhonesCount > 0) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Surface(color = Color(0xFFF1F5F9), shape = CircleShape) {
-                            Text(
-                                text = "+$extraPhonesCount",
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = NavyPrimary,
-                                modifier = Modifier.padding(horizontal = 4.5.dp, vertical = 1.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Badges FlowRow: SupplierType, Case Pack, Shops, Categories
-            Spacer(modifier = Modifier.height(6.dp))
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                SupplierTypeBadge(type = supplier.type)
-
-                Surface(
-                    color = Color(0xFFF1F5F9),
-                    shape = RoundedCornerShape(4.dp)
-                ) {
-                    Text(
-                        text = "Pack: ${supplier.defaultCaseSize} pcs",
-                        fontSize = 10.5.sp,
-                        color = Color(0xFF0F766E),
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
-
-                if (supplier.shopCount > 1) {
-                    Surface(
-                        color = Color(0xFFFEF3C7),
-                        shape = RoundedCornerShape(4.dp)
-                    ) {
-                        Text(
-                            text = "${supplier.shopCount} Shops",
-                            fontSize = 10.5.sp,
-                            color = Color(0xFF92400E),
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-
-                val cats = supplier.categories.ifBlank { supplier.garmentTypes }
-                if (cats.isNotBlank()) {
-                    Surface(
-                        color = NavyPrimary.copy(alpha = 0.07f),
-                        shape = RoundedCornerShape(4.dp)
-                    ) {
-                        Text(
-                            text = cats,
-                            fontSize = 10.5.sp,
-                            color = NavyPrimary,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-            }
         }
     }
 }
 
 // -------------------------------------------------------------
-// Component: EmployeeCard (with View, Edit, Delete)
+// Component: EmployeeCard (Minimalist & Compact)
 // -------------------------------------------------------------
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun EmployeeCard(
     employee: EmployeeEntity,
@@ -1927,177 +1725,74 @@ fun EmployeeCard(
     onDelete: () -> Unit,
     isAdmin: Boolean = false
 ) {
-    val extraPhonesCount = listOfNotNull(
-        employee.phone2.takeIf { it.isNotBlank() },
-        employee.phone3.takeIf { it.isNotBlank() }
-    ).size
-
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
+        shape = RoundedCornerShape(10.dp),
         border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(10.dp))
             .clickable { onClick() }
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(13.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Header: Avatar + Title & Subtitle + Actions
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+            Surface(
+                shape = CircleShape,
+                color = Color(0xFFF1F5F9),
+                modifier = Modifier.size(36.dp)
             ) {
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFFF1F5F9),
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Default.Person,
-                            contentDescription = null,
-                            tint = NavyPrimary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(10.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = employee.name,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.5.sp,
-                        color = TextPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = "ID: ${employee.employeeId} • ${employee.role}",
-                        fontSize = 11.5.sp,
-                        color = TextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Default.Person,
+                        contentDescription = null,
+                        tint = NavyPrimary,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
+            }
 
-                Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(10.dp))
 
-                MasterCardActions(
-                    onEdit = onEdit,
-                    onDelete = onDelete,
-                    onClick = onClick,
-                    canEdit = isAdmin,
-                    canDelete = isAdmin
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = employee.name,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp,
+                    color = TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "${employee.role}${if (employee.employeeId.isNotBlank()) " • ${employee.employeeId}" else ""}",
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = 8.dp),
-                color = Color(0xFFF1F5F9),
-                thickness = 0.8.dp
+            Spacer(modifier = Modifier.width(6.dp))
+
+            MasterCardActions(
+                onEdit = onEdit,
+                onDelete = onDelete,
+                onClick = onClick,
+                canEdit = isAdmin,
+                canDelete = isAdmin
             )
-
-            // Info Row: Phone on Left, Role Badge on Right
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Phone,
-                        contentDescription = null,
-                        tint = TextSecondary,
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = employee.phone,
-                        fontSize = 12.sp,
-                        color = TextSecondary,
-                        maxLines = 1
-                    )
-                    if (extraPhonesCount > 0) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Surface(color = Color(0xFFF1F5F9), shape = CircleShape) {
-                            Text(
-                                text = "+$extraPhonesCount",
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = NavyPrimary,
-                                modifier = Modifier.padding(horizontal = 4.5.dp, vertical = 1.dp)
-                            )
-                        }
-                    }
-                }
-
-                Surface(
-                    color = if (employee.role.equals("Admin", ignoreCase = true)) Color(0xFFFEF3C7) else Color(0xFFEFF6FF),
-                    shape = RoundedCornerShape(4.dp)
-                ) {
-                    Text(
-                        text = employee.role,
-                        fontSize = 10.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (employee.role.equals("Admin", ignoreCase = true)) Color(0xFF92400E) else Color(0xFF1D4ED8),
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
-            }
-
-            // Badges Row: Assigned Territory / Emergency contact
-            val hasTerritory = employee.assignedMarkets.isNotBlank()
-            val hasEmergency = employee.emergencyContactPhone.isNotBlank()
-            if (hasTerritory || hasEmergency) {
-                Spacer(modifier = Modifier.height(6.dp))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    if (hasTerritory) {
-                        Surface(
-                            color = NavyPrimary.copy(alpha = 0.07f),
-                            shape = RoundedCornerShape(4.dp)
-                        ) {
-                            Text(
-                                text = "Territory: ${employee.assignedMarkets}",
-                                fontSize = 10.5.sp,
-                                color = NavyPrimary,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                    if (hasEmergency) {
-                        Text(
-                            text = "Emergency: ${employee.emergencyContactPhone}",
-                            fontSize = 10.5.sp,
-                            color = Color(0xFFD97706),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(vertical = 2.dp)
-                        )
-                    }
-                }
-            }
         }
     }
 }
 
 // -------------------------------------------------------------
-// Component: ProductCard (with View, Edit, Delete)
+// Component: ProductCard (Minimalist & Compact)
 // -------------------------------------------------------------
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ProductCard(
     product: ProductEntity,
@@ -2107,138 +1802,71 @@ fun ProductCard(
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
+        shape = RoundedCornerShape(10.dp),
         border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(10.dp))
             .clickable { onClick() }
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(13.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Header: Product Code Badge + Product Name & Category + Actions
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+            Surface(
+                shape = CircleShape,
+                color = GoldAccent.copy(alpha = 0.15f),
+                modifier = Modifier.size(36.dp)
             ) {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = GoldAccent.copy(alpha = 0.15f),
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.Inventory,
-                            contentDescription = null,
-                            tint = NavyPrimary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(10.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = product.name,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.5.sp,
-                        color = TextPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = "Code: ${product.productCode} • ${product.category}",
-                        fontSize = 11.5.sp,
-                        color = TextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Inventory,
+                        contentDescription = null,
+                        tint = NavyPrimary,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                MasterCardActions(
-                    onEdit = onEdit,
-                    onDelete = onDelete,
-                    onClick = onClick
-                )
             }
 
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = 8.dp),
-                color = Color(0xFFF1F5F9),
-                thickness = 0.8.dp
-            )
+            Spacer(modifier = Modifier.width(10.dp))
 
-            // Info Row: Rate on Left, Case & HSN on Right
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "₹${product.defaultRate.toInt()} / pc",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.5.sp,
-                    color = NavyPrimary
+                    text = product.name,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp,
+                    color = TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-
+                val rateText = if (product.defaultRate > 0) "₹${product.defaultRate.toInt()}" else ""
+                val catText = product.category.ifBlank { product.productCode }
+                val sub = if (rateText.isNotBlank() && catText.isNotBlank()) "$rateText • $catText" else rateText.ifBlank { catText }
                 Text(
-                    text = "Case: ${product.defaultCaseSize} pcs${if (product.hsnCode.isNotBlank()) " • HSN: ${product.hsnCode}" else ""}",
-                    fontSize = 12.sp,
+                    text = sub,
+                    fontSize = 11.sp,
                     color = TextSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
 
-            // Badges Row
-            if (product.supplierName.isNotBlank() || product.description.isNotBlank()) {
-                Spacer(modifier = Modifier.height(6.dp))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    if (product.supplierName.isNotBlank()) {
-                        Surface(
-                            color = Color(0xFFF1F5F9),
-                            shape = RoundedCornerShape(4.dp)
-                        ) {
-                            Text(
-                                text = "Supplier: ${product.supplierName}",
-                                fontSize = 10.5.sp,
-                                color = NavyPrimary,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                    if (product.description.isNotBlank()) {
-                        Text(
-                            text = product.description,
-                            fontSize = 11.sp,
-                            color = TextSecondary,
-                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(vertical = 2.dp)
-                        )
-                    }
-                }
-            }
+            Spacer(modifier = Modifier.width(6.dp))
+
+            MasterCardActions(
+                onEdit = onEdit,
+                onDelete = onDelete,
+                onClick = onClick
+            )
         }
     }
 }
 
 // -------------------------------------------------------------
-// Component: BrandCard (with View, Edit, Delete)
+// Component: BrandCard (Minimalist & Compact)
 // -------------------------------------------------------------
 
 @Composable
@@ -2250,117 +1878,81 @@ fun BrandCard(
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
+        shape = RoundedCornerShape(10.dp),
         border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(10.dp))
             .clickable { onClick() }
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(13.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Header: Avatar + Title & Subtitle + Actions
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+            Surface(
+                shape = CircleShape,
+                color = Color(0xFFFFFBEB),
+                modifier = Modifier.size(36.dp)
             ) {
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFFFFFBEB),
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    if (brand.logoPhotoUri.isNotBlank()) {
-                        AsyncImage(
-                            model = brand.logoPhotoUri,
-                            contentDescription = brand.brandName,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
+                if (brand.logoPhotoUri.isNotBlank()) {
+                    AsyncImage(
+                        model = brand.logoPhotoUri,
+                        contentDescription = brand.brandName,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.Sell,
+                            contentDescription = null,
+                            tint = Color(0xFFD97706),
+                            modifier = Modifier.size(18.dp)
                         )
-                    } else {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                Icons.Default.Sell,
-                                contentDescription = null,
-                                tint = Color(0xFFD97706),
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
                     }
                 }
-
-                Spacer(modifier = Modifier.width(10.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = brand.brandName,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.5.sp,
-                        color = TextPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = brand.category.ifBlank { "Garment Brand" },
-                        fontSize = 11.5.sp,
-                        color = TextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                MasterCardActions(
-                    onEdit = onEdit,
-                    onDelete = onDelete,
-                    onClick = onClick
-                )
             }
 
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = 8.dp),
-                color = Color(0xFFF1F5F9),
-                thickness = 0.8.dp
-            )
+            Spacer(modifier = Modifier.width(10.dp))
 
-            // Info Row: Manufacturer / Mill
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Mill / Mfr: ${brand.manufacturerName.ifBlank { "Direct Label" }}",
-                    fontSize = 12.sp,
-                    color = TextSecondary,
+                    text = brand.brandName,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp,
+                    color = TextPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-            }
-
-            if (brand.description.isNotBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
+                val cat = brand.category.ifBlank { "Garment Brand" }
+                val sub = if (brand.manufacturerName.isNotBlank()) "$cat • ${brand.manufacturerName}" else cat
                 Text(
-                    text = brand.description,
+                    text = sub,
                     fontSize = 11.sp,
                     color = TextSecondary,
-                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
+
+            Spacer(modifier = Modifier.width(6.dp))
+
+            MasterCardActions(
+                onEdit = onEdit,
+                onDelete = onDelete,
+                onClick = onClick
+            )
         }
     }
 }
 
 // -------------------------------------------------------------
-// Component: TransporterCard (with View, Edit, Delete)
+// Component: TransporterCard (Minimalist & Compact)
 // -------------------------------------------------------------
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TransporterCard(
     transporter: TransporterEntity,
@@ -2368,188 +1960,72 @@ fun TransporterCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val extraPhonesCount = listOfNotNull(
-        transporter.phone2.takeIf { it.isNotBlank() },
-        transporter.phone3.takeIf { it.isNotBlank() }
-    ).size
-
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
+        shape = RoundedCornerShape(10.dp),
         border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(10.dp))
             .clickable { onClick() }
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(13.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Header: Avatar + Title & Subtitle + Actions
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+            Surface(
+                shape = CircleShape,
+                color = Color(0xFFECFEFF),
+                modifier = Modifier.size(36.dp)
             ) {
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFFECFEFF),
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Default.LocalShipping,
-                            contentDescription = null,
-                            tint = Color(0xFF0891B2),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(10.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = transporter.transporterName,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.5.sp,
-                        color = TextPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    val sub = if (transporter.contactPerson.isNotBlank()) {
-                        "${transporter.contactPerson} • ${transporter.city}"
-                    } else {
-                        transporter.city.ifBlank { "Transport Desk" }
-                    }
-                    Text(
-                        text = sub,
-                        fontSize = 11.5.sp,
-                        color = TextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Default.LocalShipping,
+                        contentDescription = null,
+                        tint = Color(0xFF0891B2),
+                        modifier = Modifier.size(18.dp)
                     )
                 }
+            }
 
-                Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(10.dp))
 
-                MasterCardActions(
-                    onEdit = onEdit,
-                    onDelete = onDelete,
-                    onClick = onClick
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = transporter.transporterName,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp,
+                    color = TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                val cityText = transporter.city.ifBlank { "Transport Desk" }
+                val sub = if (transporter.phone1.isNotBlank()) "$cityText • ${transporter.phone1}" else cityText
+                Text(
+                    text = sub,
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = 8.dp),
-                color = Color(0xFFF1F5F9),
-                thickness = 0.8.dp
+            Spacer(modifier = Modifier.width(6.dp))
+
+            MasterCardActions(
+                onEdit = onEdit,
+                onDelete = onDelete,
+                onClick = onClick
             )
-
-            // Info Row: City on Left, Phone on Right
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    modifier = Modifier.weight(1f, fill = false),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.Place,
-                        contentDescription = null,
-                        tint = TextSecondary,
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = transporter.city.ifBlank { "Ahmedabad" },
-                        fontSize = 12.sp,
-                        color = TextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(10.dp))
-
-                if (transporter.phone1.isNotBlank()) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.Phone,
-                            contentDescription = null,
-                            tint = TextSecondary,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = transporter.phone1,
-                            fontSize = 12.sp,
-                            color = TextSecondary,
-                            maxLines = 1
-                        )
-                        if (extraPhonesCount > 0) {
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Surface(color = Color(0xFFF1F5F9), shape = CircleShape) {
-                                Text(
-                                    text = "+$extraPhonesCount",
-                                    fontSize = 9.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = NavyPrimary,
-                                    modifier = Modifier.padding(horizontal = 4.5.dp, vertical = 1.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Badges / Routes / Office
-            val hasRoutes = transporter.destinationsCovered.isNotBlank()
-            val hasOffice = transporter.officeAddress.isNotBlank()
-            if (hasRoutes || hasOffice) {
-                Spacer(modifier = Modifier.height(6.dp))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    if (hasRoutes) {
-                        Surface(
-                            color = Color(0xFFF1F5F9),
-                            shape = RoundedCornerShape(4.dp)
-                        ) {
-                            Text(
-                                text = "Routes: ${transporter.destinationsCovered}",
-                                fontSize = 10.5.sp,
-                                color = NavyPrimary,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                    if (hasOffice) {
-                        Text(
-                            text = "Office: ${transporter.officeAddress}",
-                            fontSize = 11.sp,
-                            color = TextSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(vertical = 2.dp)
-                        )
-                    }
-                }
-            }
         }
     }
 }
 
 // -------------------------------------------------------------
-// Component: MarketCard (with View, Edit, Delete)
+// Component: MarketCard (Minimalist & Compact)
 // -------------------------------------------------------------
 
 @Composable
@@ -2561,114 +2037,64 @@ fun MarketCard(
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
+        shape = RoundedCornerShape(10.dp),
         border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(10.dp))
             .clickable { onClick() }
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(13.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Header: Avatar + Title & Subtitle + Actions
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+            Surface(
+                shape = CircleShape,
+                color = Color(0xFFFAF5FF),
+                modifier = Modifier.size(36.dp)
             ) {
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFFFAF5FF),
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Default.LocationCity,
-                            contentDescription = null,
-                            tint = Color(0xFF9333EA),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(10.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = market.marketName,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.5.sp,
-                        color = TextPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    val loc = "${market.city}${if (market.area.isNotBlank()) ", ${market.area}" else ""}${if (market.pincode.isNotBlank()) " - ${market.pincode}" else ""}"
-                    Text(
-                        text = loc,
-                        fontSize = 11.5.sp,
-                        color = TextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                MasterCardActions(
-                    onEdit = onEdit,
-                    onDelete = onDelete,
-                    onClick = onClick
-                )
-            }
-
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = 8.dp),
-                color = Color(0xFFF1F5F9),
-                thickness = 0.8.dp
-            )
-
-            // Info Row: Market Type Badge
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Surface(
-                    color = Color(0xFFFEF3C7),
-                    shape = RoundedCornerShape(4.dp)
-                ) {
-                    Text(
-                        text = market.marketType.ifBlank { "Textile Market" },
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF92400E),
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
-                    )
-                }
-
-                if (market.pincode.isNotBlank()) {
-                    Text(
-                        text = "PIN: ${market.pincode}",
-                        fontSize = 11.5.sp,
-                        color = TextSecondary
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Default.LocationCity,
+                        contentDescription = null,
+                        tint = Color(0xFF9333EA),
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
 
-            if (market.description.isNotBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.width(10.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = market.description,
+                    text = market.marketName,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp,
+                    color = TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                val typeText = market.marketType.ifBlank { "Textile Market" }
+                val sub = if (market.city.isNotBlank()) "$typeText • ${market.city}" else typeText
+                Text(
+                    text = sub,
                     fontSize = 11.sp,
                     color = TextSecondary,
-                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
+
+            Spacer(modifier = Modifier.width(6.dp))
+
+            MasterCardActions(
+                onEdit = onEdit,
+                onDelete = onDelete,
+                onClick = onClick
+            )
         }
     }
 }

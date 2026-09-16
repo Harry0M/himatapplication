@@ -25,10 +25,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Email
@@ -87,7 +89,8 @@ import com.example.ui.viewmodel.HimatViewModel
 fun SupplierDetailScreen(
     viewModel: HimatViewModel,
     supplier: SupplierEntity,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenVisit: (VisitEntity) -> Unit = {}
 ) {
     val context = LocalContext.current
     val allEntries by viewModel.allEntries.collectAsStateWithLifecycle()
@@ -95,6 +98,7 @@ fun SupplierDetailScreen(
     val allCustomers by viewModel.allCustomers.collectAsStateWithLifecycle()
 
     var searchQuery by remember { mutableStateOf("") }
+    var activeParentFilter by remember { mutableStateOf<String?>("STATUS") }
     var filterStatus by remember { mutableStateOf("All") } // "All", "Pending", "Delivered"
     var filterDateRange by remember { mutableStateOf("ALL") } // "ALL", "TODAY", "LAST_7", "THIS_MONTH"
     var filterCustomer by remember { mutableStateOf("All") }
@@ -264,319 +268,358 @@ fun SupplierDetailScreen(
             contentPadding = PaddingValues(vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Supplier Profile Card
+            // Cardless Hero Profile Header
             item {
-                ElevatedCard(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
-                    modifier = Modifier.fillMaxWidth()
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp, bottom = 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(42.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(MaterialTheme.colorScheme.secondaryContainer),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        Icons.Default.Storefront,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                    Column {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            Text(
-                                                text = supplier.name,
-                                                style = MaterialTheme.typography.titleMedium,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                            SupplierTypeBadge(type = supplier.type)
-                                        }
-                                        val subTitles = listOfNotNull(
-                                            supplier.firmName.takeIf { it.isNotBlank() }?.let { "Firm: $it" },
-                                            supplier.brand.takeIf { it.isNotBlank() }?.let { "Brand: $it" }
-                                        )
-                                        if (subTitles.isNotEmpty()) {
-                                            Text(
-                                                text = subTitles.joinToString(" • "),
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.primary,
-                                                fontWeight = FontWeight.Medium
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-                        // Badges: GSTIN, Case Size, Outlets
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (supplier.gstin.isNotBlank()) {
-                                Surface(
-                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                    shape = RoundedCornerShape(6.dp),
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                                ) {
-                                    Text(
-                                        text = "GSTIN: ${supplier.gstin}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
-                                }
-                            }
-                            Surface(
-                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
-                                shape = RoundedCornerShape(6.dp)
-                            ) {
-                                Text(
-                                    text = "Case: ${supplier.defaultCaseSize} pcs",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    // 66dp Hero Centered Circle Avatar
+                    val suppAvatarPhoto = supplier.shopPhotoUri.ifBlank { supplier.visitingCardPhotoUri }
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFFECFDF5),
+                        border = BorderStroke(2.dp, Color(0xFFA7F3D0)),
+                        modifier = Modifier.size(66.dp)
+                    ) {
+                        if (suppAvatarPhoto.isNotBlank()) {
+                            AsyncImage(
+                                model = suppAvatarPhoto,
+                                contentDescription = supplier.name,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Storefront,
+                                    contentDescription = null,
+                                    tint = Color(0xFF059669),
+                                    modifier = Modifier.size(32.dp)
                                 )
                             }
-                            if (supplier.shopCount > 1) {
-                                Surface(
-                                    color = Color(0xFFFEF3C7),
-                                    shape = RoundedCornerShape(6.dp),
-                                    border = BorderStroke(1.dp, Color(0xFFFDE68A))
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Firm / Supplier Name
+                    val displayName = supplier.firmName.ifBlank { supplier.name }
+                    Text(
+                        text = displayName,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF0F172A),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    // Contact Person
+                    if (supplier.firmName.isNotBlank() && supplier.name.isNotBlank() && supplier.firmName != supplier.name) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Contact: ${supplier.name}",
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF64748B)
+                        )
+                    }
+
+                    // Monospace GSTIN & Badges
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        SupplierTypeBadge(type = supplier.type)
+                        if (supplier.gstin.isNotBlank()) {
+                            Surface(
+                                color = Color(0xFFF1F5F9),
+                                shape = RoundedCornerShape(4.dp),
+                                border = BorderStroke(0.5.dp, Color(0xFFCBD5E1))
+                            ) {
+                                Text(
+                                    text = "GST: ${supplier.gstin}",
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF334155),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                        if (supplier.defaultCaseSize > 0) {
+                            Surface(
+                                color = Color(0xFFF0FDF4),
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = "Pack: ${supplier.defaultCaseSize} pcs",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF059669),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                        if (supplier.shopCount > 1) {
+                            Surface(
+                                color = Color(0xFFFEF3C7),
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = "🏪 ${supplier.shopCount} Outlets",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF92400E),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // Action Pills: Phone, Direction/Map, Email
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (supplier.phone.isNotBlank()) {
+                            Surface(
+                                shape = CircleShape,
+                                color = Color(0xFFF0FDF4),
+                                border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${supplier.phone}"))
+                                        context.startActivity(intent)
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
+                                    Icon(Icons.Default.Call, contentDescription = "Call", tint = Color(0xFF059669), modifier = Modifier.size(13.dp))
+                                    Text(text = supplier.phone, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF065F46))
+                                }
+                            }
+                        }
+
+                        val mapAddress = listOfNotNull(
+                            supplier.officeLocation.takeIf { it.isNotBlank() },
+                            supplier.officeAddress.takeIf { it.isNotBlank() },
+                            supplier.address.takeIf { it.isNotBlank() },
+                            supplier.city.takeIf { it.isNotBlank() }
+                        ).firstOrNull()
+
+                        if (mapAddress != null) {
+                            Surface(
+                                shape = CircleShape,
+                                color = Color(0xFFEFF6FF),
+                                border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        val geoUri = Uri.parse("geo:0,0?q=" + Uri.encode(mapAddress))
+                                        val mapIntent = Intent(Intent.ACTION_VIEW, geoUri)
+                                        context.startActivity(mapIntent)
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(Icons.Default.Place, contentDescription = "Map Directions", tint = Color(0xFF2563EB), modifier = Modifier.size(13.dp))
+                                    Text(text = "Direction", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1D4ED8))
+                                }
+                            }
+                        }
+
+                        if (supplier.email.isNotBlank()) {
+                            Surface(
+                                shape = CircleShape,
+                                color = Color(0xFFF8FAFC),
+                                border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:${supplier.email}"))
+                                        context.startActivity(intent)
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(Icons.Default.Email, contentDescription = "Email", tint = Color(0xFF475569), modifier = Modifier.size(13.dp))
+                                    Text(text = "Email", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Cardless Stats Row (NO cards, clean inline stats with 1dp vertical dividers)
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "$totalOrders",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0F172A)
+                        )
+                        Text(
+                            text = "Total Orders",
+                            fontSize = 11.sp,
+                            color = Color(0xFF64748B)
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .height(24.dp)
+                            .width(1.dp)
+                            .background(Color(0xFFE2E8F0))
+                    )
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = String.format("%,d", totalPieces),
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0F172A)
+                        )
+                        Text(
+                            text = "Total Pieces",
+                            fontSize = 11.sp,
+                            color = Color(0xFF64748B)
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .height(24.dp)
+                            .width(1.dp)
+                            .background(Color(0xFFE2E8F0))
+                    )
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "$deliveredOrders",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF059669)
+                        )
+                        Text(
+                            text = "Delivered",
+                            fontSize = 11.sp,
+                            color = Color(0xFF64748B)
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .height(24.dp)
+                            .width(1.dp)
+                            .background(Color(0xFFE2E8F0))
+                    )
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "$pendingOrders",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (pendingOrders > 0) Color(0xFFDC2626) else Color(0xFF059669)
+                        )
+                        Text(
+                            text = "Pending",
+                            fontSize = 11.sp,
+                            color = Color(0xFF64748B)
+                        )
+                    }
+                }
+            }
+
+            // Extended Details (Office, Markets, Garments)
+            val officeAddr = supplier.officeAddress.ifBlank { supplier.address }
+            val hasExtendedDetails = officeAddr.isNotBlank() ||
+                    supplier.homeAddress.isNotBlank() ||
+                    supplier.officeLocation.isNotBlank() ||
+                    supplier.personalLocation.isNotBlank() ||
+                    supplier.shopLocations.isNotBlank() ||
+                    supplier.markets.isNotBlank() ||
+                    supplier.categories.isNotBlank() ||
+                    supplier.garmentTypes.isNotBlank() ||
+                    supplier.referredBy.isNotBlank()
+
+            if (hasExtendedDetails) {
+                item {
+                    Surface(
+                        color = Color(0xFFF8FAFC),
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            if (officeAddr.isNotBlank() || supplier.officeLocation.isNotBlank()) {
+                                Row(verticalAlignment = Alignment.Top) {
+                                    Text("Office/Mill: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
                                     Text(
-                                        text = "🏪 ${supplier.shopCount} Outlets",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFFD97706),
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        text = listOfNotNull(officeAddr.takeIf { it.isNotBlank() }, supplier.officeLocation.takeIf { it.isNotBlank() }).joinToString(" • "),
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF1E293B)
                                     )
                                 }
                             }
-                        }
-
-                        // Contact Phones (up to 5 phones with 1-click dial chips)
-                        val supplierPhones = listOfNotNull(
-                            supplier.phone.takeIf { it.isNotBlank() },
-                            supplier.phone2.takeIf { it.isNotBlank() },
-                            supplier.phone3.takeIf { it.isNotBlank() },
-                            supplier.phone4.takeIf { it.isNotBlank() },
-                            supplier.phone5.takeIf { it.isNotBlank() }
-                        )
-                        if (supplierPhones.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                supplierPhones.forEachIndexed { idx, p ->
-                                    Surface(
-                                        color = Color(0xFFF0FDF4),
-                                        shape = RoundedCornerShape(8.dp),
-                                        border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
-                                        modifier = Modifier.clickable {
-                                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$p"))
-                                            context.startActivity(intent)
-                                        }
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Icon(Icons.Default.Call, contentDescription = null, tint = Color(0xFF059669), modifier = Modifier.size(12.dp))
-                                            Text(
-                                                text = if (idx == 0) p else "Alt ${idx + 1}: $p",
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Medium,
-                                                color = Color(0xFF065F46)
-                                            )
-                                        }
-                                    }
+                            if (supplier.homeAddress.isNotBlank() || supplier.personalLocation.isNotBlank()) {
+                                Row(verticalAlignment = Alignment.Top) {
+                                    Text("Home/Fact: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                    Text(
+                                        text = listOfNotNull(supplier.homeAddress.takeIf { it.isNotBlank() }, supplier.personalLocation.takeIf { it.isNotBlank() }).joinToString(" • "),
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF1E293B)
+                                    )
                                 }
                             }
-                        }
-
-                        // Emails
-                        val supplierEmails = listOfNotNull(
-                            supplier.email.takeIf { it.isNotBlank() },
-                            supplier.email2.takeIf { it.isNotBlank() }
-                        )
-                        if (supplierEmails.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                supplierEmails.forEach { em ->
-                                    Surface(
-                                        color = Color(0xFFF1F5F9),
-                                        shape = RoundedCornerShape(8.dp),
-                                        border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                                        modifier = Modifier.clickable {
-                                            val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$em"))
-                                            context.startActivity(intent)
-                                        }
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Icon(Icons.Default.Email, contentDescription = null, tint = Color(0xFF475569), modifier = Modifier.size(12.dp))
-                                            Text(
-                                                text = em,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Medium,
-                                                color = Color(0xFF334155)
-                                            )
-                                        }
-                                    }
+                            if (supplier.shopLocations.isNotBlank()) {
+                                Row(verticalAlignment = Alignment.Top) {
+                                    Text("Branches: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                    Text(supplier.shopLocations, fontSize = 11.sp, color = Color(0xFF1E293B))
                                 }
                             }
-                        }
-
-                        // Extended details card: addresses, locations, markets, categories, referredBy
-                        val officeAddr = supplier.officeAddress.ifBlank { supplier.address }
-                        val hasExtendedDetails = officeAddr.isNotBlank() ||
-                                supplier.homeAddress.isNotBlank() ||
-                                supplier.officeLocation.isNotBlank() ||
-                                supplier.personalLocation.isNotBlank() ||
-                                supplier.shopLocations.isNotBlank() ||
-                                supplier.markets.isNotBlank() ||
-                                supplier.categories.isNotBlank() ||
-                                supplier.garmentTypes.isNotBlank() ||
-                                supplier.referredBy.isNotBlank()
-
-                        if (hasExtendedDetails) {
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Surface(
-                                color = Color(0xFFF8FAFC),
-                                shape = RoundedCornerShape(10.dp),
-                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    if (officeAddr.isNotBlank() || supplier.officeLocation.isNotBlank()) {
-                                        Row(verticalAlignment = Alignment.Top) {
-                                            Text("Office/Mill: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
-                                            Text(
-                                                text = listOfNotNull(officeAddr.takeIf { it.isNotBlank() }, supplier.officeLocation.takeIf { it.isNotBlank() }).joinToString(" • "),
-                                                fontSize = 11.sp,
-                                                color = Color(0xFF1E293B)
-                                            )
-                                        }
-                                    }
-                                    if (supplier.homeAddress.isNotBlank() || supplier.personalLocation.isNotBlank()) {
-                                        Row(verticalAlignment = Alignment.Top) {
-                                            Text("Home/Fact: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
-                                            Text(
-                                                text = listOfNotNull(supplier.homeAddress.takeIf { it.isNotBlank() }, supplier.personalLocation.takeIf { it.isNotBlank() }).joinToString(" • "),
-                                                fontSize = 11.sp,
-                                                color = Color(0xFF1E293B)
-                                            )
-                                        }
-                                    }
-                                    if (supplier.shopLocations.isNotBlank()) {
-                                        Row(verticalAlignment = Alignment.Top) {
-                                            Text("Branches: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
-                                            Text(supplier.shopLocations, fontSize = 11.sp, color = Color(0xFF1E293B))
-                                        }
-                                    }
-                                    if (supplier.markets.isNotBlank()) {
-                                        Row(verticalAlignment = Alignment.Top) {
-                                            Text("Markets: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
-                                            Text(supplier.markets, fontSize = 11.sp, color = Color(0xFF0F766E), fontWeight = FontWeight.Medium)
-                                        }
-                                    }
-                                    val cats = supplier.categories.ifBlank { supplier.garmentTypes }
-                                    if (cats.isNotBlank()) {
-                                        Row(verticalAlignment = Alignment.Top) {
-                                            Text("Products: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
-                                            Text(cats, fontSize = 11.sp, color = Color(0xFF6366F1), fontWeight = FontWeight.Medium)
-                                        }
-                                    }
-                                    if (supplier.referredBy.isNotBlank()) {
-                                        Row(verticalAlignment = Alignment.Top) {
-                                            Text("Referred by: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
-                                            Text(supplier.referredBy, fontSize = 11.sp, color = Color(0xFF1E293B))
-                                        }
-                                    }
+                            if (supplier.markets.isNotBlank()) {
+                                Row(verticalAlignment = Alignment.Top) {
+                                    Text("Markets: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                    Text(supplier.markets, fontSize = 11.sp, color = Color(0xFF0F766E), fontWeight = FontWeight.Medium)
                                 }
                             }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Operational Metric Statistics Cards (2x2 Grid - NO Payment Figures)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            CustomerSummaryChip(
-                                title = "Total Orders",
-                                value = "$totalOrders Bills",
-                                subtitle = "${String.format("%,d", totalPieces)} pcs volume",
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.weight(1f)
-                            )
-                            CustomerSummaryChip(
-                                title = "Fulfilled Deliveries",
-                                value = "$deliveredOrders Fulfilled",
-                                subtitle = "${String.format("%,d", deliveredPieces)} pcs dispatched",
-                                color = Color(0xFF059669),
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            CustomerSummaryChip(
-                                title = "Pending Deliveries",
-                                value = "$pendingOrders Pending",
-                                subtitle = "${String.format("%,d", pendingPieces)} pcs in transit",
-                                color = if (pendingOrders > 0) MaterialTheme.colorScheme.secondary else Color(0xFF059669),
-                                modifier = Modifier.weight(1f)
-                            )
-                            CustomerSummaryChip(
-                                title = "Packaging Volume",
-                                value = "$totalCases Cases",
-                                subtitle = "$totalLoose Loose Pieces",
-                                color = MaterialTheme.colorScheme.tertiary,
-                                modifier = Modifier.weight(1f)
-                            )
+                            val cats = supplier.categories.ifBlank { supplier.garmentTypes }
+                            if (cats.isNotBlank()) {
+                                Row(verticalAlignment = Alignment.Top) {
+                                    Text("Products: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                    Text(cats, fontSize = 11.sp, color = Color(0xFF6366F1), fontWeight = FontWeight.Medium)
+                                }
+                            }
+                            if (supplier.referredBy.isNotBlank()) {
+                                Row(verticalAlignment = Alignment.Top) {
+                                    Text("Referred by: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                    Text(supplier.referredBy, fontSize = 11.sp, color = Color(0xFF1E293B))
+                                }
+                            }
                         }
                     }
                 }
@@ -754,166 +797,335 @@ fun SupplierDetailScreen(
                 }
             }
 
-            // Search and Date / Entity Filters
+            // Search and Cascading Filter Chips
             item {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        placeholder = { Text("Search by Order #, Item Code, Customer, Date...") },
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                        shape = RoundedCornerShape(14.dp),
+                    // Compact 36dp Pill Search Bar
+                    Surface(
+                        shape = CircleShape,
+                        color = Color.White,
+                        border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .defaultMinSize(minHeight = 52.dp),
-                        singleLine = true
-                    )
+                            .height(36.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = Color(0xFF64748B)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Box(
+                                modifier = Modifier.weight(1f),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                if (searchQuery.isEmpty()) {
+                                    Text(
+                                        text = "Search by Order #, Item, Customer...",
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF94A3B8),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                BasicTextField(
+                                    value = searchQuery,
+                                    onValueChange = { searchQuery = it },
+                                    singleLine = true,
+                                    textStyle = androidx.compose.ui.text.TextStyle(
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF0F172A),
+                                        fontWeight = FontWeight.Medium
+                                    ),
+                                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Color(0xFF2563EB)),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                            if (searchQuery.isNotEmpty()) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFE2E8F0))
+                                        .clickable { searchQuery = "" },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Clear,
+                                        contentDescription = "Clear",
+                                        modifier = Modifier.size(11.dp),
+                                        tint = Color(0xFF475569)
+                                    )
+                                }
+                            }
+                        }
+                    }
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Date Filters Row
-                    Text(
-                        text = "Filter by Date:",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
+                    // Cascading Filter Chips: Level 1 Single Line Parent Chips
+                    val isAnyFilterActive = filterDateRange != "ALL" || filterStatus != "All" || filterCustomer != "All" || filterTransporter != "All"
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        listOf(
-                            "ALL" to "All Dates",
-                            "TODAY" to "Today",
-                            "LAST_7" to "Last 7 Days",
-                            "THIS_MONTH" to "This Month"
-                        ).forEach { (rangeKey, label) ->
-                            val isSelected = filterDateRange == rangeKey
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = { filterDateRange = rangeKey },
-                                shape = CircleShape,
-                                modifier = Modifier.defaultMinSize(minHeight = 36.dp),
-                                label = {
-                                    Text(
-                                        text = label,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                    )
-                                }
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Delivery Status Filters Row
-                    Text(
-                        text = "Filter by Delivery Status:",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf(
-                            "All" to "All Bills ($totalOrders)",
-                            "Pending" to "Pending ($pendingOrders)",
-                            "Delivered" to "Delivered ($deliveredOrders)"
-                        ).forEach { (statusKey, label) ->
-                            val isSelected = filterStatus == statusKey
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = { filterStatus = statusKey },
-                                shape = CircleShape,
-                                modifier = Modifier.defaultMinSize(minHeight = 36.dp),
-                                label = {
-                                    Text(
-                                        text = label,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                    )
-                                }
-                            )
-                        }
-                    }
-
-                    // Entity Filters: Customer filter
-                    if (distinctCustomers.size > 1) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Filter by Customer:",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(
+                        // Date Parent Chip
+                        val isDateSelected = activeParentFilter == "DATE"
+                        val hasDateFilter = filterDateRange != "ALL"
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isDateSelected) Color(0xFF1E3A8A) else if (hasDateFilter) Color(0xFFEFF6FF) else Color.White,
+                            border = BorderStroke(1.dp, if (isDateSelected) Color(0xFF1E3A8A) else if (hasDateFilter) Color(0xFF3B82F6) else Color(0xFFCBD5E1)),
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                .clip(CircleShape)
+                                .clickable { activeParentFilter = if (isDateSelected) null else "DATE" }
                         ) {
-                            val allSelected = filterCustomer == "All"
-                            FilterChip(
-                                selected = allSelected,
-                                onClick = { filterCustomer = "All" },
-                                shape = CircleShape,
-                                modifier = Modifier.defaultMinSize(minHeight = 36.dp),
-                                label = { Text("All Customers (${distinctCustomers.size})", fontWeight = if (allSelected) FontWeight.Bold else FontWeight.Normal) }
+                            Text(
+                                text = if (hasDateFilter) "Date: $filterDateRange" else "Date",
+                                fontSize = 11.5.sp,
+                                fontWeight = if (isDateSelected || hasDateFilter) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isDateSelected) Color.White else if (hasDateFilter) Color(0xFF1D4ED8) else Color(0xFF334155),
+                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
                             )
-                            distinctCustomers.forEach { cust ->
-                                val isSelected = filterCustomer == cust
-                                FilterChip(
-                                    selected = isSelected,
-                                    onClick = { filterCustomer = cust },
-                                    shape = CircleShape,
-                                    modifier = Modifier.defaultMinSize(minHeight = 36.dp),
-                                    label = { Text(cust, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) }
+                        }
+
+                        // Status Parent Chip
+                        val isStatusSelected = activeParentFilter == "STATUS"
+                        val hasStatusFilter = filterStatus != "All"
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isStatusSelected) Color(0xFF1E3A8A) else if (hasStatusFilter) Color(0xFFEFF6FF) else Color.White,
+                            border = BorderStroke(1.dp, if (isStatusSelected) Color(0xFF1E3A8A) else if (hasStatusFilter) Color(0xFF3B82F6) else Color(0xFFCBD5E1)),
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable { activeParentFilter = if (isStatusSelected) null else "STATUS" }
+                        ) {
+                            Text(
+                                text = if (hasStatusFilter) "Status: $filterStatus" else "Status",
+                                fontSize = 11.5.sp,
+                                fontWeight = if (isStatusSelected || hasStatusFilter) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isStatusSelected) Color.White else if (hasStatusFilter) Color(0xFF1D4ED8) else Color(0xFF334155),
+                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
+                            )
+                        }
+
+                        // Customer Parent Chip
+                        val isCustomerSelected = activeParentFilter == "CUSTOMER"
+                        val hasCustomerFilter = filterCustomer != "All"
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isCustomerSelected) Color(0xFF1E3A8A) else if (hasCustomerFilter) Color(0xFFEFF6FF) else Color.White,
+                            border = BorderStroke(1.dp, if (isCustomerSelected) Color(0xFF1E3A8A) else if (hasCustomerFilter) Color(0xFF3B82F6) else Color(0xFFCBD5E1)),
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable { activeParentFilter = if (isCustomerSelected) null else "CUSTOMER" }
+                        ) {
+                            Text(
+                                text = if (hasCustomerFilter) "Cust: $filterCustomer" else "Customer",
+                                fontSize = 11.5.sp,
+                                fontWeight = if (isCustomerSelected || hasCustomerFilter) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isCustomerSelected) Color.White else if (hasCustomerFilter) Color(0xFF1D4ED8) else Color(0xFF334155),
+                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
+                            )
+                        }
+
+                        // Transporter Parent Chip
+                        val isTransporterSelected = activeParentFilter == "TRANSPORTER"
+                        val hasTransporterFilter = filterTransporter != "All"
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isTransporterSelected) Color(0xFF1E3A8A) else if (hasTransporterFilter) Color(0xFFEFF6FF) else Color.White,
+                            border = BorderStroke(1.dp, if (isTransporterSelected) Color(0xFF1E3A8A) else if (hasTransporterFilter) Color(0xFF3B82F6) else Color(0xFFCBD5E1)),
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable { activeParentFilter = if (isTransporterSelected) null else "TRANSPORTER" }
+                        ) {
+                            Text(
+                                text = if (hasTransporterFilter) "Trans: $filterTransporter" else "Transporter",
+                                fontSize = 11.5.sp,
+                                fontWeight = if (isTransporterSelected || hasTransporterFilter) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isTransporterSelected) Color.White else if (hasTransporterFilter) Color(0xFF1D4ED8) else Color(0xFF334155),
+                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
+                            )
+                        }
+
+                        // Reset Chip
+                        if (isAnyFilterActive) {
+                            Surface(
+                                shape = CircleShape,
+                                color = Color(0xFFFEE2E2),
+                                border = BorderStroke(1.dp, Color(0xFFFCA5A5)),
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        filterDateRange = "ALL"
+                                        filterStatus = "All"
+                                        filterCustomer = "All"
+                                        filterTransporter = "All"
+                                        searchQuery = ""
+                                    }
+                            ) {
+                                Text(
+                                    text = "Reset All",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFB91C1C),
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
                                 )
                             }
                         }
                     }
 
-                    // Entity Filters: Transporter filter
-                    if (distinctTransporters.isNotEmpty()) {
+                    // Level 2 Child Chips (Unboxed, NO card container)
+                    if (activeParentFilter != null) {
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Filter by Transporter:",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            val allSelected = filterTransporter == "All"
-                            FilterChip(
-                                selected = allSelected,
-                                onClick = { filterTransporter = "All" },
-                                shape = CircleShape,
-                                modifier = Modifier.defaultMinSize(minHeight = 36.dp),
-                                label = { Text("All Transporters", fontWeight = if (allSelected) FontWeight.Bold else FontWeight.Normal) }
-                            )
-                            distinctTransporters.forEach { tr ->
-                                val isSelected = filterTransporter == tr
-                                FilterChip(
-                                    selected = isSelected,
-                                    onClick = { filterTransporter = tr },
-                                    shape = CircleShape,
-                                    modifier = Modifier.defaultMinSize(minHeight = 36.dp),
-                                    label = { Text(tr, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) }
-                                )
+                            when (activeParentFilter) {
+                                "DATE" -> {
+                                    listOf(
+                                        "ALL" to "All Dates",
+                                        "TODAY" to "Today",
+                                        "LAST_7" to "Last 7 Days",
+                                        "THIS_MONTH" to "This Month"
+                                    ).forEach { (rangeKey, label) ->
+                                        val isSelected = filterDateRange == rangeKey
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = if (isSelected) Color(0xFF2563EB) else Color(0xFFF1F5F9),
+                                            border = BorderStroke(1.dp, if (isSelected) Color(0xFF2563EB) else Color(0xFFE2E8F0)),
+                                            modifier = Modifier
+                                                .clip(CircleShape)
+                                                .clickable { filterDateRange = rangeKey }
+                                        ) {
+                                            Text(
+                                                text = label,
+                                                fontSize = 11.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (isSelected) Color.White else Color(0xFF334155),
+                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.5.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                "STATUS" -> {
+                                    listOf(
+                                        "All" to "All Bills ($totalOrders)",
+                                        "Pending" to "Pending ($pendingOrders)",
+                                        "Delivered" to "Delivered ($deliveredOrders)"
+                                    ).forEach { (statusKey, label) ->
+                                        val isSelected = filterStatus == statusKey
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = if (isSelected) Color(0xFF2563EB) else Color(0xFFF1F5F9),
+                                            border = BorderStroke(1.dp, if (isSelected) Color(0xFF2563EB) else Color(0xFFE2E8F0)),
+                                            modifier = Modifier
+                                                .clip(CircleShape)
+                                                .clickable { filterStatus = statusKey }
+                                        ) {
+                                            Text(
+                                                text = label,
+                                                fontSize = 11.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (isSelected) Color.White else Color(0xFF334155),
+                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.5.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                "CUSTOMER" -> {
+                                    val isAllSelected = filterCustomer == "All"
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = if (isAllSelected) Color(0xFF2563EB) else Color(0xFFF1F5F9),
+                                        border = BorderStroke(1.dp, if (isAllSelected) Color(0xFF2563EB) else Color(0xFFE2E8F0)),
+                                        modifier = Modifier
+                                            .clip(CircleShape)
+                                            .clickable { filterCustomer = "All" }
+                                    ) {
+                                        Text(
+                                            text = "All Customers (${distinctCustomers.size})",
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isAllSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isAllSelected) Color.White else Color(0xFF334155),
+                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.5.dp)
+                                        )
+                                    }
+                                    distinctCustomers.forEach { cust ->
+                                        val isSelected = filterCustomer == cust
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = if (isSelected) Color(0xFF2563EB) else Color(0xFFF1F5F9),
+                                            border = BorderStroke(1.dp, if (isSelected) Color(0xFF2563EB) else Color(0xFFE2E8F0)),
+                                            modifier = Modifier
+                                                .clip(CircleShape)
+                                                .clickable { filterCustomer = cust }
+                                        ) {
+                                            Text(
+                                                text = cust,
+                                                fontSize = 11.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (isSelected) Color.White else Color(0xFF334155),
+                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.5.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                "TRANSPORTER" -> {
+                                    val isAllSelected = filterTransporter == "All"
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = if (isAllSelected) Color(0xFF2563EB) else Color(0xFFF1F5F9),
+                                        border = BorderStroke(1.dp, if (isAllSelected) Color(0xFF2563EB) else Color(0xFFE2E8F0)),
+                                        modifier = Modifier
+                                            .clip(CircleShape)
+                                            .clickable { filterTransporter = "All" }
+                                    ) {
+                                        Text(
+                                            text = "All Transporters",
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isAllSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isAllSelected) Color.White else Color(0xFF334155),
+                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.5.dp)
+                                        )
+                                    }
+                                    distinctTransporters.forEach { tr ->
+                                        val isSelected = filterTransporter == tr
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = if (isSelected) Color(0xFF2563EB) else Color(0xFFF1F5F9),
+                                            border = BorderStroke(1.dp, if (isSelected) Color(0xFF2563EB) else Color(0xFFE2E8F0)),
+                                            modifier = Modifier
+                                                .clip(CircleShape)
+                                                .clickable { filterTransporter = tr }
+                                        ) {
+                                            Text(
+                                                text = tr,
+                                                fontSize = 11.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (isSelected) Color.White else Color(0xFF334155),
+                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.5.dp)
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -980,7 +1192,8 @@ fun SupplierDetailScreen(
                                 viewModel.openSupplierCopy(visit, supplier)
                             }
                         },
-                        onAdvanceStatus = { viewModel.advanceEntryDeliveryStatus(entry) }
+                        onAdvanceStatus = { viewModel.advanceEntryDeliveryStatus(entry) },
+                        onOpenVisit = { visit?.let { onOpenVisit(it) } }
                     )
                 }
             }
@@ -993,7 +1206,8 @@ fun SupplierBillCard(
     entry: PurchaseEntryEntity,
     visit: VisitEntity?,
     onOpenSupplierCopy: () -> Unit,
-    onAdvanceStatus: () -> Unit
+    onAdvanceStatus: () -> Unit,
+    onOpenVisit: (() -> Unit)? = null
 ) {
     ElevatedCard(
         shape = RoundedCornerShape(16.dp),
@@ -1021,14 +1235,28 @@ fun SupplierBillCard(
                     if (visit != null) {
                         Surface(
                             color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            shape = RoundedCornerShape(6.dp)
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = if (onOpenVisit != null) Modifier.clip(RoundedCornerShape(6.dp)).clickable { onOpenVisit() } else Modifier
                         ) {
-                            Text(
-                                text = visit.date,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = visit.date,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (onOpenVisit != null) {
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Icon(
+                                        Icons.Default.Place,
+                                        contentDescription = "Open Trip",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -1130,30 +1358,46 @@ fun SupplierBillCard(
                 )
             }
 
-            // Action Buttons Row: View Supplier Voucher Copy & Quick Status
+            // Action Buttons Row: View Supplier Voucher Copy, Open Trip & Quick Status
             Spacer(modifier = Modifier.height(10.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (visit != null) {
-                    Button(
-                        onClick = onOpenSupplierCopy,
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                        modifier = Modifier.defaultMinSize(minHeight = 34.dp)
-                    ) {
-                        Icon(Icons.Default.Assessment, contentDescription = null, modifier = Modifier.size(15.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Supplier Voucher",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold
-                        )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (visit != null) {
+                        Button(
+                            onClick = onOpenSupplierCopy,
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.defaultMinSize(minHeight = 34.dp)
+                        ) {
+                            Icon(Icons.Default.Assessment, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Voucher",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        if (onOpenVisit != null) {
+                            OutlinedButton(
+                                onClick = onOpenVisit,
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                                modifier = Modifier.defaultMinSize(minHeight = 34.dp)
+                            ) {
+                                Icon(Icons.Default.Place, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = "Open Trip",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
                     }
-                } else {
-                    Spacer(modifier = Modifier.width(1.dp))
                 }
 
                 if (entry.deliveryStatus != "Delivered") {

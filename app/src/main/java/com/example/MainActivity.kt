@@ -603,7 +603,10 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
                         SupplierDetailScreen(
                             viewModel = viewModel,
                             supplier = supplier,
-                            onBack = { viewModel.navigateTo(AppScreen.SUPPLIER_MASTER) }
+                            onBack = { viewModel.navigateTo(AppScreen.SUPPLIER_MASTER) },
+                            onOpenVisit = { visit ->
+                                viewModel.openVisitDetail(visit, returnScreen = AppScreen.SUPPLIER_DETAIL)
+                            }
                         )
                     } else {
                         viewModel.navigateTo(AppScreen.SUPPLIER_MASTER)
@@ -617,7 +620,9 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
                             viewModel = viewModel,
                             employee = employee,
                             onBack = { viewModel.navigateTo(AppScreen.EMPLOYEE_MASTER) },
-                            onOpenVisit = { viewModel.openVisitDetail(it) }
+                            onOpenVisit = { visit ->
+                                viewModel.openVisitDetail(visit, returnScreen = AppScreen.EMPLOYEE_DETAIL)
+                            }
                         )
                     } else {
                         viewModel.navigateTo(AppScreen.EMPLOYEE_MASTER)
