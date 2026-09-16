@@ -29,6 +29,7 @@ import { Button } from "../components/ui/Button"
 import { Badge } from "../components/ui/Badge"
 import { Dialog } from "../components/ui/Dialog"
 import { Input } from "../components/ui/Input"
+import { ReferrerSelectModal } from "../components/ui/ReferrerSelectModal"
 import { Tabs } from "../components/ui/Tabs"
 import { Supplier, SupplierAddress, Visit } from "../types"
 import { GARMENT_CATEGORIES } from "../lib/constants"
@@ -1136,14 +1137,13 @@ export function SuppliersView() {
 
 
               <div>
-                <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                  Referred By
-                </label>
-                <Input
-                  placeholder="Introducer, Broker, or Agent"
+                <ReferrerSelectModal
                   value={referredBy}
-                  onChange={(e) => setReferredBy(e.target.value)}
-                  className="mt-1 h-8 text-xs"
+                  onChange={setReferredBy}
+                  employees={employees}
+                  customers={customers}
+                  suppliers={suppliers}
+                  label="Referred By (Entity Link)"
                 />
               </div>
 

@@ -877,7 +877,27 @@ export function SupplierDetailView({
                 </div>
                 <div>
                   <span className="text-muted-foreground block text-[11px]">Referred By</span>
-                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">{supplier.referredBy || "Direct Mill Connection"}</span>
+                  {supplier.referredBy ? (() => {
+                    const ref = supplier.referredBy
+                    const lower = ref.toLowerCase()
+                    const badgeClass =
+                      lower.startsWith("staff:") || lower.includes("(agent)")
+                        ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800"
+                        : lower.startsWith("customer:") || lower.includes("(customer)")
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+                        : lower.startsWith("supplier:") || lower.includes("(supplier)")
+                        ? "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800"
+                        : "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
+
+                    return (
+                      <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 mt-0.5 rounded-md border text-xs font-semibold ${badgeClass}`}>
+                        <span>🔗</span>
+                        <span>{ref}</span>
+                      </div>
+                    )
+                  })() : (
+                    <span className="font-semibold text-zinc-600 dark:text-zinc-400">Direct Mill Connection</span>
+                  )}
                 </div>
                 <div>
                   <span className="text-muted-foreground block text-[11px]">Primary Office Address</span>

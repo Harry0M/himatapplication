@@ -622,9 +622,35 @@ fun SupplierDetailScreen(
                                 }
                             }
                             if (supplier.referredBy.isNotBlank()) {
-                                Row(verticalAlignment = Alignment.Top) {
-                                    Text("Referred by: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
-                                    Text(supplier.referredBy, fontSize = 11.sp, color = Color(0xFF1E293B))
+                                val ref = supplier.referredBy
+                                val lower = ref.lowercase()
+                                val (tagBg, tagFg, tagLabel) = when {
+                                    lower.startsWith("staff:") || lower.contains("(agent)") ->
+                                        Triple(Color(0xFFEFF6FF), Color(0xFF1D4ED8), "Staff Referrer")
+                                    lower.startsWith("customer:") || lower.contains("(customer)") ->
+                                        Triple(Color(0xFFECFDF5), Color(0xFF047857), "Customer Referrer")
+                                    lower.startsWith("supplier:") || lower.contains("(supplier)") ->
+                                        Triple(Color(0xFFF5F3FF), Color(0xFF6D28D9), "Supplier Referrer")
+                                    else ->
+                                        Triple(Color(0xFFFFFBEB), Color(0xFFB45309), "Broker / Referrer")
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = tagBg,
+                                    border = BorderStroke(1.dp, tagFg.copy(alpha = 0.3f)),
+                                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column {
+                                            Text(tagLabel, fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = tagFg)
+                                            Text(ref, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B))
+                                        }
+                                        Icon(Icons.Default.Person, contentDescription = null, tint = tagFg, modifier = Modifier.size(16.dp))
+                                    }
                                 }
                             }
                         }

@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 import com.example.data.remote.FirebaseStorageService
 import com.example.ui.dialogs.FullScreenImageViewerDialog
+import com.example.ui.dialogs.ReferredBySelectorField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -1204,7 +1205,10 @@ fun AddEditMasterScreen(
                                     } else {
                                         empSelectedMarkets + mkt
                                     }
-                                }
+                                },
+                                customersList = customers,
+                                suppliersList = suppliers,
+                                employeesList = employees
                             )
                         }
                     }
@@ -1885,44 +1889,14 @@ private fun CustomerMasterForm(
                         color = NavyPrimary
                     )
 
-                    OutlinedTextField(
+                    ReferredBySelectorField(
                         value = referredBy,
                         onValueChange = onReferredByChange,
-                        label = { Text("Referred By", fontSize = 11.5.sp) },
-                        placeholder = { Text("Select master or type reference name", fontSize = 11.5.sp) },
-                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        colors = defaultTextFieldColors()
+                        customersList = customersList,
+                        suppliersList = suppliersList,
+                        employeesList = employeesList,
+                        label = "Referred By (Entity Link)"
                     )
-
-                    // Quick chips from Masters
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                    ) {
-                        customersList.take(3).forEach { c ->
-                            SuggestionChip(
-                                onClick = { onReferredByChange("${c.firmName} (Customer)") },
-                                label = { Text("${c.firmName.take(12)}.. (Cust)", fontSize = 10.sp) }
-                            )
-                        }
-                        suppliersList.take(3).forEach { s ->
-                            SuggestionChip(
-                                onClick = { onReferredByChange("${s.firmName} (Supplier)") },
-                                label = { Text("${s.firmName.take(12)}.. (Supp)", fontSize = 10.sp) }
-                            )
-                        }
-                        employeesList.take(3).forEach { e ->
-                            SuggestionChip(
-                                onClick = { onReferredByChange("${e.name} (Agent)") },
-                                label = { Text("${e.name} (Staff)", fontSize = 10.sp) }
-                            )
-                        }
-                    }
 
                     MasterDropdownField(
                         label = "Added By / Handling Agent *",
@@ -2898,15 +2872,13 @@ private fun SupplierMasterForm(
                     colors = defaultTextFieldColors()
                 )
 
-                OutlinedTextField(
+                ReferredBySelectorField(
                     value = referredBy,
                     onValueChange = onReferredByChange,
-                    label = { Text("Referred By") },
-                    placeholder = { Text("e.g. Ramesh Bhai / Paresh (Agent)") },
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    colors = defaultTextFieldColors()
+                    customersList = customersList,
+                    suppliersList = suppliersList,
+                    employeesList = employeesList,
+                    label = "Referred By (Entity Link)"
                 )
 
                 OutlinedTextField(
@@ -3565,7 +3537,10 @@ private fun EmployeeFormContent(
     referredBy: String,
     onReferredByChange: (String) -> Unit,
     selectedMarkets: Set<String>,
-    onToggleMarket: (String) -> Unit
+    onToggleMarket: (String) -> Unit,
+    customersList: List<CustomerEntity> = emptyList(),
+    suppliersList: List<SupplierEntity> = emptyList(),
+    employeesList: List<EmployeeEntity> = emptyList()
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(
@@ -3752,6 +3727,15 @@ private fun EmployeeFormContent(
                         colors = defaultTextFieldColors()
                     )
                 }
+
+                ReferredBySelectorField(
+                    value = referredBy,
+                    onValueChange = onReferredByChange,
+                    customersList = customersList,
+                    suppliersList = suppliersList,
+                    employeesList = employeesList,
+                    label = "Referred By / Reference Person"
+                )
 
                 Text("Assigned Ahmedabad Markets:", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = NavyPrimary)
                 FlowRow(

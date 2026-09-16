@@ -35,6 +35,7 @@ import { Button } from "../components/ui/Button"
 import { Badge } from "../components/ui/Badge"
 import { Dialog } from "../components/ui/Dialog"
 import { Input } from "../components/ui/Input"
+import { ReferrerSelectModal } from "../components/ui/ReferrerSelectModal"
 import { Tabs } from "../components/ui/Tabs"
 import { Employee } from "../types"
 import { AHMEDABAD_TEXTILE_MARKETS } from "../lib/constants"
@@ -47,6 +48,8 @@ interface EmployeesViewProps {
 export function EmployeesView({ onNavigate }: EmployeesViewProps) {
   const {
     employees,
+    customers,
+    suppliers,
     allEmployeeStats,
     saveEmployee,
     deleteEmployee,
@@ -1005,14 +1008,13 @@ export function EmployeesView({ onNavigate }: EmployeesViewProps) {
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                  Referred By / Reference Person
-                </label>
-                <Input
+                <ReferrerSelectModal
                   value={referredBy}
-                  onChange={(e) => setReferredBy(e.target.value)}
-                  placeholder="e.g. Paresh Bhai (Radheshyam Mills)"
-                  className="mt-1"
+                  onChange={setReferredBy}
+                  employees={employees}
+                  customers={customers}
+                  suppliers={suppliers}
+                  label="Referred By / Reference Person"
                 />
               </div>
             </div>

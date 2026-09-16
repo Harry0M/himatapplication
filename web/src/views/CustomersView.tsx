@@ -33,6 +33,7 @@ import { Button } from "../components/ui/Button"
 import { Badge } from "../components/ui/Badge"
 import { Dialog } from "../components/ui/Dialog"
 import { Input } from "../components/ui/Input"
+import { ReferrerSelectModal } from "../components/ui/ReferrerSelectModal"
 import { Tabs } from "../components/ui/Tabs"
 import { Customer, CustomerContact, CustomerOutlet, Visit } from "../types"
 import { GARMENT_CATEGORIES } from "../lib/constants"
@@ -1062,44 +1063,13 @@ export function CustomersView() {
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                    Referred By (Select Master or Type)
-                  </label>
-                  <div className="flex gap-1.5 mt-1">
-                    <select
-                      value={referredBy}
-                      onChange={(e) => setReferredBy(e.target.value)}
-                      className="w-full h-8 rounded-md border border-zinc-300 bg-white px-2.5 text-xs text-zinc-900 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
-                    >
-                      <option value="">-- Select Referrer --</option>
-                      <optgroup label="Staff & Agents">
-                        {employees.map((e) => (
-                          <option key={`emp-${e.id}`} value={`Staff: ${e.name}`}>
-                            Staff: {e.name} ({e.role})
-                          </option>
-                        ))}
-                      </optgroup>
-                      <optgroup label="Existing Customers">
-                        {customers.slice(0, 10).map((c) => (
-                          <option key={`cust-${c.id}`} value={`Customer: ${c.firmName || c.name}`}>
-                            Customer: {c.firmName || c.name}
-                          </option>
-                        ))}
-                      </optgroup>
-                      <optgroup label="Suppliers & Mills">
-                        {suppliers.slice(0, 10).map((s) => (
-                          <option key={`sup-${s.id}`} value={`Supplier: ${s.firmName || s.name}`}>
-                            Supplier: {s.firmName || s.name}
-                          </option>
-                        ))}
-                      </optgroup>
-                    </select>
-                  </div>
-                  <Input
-                    placeholder="Or type custom referrer..."
+                  <ReferrerSelectModal
                     value={referredBy}
-                    onChange={(e) => setReferredBy(e.target.value)}
-                    className="mt-1 h-7 text-[11px]"
+                    onChange={setReferredBy}
+                    employees={employees}
+                    customers={customers}
+                    suppliers={suppliers}
+                    label="Referred By (Entity Link)"
                   />
                 </div>
               </div>
