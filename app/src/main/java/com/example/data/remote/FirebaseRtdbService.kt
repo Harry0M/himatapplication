@@ -366,7 +366,22 @@ class FirebaseRtdbService(
 
     suspend fun syncBrand(brand: BrandEntity) = withContext(Dispatchers.IO) {
         try {
-            rootRef.child("brands").child(brand.id.toString()).setValue(brand)
+            val data = mapOf(
+                "id" to brand.id,
+                "brandName" to brand.brandName,
+                "manufacturerId" to brand.manufacturerId,
+                "manufacturerName" to brand.manufacturerName,
+                "category" to brand.category,
+                "logoPhotoUri" to brand.logoPhotoUri,
+                "description" to brand.description,
+                "isActive" to brand.isActive,
+                "active" to brand.isActive,
+                "isDeleted" to brand.isDeleted,
+                "deleted" to brand.isDeleted,
+                "deletedAt" to brand.deletedAt,
+                "createdAt" to brand.createdAt
+            )
+            rootRef.child("brands").child(brand.id.toString()).setValue(data)
         } catch (e: Exception) {
             // Ignore
         }
@@ -382,7 +397,28 @@ class FirebaseRtdbService(
 
     suspend fun syncTransporter(transporter: TransporterEntity) = withContext(Dispatchers.IO) {
         try {
-            rootRef.child("transporters").child(transporter.id.toString()).setValue(transporter)
+            val data = mapOf(
+                "id" to transporter.id,
+                "transporterName" to transporter.transporterName,
+                "contactPerson" to transporter.contactPerson,
+                "phone" to transporter.phone1,
+                "phone1" to transporter.phone1,
+                "phone2" to transporter.phone2,
+                "phone3" to transporter.phone3,
+                "officeAddress" to transporter.officeAddress,
+                "godownAddress" to transporter.godownAddress,
+                "city" to transporter.city,
+                "destinationsCovered" to transporter.destinationsCovered,
+                "gstin" to transporter.gstin,
+                "trackingUrl" to transporter.trackingUrl,
+                "notes" to transporter.notes,
+                "isActive" to true,
+                "active" to true,
+                "isDeleted" to transporter.isDeleted,
+                "deleted" to transporter.isDeleted,
+                "createdAt" to transporter.createdAt
+            )
+            rootRef.child("transporters").child(transporter.id.toString()).setValue(data)
         } catch (e: Exception) {
             // Ignore
         }
@@ -398,7 +434,22 @@ class FirebaseRtdbService(
 
     suspend fun syncMarket(market: MarketEntity) = withContext(Dispatchers.IO) {
         try {
-            rootRef.child("markets").child(market.id.toString()).setValue(market)
+            val data = mapOf(
+                "id" to market.id,
+                "marketName" to market.marketName,
+                "city" to market.city,
+                "area" to market.area,
+                "landmark" to market.landmark,
+                "pincode" to market.pincode,
+                "marketType" to market.marketType,
+                "description" to market.description,
+                "isActive" to true,
+                "active" to true,
+                "isDeleted" to market.isDeleted,
+                "deleted" to market.isDeleted,
+                "createdAt" to market.createdAt
+            )
+            rootRef.child("markets").child(market.id.toString()).setValue(data)
         } catch (e: Exception) {
             // Ignore
         }

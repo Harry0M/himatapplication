@@ -24,9 +24,17 @@ function parseRtdbList<T extends { id?: any }>(val: any): T[] {
       .map((item, idx) => {
         if (!item) return null
         if (typeof item === "object") {
+          const rawItem = item as any
+          const id = rawItem.id !== undefined && rawItem.id !== null ? Number(rawItem.id) : idx
+          const isDeleted = Boolean(rawItem.isDeleted ?? rawItem.deleted ?? false)
+          const isActive = Boolean(rawItem.isActive ?? rawItem.active ?? true)
+          const isBlocked = Boolean(rawItem.isBlocked ?? rawItem.blocked ?? false)
           return {
             ...item,
-            id: item.id !== undefined && item.id !== null ? Number(item.id) : idx,
+            id,
+            isDeleted,
+            isActive,
+            isBlocked,
           }
         }
         return item
@@ -39,13 +47,23 @@ function parseRtdbList<T extends { id?: any }>(val: any): T[] {
         if (!item) return null
         if (typeof item === "object") {
           const numKey = Number(key)
+          const rawItem = item as any
           const id =
-            (item as any).id !== undefined && (item as any).id !== null
-              ? Number((item as any).id)
+            rawItem.id !== undefined && rawItem.id !== null
+              ? Number(rawItem.id)
               : !isNaN(numKey)
               ? numKey
               : key
-          return { ...item, id }
+          const isDeleted = Boolean(rawItem.isDeleted ?? rawItem.deleted ?? false)
+          const isActive = Boolean(rawItem.isActive ?? rawItem.active ?? true)
+          const isBlocked = Boolean(rawItem.isBlocked ?? rawItem.blocked ?? false)
+          return {
+            ...item,
+            id,
+            isDeleted,
+            isActive,
+            isBlocked,
+          }
         }
         return item
       })
@@ -352,15 +370,34 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [rawProducts])
 
   const brands = React.useMemo(() => {
-    return rawBrands.filter((b) => !b.isDeleted)
+    return rawBrands
+      .filter((b) => !b.isDeleted && !(b as any).deleted)
+      .map((b) => ({
+        ...b,
+        brandName: b.brandName || (b as any).name || `Brand #${b.id}`,
+        isActive: b.isActive ?? (b as any).active ?? true,
+      }))
   }, [rawBrands])
 
   const transporters = React.useMemo(() => {
-    return rawTransporters.filter((t) => !t.isDeleted)
+    return rawTransporters
+      .filter((t) => !t.isDeleted && !(t as any).deleted)
+      .map((t) => ({
+        ...t,
+        transporterName: t.transporterName || (t as any).name || `Transporter #${t.id}`,
+        phone: t.phone || (t as any).phone1 || "",
+        isActive: t.isActive ?? (t as any).active ?? true,
+      }))
   }, [rawTransporters])
 
   const markets = React.useMemo(() => {
-    return rawMarkets.filter((m) => !m.isDeleted)
+    return rawMarkets
+      .filter((m) => !m.isDeleted && !(m as any).deleted)
+      .map((m) => ({
+        ...m,
+        marketName: m.marketName || (m as any).name || `Market #${m.id}`,
+        isActive: m.isActive ?? (m as any).active ?? true,
+      }))
   }, [rawMarkets])
 
   // Synthesize employees: combine explicit employees from RTDB with any agent found in visits

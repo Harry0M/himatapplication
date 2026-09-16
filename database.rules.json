@@ -53,6 +53,24 @@
         ".write": "auth != null && (newData.exists() || !root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists())"
       }
     },
+    "brands": {
+      ".read": "auth != null",
+      "$id": {
+        ".write": "auth != null && (newData.exists() || !root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists())"
+      }
+    },
+    "transporters": {
+      ".read": "auth != null",
+      "$id": {
+        ".write": "auth != null && (newData.exists() || !root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists())"
+      }
+    },
+    "markets": {
+      ".read": "auth != null",
+      "$id": {
+        ".write": "auth != null && (newData.exists() || !root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists())"
+      }
+    },
     "transactions": {
       ".read": "auth != null",
       "$id": {

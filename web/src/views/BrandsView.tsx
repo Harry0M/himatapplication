@@ -88,11 +88,10 @@ export function BrandsView() {
 
   const filteredBrands = brands.filter((b) => {
     const q = search.toLowerCase()
-    return (
-      (b.brandName || "").toLowerCase().includes(q) ||
-      (b.manufacturerName || "").toLowerCase().includes(q) ||
-      (b.category || "").toLowerCase().includes(q)
-    )
+    const name = (b.brandName || (b as any).name || "").toLowerCase()
+    const mfg = (b.manufacturerName || "").toLowerCase()
+    const cat = (b.category || "").toLowerCase()
+    return name.includes(q) || mfg.includes(q) || cat.includes(q)
   })
 
   return (
@@ -163,12 +162,12 @@ export function BrandsView() {
                         }}
                       />
                     ) : (
-                      brand.brandName ? brand.brandName[0].toUpperCase() : "B"
+                      (brand.brandName || (brand as any).name) ? (brand.brandName || (brand as any).name)[0].toUpperCase() : "B"
                     )}
                   </div>
                   <div>
                     <h4 className="text-sm font-bold text-zinc-900 dark:text-zinc-50 line-clamp-1">
-                      {brand.brandName}
+                      {brand.brandName || (brand as any).name || "Brand"}
                     </h4>
                     <span className="inline-block text-[11px] font-medium text-amber-700 dark:text-amber-400">
                       {brand.category || "Apparel"}

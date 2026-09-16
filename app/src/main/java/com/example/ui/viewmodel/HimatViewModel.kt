@@ -821,38 +821,48 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 // Sync all customers
-                allCustomers.value.filter { it.id > 0L }.forEach { rtdbService.syncCustomer(it) }
+                val customers = repository.allCustomers.first()
+                customers.filter { it.id > 0L }.forEach { rtdbService.syncCustomer(it) }
 
                 // Sync all suppliers & manufacturers
-                allSuppliers.value.filter { it.id > 0L }.forEach { rtdbService.syncSupplier(it) }
+                val suppliers = repository.allSuppliers.first()
+                suppliers.filter { it.id > 0L }.forEach { rtdbService.syncSupplier(it) }
 
                 // Sync all brands
-                allBrands.value.filter { it.id > 0L }.forEach { rtdbService.syncBrand(it) }
+                val brands = repository.allBrands.first()
+                brands.filter { it.id > 0L }.forEach { rtdbService.syncBrand(it) }
 
                 // Sync all transporters
-                allTransporters.value.filter { it.id > 0L }.forEach { rtdbService.syncTransporter(it) }
+                val transporters = repository.allTransporters.first()
+                transporters.filter { it.id > 0L }.forEach { rtdbService.syncTransporter(it) }
 
                 // Sync all markets
-                allMarkets.value.filter { it.id > 0L }.forEach { rtdbService.syncMarket(it) }
+                val markets = repository.allMarkets.first()
+                markets.filter { it.id > 0L }.forEach { rtdbService.syncMarket(it) }
 
                 // Sync all products
-                allProducts.value.filter { it.id > 0L }.forEach { rtdbService.syncProduct(it) }
+                val products = repository.allProducts.first()
+                products.filter { it.id > 0L }.forEach { rtdbService.syncProduct(it) }
 
                 // Sync all employees
-                allEmployees.value.filter { it.id > 0L }.forEach { rtdbService.syncEmployee(it) }
+                val employees = repository.allEmployees.first()
+                employees.filter { it.id > 0L }.forEach { rtdbService.syncEmployee(it) }
 
                 // Sync all pack groups
-                allPackGroups.value.filter { it.id > 0L }.forEach { rtdbService.syncPackGroup(it) }
+                val packGroups = repository.allPackGroups.first()
+                packGroups.filter { it.id > 0L }.forEach { rtdbService.syncPackGroup(it) }
 
                 // Sync all visits
-                allVisits.value.filter { it.id > 0L }.forEach { rtdbService.syncVisit(it) }
+                val visits = repository.allVisits.first()
+                visits.filter { it.id > 0L }.forEach { rtdbService.syncVisit(it) }
 
                 // Sync all purchase entries
-                allEntries.value.filter { it.id > 0L }.forEach { rtdbService.syncPurchaseEntry(it) }
-
+                val entries = repository.allEntries.first()
+                entries.filter { it.id > 0L }.forEach { rtdbService.syncPurchaseEntry(it) }
 
                 // Sync all transactions
-                allTransactions.value.filter { it.id > 0L }.forEach { rtdbService.syncTransaction(it) }
+                val transactions = repository.allTransactions.first()
+                transactions.filter { it.id > 0L }.forEach { rtdbService.syncTransaction(it) }
             } catch (_: Exception) {
             }
         }

@@ -296,6 +296,7 @@ export interface Transporter extends BaseEntity {
   trackingUrl?: string
   rating?: number
   notes?: string
+  isActive?: boolean
   createdAt?: number
 }
 
@@ -308,6 +309,7 @@ export interface Market extends BaseEntity {
   landmark?: string
   marketType?: string
   description?: string
+  isActive?: boolean
   createdAt?: number
 }
 
