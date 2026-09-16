@@ -47,6 +47,7 @@ import com.example.ui.dialogs.RoleSwitcherDialog
 import com.example.ui.screens.AddEditMasterScreen
 import com.example.ui.screens.AddStopScreen
 import com.example.ui.screens.CustomerDetailScreen
+import com.example.ui.screens.BrandDetailScreen
 import com.example.ui.screens.CustomerReportScreen
 import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.DeliveriesScreen
@@ -54,13 +55,17 @@ import com.example.ui.screens.EmployeeDetailScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.MainScreen
 import com.example.ui.screens.LoginScreen
+import com.example.ui.screens.MarketDetailScreen
 import com.example.ui.screens.MastersScreen
+import com.example.ui.screens.OrderDetailScreen
 import com.example.ui.screens.PaymentsScreen
 import com.example.ui.screens.PendingScreen
+import com.example.ui.screens.ProductDetailScreen
 import com.example.ui.screens.ProfileScreen
 import com.example.ui.screens.ReportsScreen
 import com.example.ui.screens.SupplierDetailScreen
 import com.example.ui.screens.SupplierReportScreen
+import com.example.ui.screens.TransporterDetailScreen
 import com.example.ui.screens.VisitDetailScreen
 import com.example.ui.screens.VisitsScreen
 import com.example.ui.theme.GoldAccent
@@ -304,7 +309,13 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
     val selectedCustomer by viewModel.selectedCustomer.collectAsStateWithLifecycle()
     val selectedSupplier by viewModel.selectedSupplier.collectAsStateWithLifecycle()
     val selectedEmployeeDetail by viewModel.selectedEmployeeDetail.collectAsStateWithLifecycle()
+    val selectedProduct by viewModel.selectedProduct.collectAsStateWithLifecycle()
+    val selectedBrand by viewModel.selectedBrand.collectAsStateWithLifecycle()
+    val selectedTransporter by viewModel.selectedTransporter.collectAsStateWithLifecycle()
+    val selectedMarket by viewModel.selectedMarket.collectAsStateWithLifecycle()
+    val selectedPurchaseEntry by viewModel.selectedPurchaseEntry.collectAsStateWithLifecycle()
     val visitDetailReturnScreen by viewModel.visitDetailReturnScreen.collectAsStateWithLifecycle()
+    val orderDetailReturnScreen by viewModel.orderDetailReturnScreen.collectAsStateWithLifecycle()
 
     var showCreateVisitDialog by remember { mutableStateOf(false) }
     var showRoleSwitcherDialog by remember { mutableStateOf(false) }
@@ -318,6 +329,11 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
         AppScreen.CUSTOMER_DETAIL,
         AppScreen.SUPPLIER_DETAIL,
         AppScreen.EMPLOYEE_DETAIL,
+        AppScreen.PRODUCT_DETAIL,
+        AppScreen.BRAND_DETAIL,
+        AppScreen.TRANSPORTER_DETAIL,
+        AppScreen.MARKET_DETAIL,
+        AppScreen.ORDER_DETAIL,
         AppScreen.ANALYTICS_DASHBOARD,
         AppScreen.ADD_EDIT_MASTER,
         AppScreen.PAYMENTS,
@@ -331,6 +347,10 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
         AppScreen.CUSTOMER_MASTER,
         AppScreen.SUPPLIER_MASTER,
         AppScreen.EMPLOYEE_MASTER,
+        AppScreen.PRODUCT_MASTER,
+        AppScreen.BRAND_MASTER,
+        AppScreen.TRANSPORTER_MASTER,
+        AppScreen.MARKET_MASTER,
         AppScreen.VISIT_DETAIL,
         AppScreen.ADD_STOP,
         AppScreen.CUSTOMER_REPORT_VIEW,
@@ -338,6 +358,11 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
         AppScreen.CUSTOMER_DETAIL,
         AppScreen.SUPPLIER_DETAIL,
         AppScreen.EMPLOYEE_DETAIL,
+        AppScreen.PRODUCT_DETAIL,
+        AppScreen.BRAND_DETAIL,
+        AppScreen.TRANSPORTER_DETAIL,
+        AppScreen.MARKET_DETAIL,
+        AppScreen.ORDER_DETAIL,
         AppScreen.ANALYTICS_DASHBOARD,
         AppScreen.ADD_EDIT_MASTER,
         AppScreen.PAYMENTS,
@@ -356,10 +381,31 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
             AppScreen.VISIT_DETAIL -> {
                 viewModel.navigateTo(visitDetailReturnScreen)
             }
-            AppScreen.ADD_EDIT_MASTER,
-            AppScreen.CUSTOMER_DETAIL,
-            AppScreen.SUPPLIER_DETAIL,
+            AppScreen.ORDER_DETAIL -> {
+                viewModel.navigateTo(orderDetailReturnScreen)
+            }
+            AppScreen.PRODUCT_DETAIL -> {
+                viewModel.navigateTo(AppScreen.PRODUCT_MASTER)
+            }
+            AppScreen.BRAND_DETAIL -> {
+                viewModel.navigateTo(AppScreen.BRAND_MASTER)
+            }
+            AppScreen.TRANSPORTER_DETAIL -> {
+                viewModel.navigateTo(AppScreen.TRANSPORTER_MASTER)
+            }
+            AppScreen.MARKET_DETAIL -> {
+                viewModel.navigateTo(AppScreen.MARKET_MASTER)
+            }
+            AppScreen.CUSTOMER_DETAIL -> {
+                viewModel.navigateTo(AppScreen.CUSTOMER_MASTER)
+            }
+            AppScreen.SUPPLIER_DETAIL -> {
+                viewModel.navigateTo(AppScreen.SUPPLIER_MASTER)
+            }
             AppScreen.EMPLOYEE_DETAIL -> {
+                viewModel.navigateTo(AppScreen.EMPLOYEE_MASTER)
+            }
+            AppScreen.ADD_EDIT_MASTER -> {
                 viewModel.navigateTo(AppScreen.CUSTOMER_MASTER)
             }
             AppScreen.ANALYTICS_DASHBOARD,
@@ -424,9 +470,15 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
                             )
 
                             NavigationBarItem(
-                                selected = currentScreen == AppScreen.CUSTOMER_MASTER ||
-                                        currentScreen == AppScreen.SUPPLIER_MASTER ||
-                                        currentScreen == AppScreen.EMPLOYEE_MASTER,
+                                selected = currentScreen in listOf(
+                                    AppScreen.CUSTOMER_MASTER,
+                                    AppScreen.SUPPLIER_MASTER,
+                                    AppScreen.EMPLOYEE_MASTER,
+                                    AppScreen.PRODUCT_MASTER,
+                                    AppScreen.BRAND_MASTER,
+                                    AppScreen.TRANSPORTER_MASTER,
+                                    AppScreen.MARKET_MASTER
+                                ),
                                 onClick = { viewModel.navigateTo(AppScreen.CUSTOMER_MASTER) },
                                 icon = { Icon(Icons.Default.Storefront, contentDescription = "Masters") },
                                 label = { Text("Masters", style = MaterialTheme.typography.labelMedium) },
@@ -562,13 +614,31 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
 
                 AppScreen.CUSTOMER_MASTER,
                 AppScreen.SUPPLIER_MASTER,
-                AppScreen.EMPLOYEE_MASTER -> {
+                AppScreen.EMPLOYEE_MASTER,
+                AppScreen.PRODUCT_MASTER,
+                AppScreen.BRAND_MASTER,
+                AppScreen.TRANSPORTER_MASTER,
+                AppScreen.MARKET_MASTER -> {
                     val initialTab = when (currentScreen) {
                         AppScreen.SUPPLIER_MASTER -> MasterTab.SUPPLIERS
                         AppScreen.EMPLOYEE_MASTER -> MasterTab.EMPLOYEES
+                        AppScreen.PRODUCT_MASTER -> MasterTab.PRODUCTS
+                        AppScreen.BRAND_MASTER -> MasterTab.BRANDS
+                        AppScreen.TRANSPORTER_MASTER -> MasterTab.TRANSPORTERS
+                        AppScreen.MARKET_MASTER -> MasterTab.MARKETS
                         else -> null
                     }
-                    MastersScreen(viewModel = viewModel, initialTab = initialTab)
+                    MastersScreen(
+                        viewModel = viewModel,
+                        initialTab = initialTab,
+                        onOpenCustomer = { viewModel.openCustomerDetail(it) },
+                        onOpenSupplier = { viewModel.openSupplierDetail(it) },
+                        onOpenEmployee = { viewModel.openEmployeeDetail(it) },
+                        onOpenProduct = { viewModel.openProductDetail(it) },
+                        onOpenBrand = { viewModel.openBrandDetail(it) },
+                        onOpenTransporter = { viewModel.openTransporterDetail(it) },
+                        onOpenMarket = { viewModel.openMarketDetail(it) }
+                    )
                 }
 
                 AppScreen.ADD_EDIT_MASTER -> {
@@ -606,6 +676,9 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
                             onBack = { viewModel.navigateTo(AppScreen.SUPPLIER_MASTER) },
                             onOpenVisit = { visit ->
                                 viewModel.openVisitDetail(visit, returnScreen = AppScreen.SUPPLIER_DETAIL)
+                            },
+                            onOpenOrder = { entry ->
+                                viewModel.openOrderDetail(entry, returnScreen = AppScreen.SUPPLIER_DETAIL)
                             }
                         )
                     } else {
@@ -626,6 +699,90 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
                         )
                     } else {
                         viewModel.navigateTo(AppScreen.EMPLOYEE_MASTER)
+                    }
+                }
+
+                AppScreen.PRODUCT_DETAIL -> {
+                    val product = selectedProduct
+                    if (product != null) {
+                        ProductDetailScreen(
+                            viewModel = viewModel,
+                            product = product,
+                            onBack = { viewModel.navigateTo(AppScreen.PRODUCT_MASTER) },
+                            onEdit = { viewModel.openEditProduct(product) },
+                            onOpenOrder = { entry ->
+                                viewModel.openOrderDetail(entry, returnScreen = AppScreen.PRODUCT_DETAIL)
+                            }
+                        )
+                    } else {
+                        viewModel.navigateTo(AppScreen.PRODUCT_MASTER)
+                    }
+                }
+
+                AppScreen.BRAND_DETAIL -> {
+                    val brand = selectedBrand
+                    if (brand != null) {
+                        BrandDetailScreen(
+                            viewModel = viewModel,
+                            brand = brand,
+                            onBack = { viewModel.navigateTo(AppScreen.BRAND_MASTER) },
+                            onEdit = { viewModel.openEditBrand(brand) },
+                            onOpenProduct = { viewModel.openProductDetail(it) },
+                            onOpenOrder = { entry ->
+                                viewModel.openOrderDetail(entry, returnScreen = AppScreen.BRAND_DETAIL)
+                            }
+                        )
+                    } else {
+                        viewModel.navigateTo(AppScreen.BRAND_MASTER)
+                    }
+                }
+
+                AppScreen.TRANSPORTER_DETAIL -> {
+                    val transporter = selectedTransporter
+                    if (transporter != null) {
+                        TransporterDetailScreen(
+                            viewModel = viewModel,
+                            transporter = transporter,
+                            onBack = { viewModel.navigateTo(AppScreen.TRANSPORTER_MASTER) },
+                            onEdit = { viewModel.openEditTransporter(transporter) },
+                            onOpenOrder = { entry ->
+                                viewModel.openOrderDetail(entry, returnScreen = AppScreen.TRANSPORTER_DETAIL)
+                            }
+                        )
+                    } else {
+                        viewModel.navigateTo(AppScreen.TRANSPORTER_MASTER)
+                    }
+                }
+
+                AppScreen.MARKET_DETAIL -> {
+                    val market = selectedMarket
+                    if (market != null) {
+                        MarketDetailScreen(
+                            viewModel = viewModel,
+                            market = market,
+                            onBack = { viewModel.navigateTo(AppScreen.MARKET_MASTER) },
+                            onEdit = { viewModel.openEditMarket(market) },
+                            onOpenCustomer = { viewModel.openCustomerDetail(it) },
+                            onOpenSupplier = { viewModel.openSupplierDetail(it) }
+                        )
+                    } else {
+                        viewModel.navigateTo(AppScreen.MARKET_MASTER)
+                    }
+                }
+
+                AppScreen.ORDER_DETAIL -> {
+                    val entry = selectedPurchaseEntry
+                    if (entry != null) {
+                        OrderDetailScreen(
+                            viewModel = viewModel,
+                            entry = entry,
+                            onBack = { viewModel.navigateTo(orderDetailReturnScreen) },
+                            onOpenVisit = { visit ->
+                                viewModel.openVisitDetail(visit, returnScreen = orderDetailReturnScreen)
+                            }
+                        )
+                    } else {
+                        viewModel.navigateTo(orderDetailReturnScreen)
                     }
                 }
 

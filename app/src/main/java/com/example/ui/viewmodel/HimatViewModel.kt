@@ -62,6 +62,15 @@ enum class AppScreen {
     CUSTOMER_DETAIL,
     SUPPLIER_DETAIL,
     EMPLOYEE_DETAIL,
+    PRODUCT_DETAIL,
+    BRAND_DETAIL,
+    TRANSPORTER_DETAIL,
+    MARKET_DETAIL,
+    ORDER_DETAIL,
+    PRODUCT_MASTER,
+    BRAND_MASTER,
+    TRANSPORTER_MASTER,
+    MARKET_MASTER,
     SUPPLIER_HUB,
     ANALYTICS_DASHBOARD,
     ADD_EDIT_MASTER,
@@ -152,6 +161,24 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _selectedEmployeeDetail = MutableStateFlow<EmployeeEntity?>(null)
     val selectedEmployeeDetail: StateFlow<EmployeeEntity?> = _selectedEmployeeDetail.asStateFlow()
+
+    private val _selectedProduct = MutableStateFlow<ProductEntity?>(null)
+    val selectedProduct: StateFlow<ProductEntity?> = _selectedProduct.asStateFlow()
+
+    private val _selectedBrand = MutableStateFlow<BrandEntity?>(null)
+    val selectedBrand: StateFlow<BrandEntity?> = _selectedBrand.asStateFlow()
+
+    private val _selectedTransporter = MutableStateFlow<TransporterEntity?>(null)
+    val selectedTransporter: StateFlow<TransporterEntity?> = _selectedTransporter.asStateFlow()
+
+    private val _selectedMarket = MutableStateFlow<MarketEntity?>(null)
+    val selectedMarket: StateFlow<MarketEntity?> = _selectedMarket.asStateFlow()
+
+    private val _selectedPurchaseEntry = MutableStateFlow<PurchaseEntryEntity?>(null)
+    val selectedPurchaseEntry: StateFlow<PurchaseEntryEntity?> = _selectedPurchaseEntry.asStateFlow()
+
+    private val _orderDetailReturnScreen = MutableStateFlow<AppScreen>(AppScreen.SUPPLIER_DETAIL)
+    val orderDetailReturnScreen: StateFlow<AppScreen> = _orderDetailReturnScreen.asStateFlow()
 
     // Master Add/Edit state
     private val _activeMasterTab = MutableStateFlow(MasterTab.CUSTOMERS)
@@ -572,6 +599,43 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
     fun openEmployeeDetail(employee: EmployeeEntity) {
         _selectedEmployeeDetail.value = employee
         _currentScreen.value = AppScreen.EMPLOYEE_DETAIL
+    }
+
+    fun openProductDetail(product: ProductEntity) {
+        _selectedProduct.value = product
+        _currentScreen.value = AppScreen.PRODUCT_DETAIL
+    }
+
+    fun openBrandDetail(brand: BrandEntity) {
+        _selectedBrand.value = brand
+        _currentScreen.value = AppScreen.BRAND_DETAIL
+    }
+
+    fun openTransporterDetail(transporter: TransporterEntity) {
+        _selectedTransporter.value = transporter
+        _currentScreen.value = AppScreen.TRANSPORTER_DETAIL
+    }
+
+    fun openMarketDetail(market: MarketEntity) {
+        _selectedMarket.value = market
+        _currentScreen.value = AppScreen.MARKET_DETAIL
+    }
+
+    fun openOrderDetail(entry: PurchaseEntryEntity, returnScreen: AppScreen = AppScreen.SUPPLIER_DETAIL) {
+        _selectedPurchaseEntry.value = entry
+        _orderDetailReturnScreen.value = returnScreen
+        val visit = allVisits.value.find { it.id == entry.visitId }
+        _selectedVisit.value = visit
+        if (visit != null) {
+            observeVisitData(visit.id)
+        }
+        val supplier = allSuppliers.value.find {
+            it.id == entry.supplierId ||
+            (it.name.isNotBlank() && it.name.trim().equals(entry.supplierName.trim(), ignoreCase = true)) ||
+            (it.firmName.isNotBlank() && it.firmName.trim().equals(entry.supplierName.trim(), ignoreCase = true))
+        }
+        _selectedSupplierForCopy.value = supplier
+        _currentScreen.value = AppScreen.ORDER_DETAIL
     }
 
     fun openAddMaster(tab: MasterTab) {
@@ -1509,6 +1573,54 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
             it.supplierId == supplier.id || (it.supplierName.isNotBlank() && it.supplierName.trim().equals(supplier.name.trim(), ignoreCase = true))
         }
         val text = ShareUtil.buildSupplierCopyText(visit, supplier, customer, supplierEntries)
+        ShareUtil.shareWhatsAppText(getApplication(), text)
+    }
+
+    fun shareOrderPdf(entry: PurchaseEntryEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val visit = allVisits.value.find { it.id == entry.visitId } ?: VisitEntity(
+                id = entry.visitId,
+                date = entry.expectedDeliveryDate.ifBlank { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()) },
+                visitCode = entry.orderNo
+            )
+            val customer = allCustomers.value.find { it.id == visit.customerId }
+            val supplier = allSuppliers.value.find {
+                it.id == entry.supplierId ||
+                (it.name.isNotBlank() && it.name.trim().equals(entry.supplierName.trim(), ignoreCase = true)) ||
+                (it.firmName.isNotBlank() && it.firmName.trim().equals(entry.supplierName.trim(), ignoreCase = true))
+            } ?: SupplierEntity(id = entry.supplierId, name = entry.supplierName, firmName = entry.supplierName, type = entry.supplierType)
+            val salesman = allEmployees.value.find { it.id == visit.employeeId }
+            val pdfFile = PdfGenerator.generateSupplierCopy(
+                getApplication(),
+                visit,
+                supplier,
+                customer,
+                salesman,
+                listOf(entry)
+            )
+            launch(Dispatchers.Main) {
+                ShareUtil.sharePdfFile(
+                    getApplication(),
+                    pdfFile,
+                    "Himat Order Voucher #${entry.orderNo} - ${entry.supplierName}"
+                )
+            }
+        }
+    }
+
+    fun shareOrderWhatsApp(entry: PurchaseEntryEntity) {
+        val visit = allVisits.value.find { it.id == entry.visitId } ?: VisitEntity(
+            id = entry.visitId,
+            date = entry.expectedDeliveryDate.ifBlank { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()) },
+            visitCode = entry.orderNo
+        )
+        val customer = allCustomers.value.find { it.id == visit.customerId }
+        val supplier = allSuppliers.value.find {
+            it.id == entry.supplierId ||
+            (it.name.isNotBlank() && it.name.trim().equals(entry.supplierName.trim(), ignoreCase = true)) ||
+            (it.firmName.isNotBlank() && it.firmName.trim().equals(entry.supplierName.trim(), ignoreCase = true))
+        } ?: SupplierEntity(id = entry.supplierId, name = entry.supplierName, firmName = entry.supplierName, type = entry.supplierType)
+        val text = ShareUtil.buildSupplierCopyText(visit, supplier, customer, listOf(entry))
         ShareUtil.shareWhatsAppText(getApplication(), text)
     }
 }

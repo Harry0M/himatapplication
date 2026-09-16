@@ -142,7 +142,14 @@ data class MasterDetailView(
 @Composable
 fun MastersScreen(
     viewModel: HimatViewModel,
-    initialTab: MasterTab? = null
+    initialTab: MasterTab? = null,
+    onOpenCustomer: (CustomerEntity) -> Unit = { viewModel.openCustomerDetail(it) },
+    onOpenSupplier: (SupplierEntity) -> Unit = { viewModel.openSupplierDetail(it) },
+    onOpenEmployee: (EmployeeEntity) -> Unit = { viewModel.openEmployeeDetail(it) },
+    onOpenProduct: (ProductEntity) -> Unit = { viewModel.openProductDetail(it) },
+    onOpenBrand: (BrandEntity) -> Unit = { viewModel.openBrandDetail(it) },
+    onOpenTransporter: (TransporterEntity) -> Unit = { viewModel.openTransporterDetail(it) },
+    onOpenMarket: (MarketEntity) -> Unit = { viewModel.openMarketDetail(it) }
 ) {
     val isSuperAdmin by viewModel.isSuperAdmin.collectAsStateWithLifecycle()
 
@@ -784,7 +791,7 @@ fun MastersScreen(
                                     items(filtered, key = { it.id }) { customer ->
                                         CustomerCard(
                                             customer = customer,
-                                            onClick = { viewModel.openCustomerDetail(customer) },
+                                            onClick = { onOpenCustomer(customer) },
                                             onEdit = { viewModel.openEditCustomer(customer) },
                                             onDelete = {
                                                 deleteConfirmRequest = MasterDeleteRequest(
@@ -828,7 +835,7 @@ fun MastersScreen(
                                     items(filtered, key = { it.id }) { supplier ->
                                         SupplierCard(
                                             supplier = supplier,
-                                            onClick = { viewModel.openSupplierDetail(supplier) },
+                                            onClick = { onOpenSupplier(supplier) },
                                             onEdit = { viewModel.openEditSupplier(supplier) },
                                             onDelete = {
                                                 deleteConfirmRequest = MasterDeleteRequest(
@@ -864,25 +871,7 @@ fun MastersScreen(
                                     items(filtered, key = { it.id }) { product ->
                                         ProductCard(
                                             product = product,
-                                            onClick = {
-                                                detailViewItem = MasterDetailView(
-                                                    title = product.name,
-                                                    subtitle = "Code: ${product.productCode} • ${product.category}",
-                                                    icon = Icons.Default.Inventory,
-                                                    iconColor = Color(0xFF4F46E5),
-                                                    details = listOf(
-                                                        "Product Name" to product.name,
-                                                        "Design Code" to product.productCode,
-                                                        "Category" to product.category,
-                                                        "Supplier" to product.supplierName,
-                                                        "Default Rate" to "₹${product.defaultRate.toInt()} / pc",
-                                                        "Case Pack" to "${product.defaultCaseSize} pcs",
-                                                        "HSN Code" to product.hsnCode,
-                                                        "Description" to product.description
-                                                    ),
-                                                    onEdit = { viewModel.openEditProduct(product) }
-                                                )
-                                            },
+                                            onClick = { onOpenProduct(product) },
                                             onEdit = { viewModel.openEditProduct(product) },
                                             onDelete = {
                                                 deleteConfirmRequest = MasterDeleteRequest(
@@ -917,21 +906,7 @@ fun MastersScreen(
                                     items(filtered, key = { it.id }) { brand ->
                                         BrandCard(
                                             brand = brand,
-                                            onClick = {
-                                                detailViewItem = MasterDetailView(
-                                                    title = brand.brandName,
-                                                    subtitle = "Brand • ${brand.category}",
-                                                    icon = Icons.Default.Sell,
-                                                    iconColor = Color(0xFFD97706),
-                                                    details = listOf(
-                                                        "Brand Name" to brand.brandName,
-                                                        "Garment Category" to brand.category,
-                                                        "Manufacturer / Mill" to brand.manufacturerName,
-                                                        "Description" to brand.description
-                                                    ),
-                                                    onEdit = { viewModel.openEditBrand(brand) }
-                                                )
-                                            },
+                                            onClick = { onOpenBrand(brand) },
                                             onEdit = { viewModel.openEditBrand(brand) },
                                             onDelete = {
                                                 deleteConfirmRequest = MasterDeleteRequest(
@@ -967,29 +942,7 @@ fun MastersScreen(
                                     items(filtered, key = { it.id }) { transporter ->
                                         TransporterCard(
                                             transporter = transporter,
-                                            onClick = {
-                                                val phones = listOfNotNull(
-                                                    transporter.phone1.takeIf { it.isNotBlank() },
-                                                    transporter.phone2.takeIf { it.isNotBlank() },
-                                                    transporter.phone3.takeIf { it.isNotBlank() }
-                                                ).joinToString(", ")
-                                                detailViewItem = MasterDetailView(
-                                                    title = transporter.transporterName,
-                                                    subtitle = "Transporter • ${transporter.city}",
-                                                    icon = Icons.Default.LocalShipping,
-                                                    iconColor = Color(0xFF0891B2),
-                                                    details = listOf(
-                                                        "Transporter Name" to transporter.transporterName,
-                                                        "Contact Person" to transporter.contactPerson,
-                                                        "Hub / City" to transporter.city,
-                                                        "Phone Numbers" to phones,
-                                                        "Destinations / Routes" to transporter.destinationsCovered,
-                                                        "Office Address" to transporter.officeAddress,
-                                                        "GSTIN" to transporter.gstin
-                                                    ),
-                                                    onEdit = { viewModel.openEditTransporter(transporter) }
-                                                )
-                                            },
+                                            onClick = { onOpenTransporter(transporter) },
                                             onEdit = { viewModel.openEditTransporter(transporter) },
                                             onDelete = {
                                                 deleteConfirmRequest = MasterDeleteRequest(
@@ -1025,23 +978,7 @@ fun MastersScreen(
                                     items(filtered, key = { it.id }) { market ->
                                         MarketCard(
                                             market = market,
-                                            onClick = {
-                                                detailViewItem = MasterDetailView(
-                                                    title = market.marketName,
-                                                    subtitle = "${market.marketType} • ${market.city}",
-                                                    icon = Icons.Default.LocationCity,
-                                                    iconColor = Color(0xFF9333EA),
-                                                    details = listOf(
-                                                        "Market Name" to market.marketName,
-                                                        "Market Type" to market.marketType,
-                                                        "City" to market.city,
-                                                        "Area / Sector" to market.area,
-                                                        "Pincode" to market.pincode,
-                                                        "Description" to market.description
-                                                    ),
-                                                    onEdit = { viewModel.openEditMarket(market) }
-                                                )
-                                            },
+                                            onClick = { onOpenMarket(market) },
                                             onEdit = { viewModel.openEditMarket(market) },
                                             onDelete = {
                                                 deleteConfirmRequest = MasterDeleteRequest(
@@ -1079,7 +1016,7 @@ fun MastersScreen(
                                     items(filtered, key = { it.id }) { employee ->
                                         EmployeeCard(
                                             employee = employee,
-                                            onClick = { viewModel.openEmployeeDetail(employee) },
+                                            onClick = { onOpenEmployee(employee) },
                                             onEdit = { viewModel.openEditEmployee(employee) },
                                             onDelete = {
                                                 deleteConfirmRequest = MasterDeleteRequest(

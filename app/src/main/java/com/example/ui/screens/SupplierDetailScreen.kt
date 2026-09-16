@@ -37,9 +37,11 @@ import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Storefront
+import com.example.ui.viewmodel.AppScreen
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
@@ -90,7 +92,8 @@ fun SupplierDetailScreen(
     viewModel: HimatViewModel,
     supplier: SupplierEntity,
     onBack: () -> Unit,
-    onOpenVisit: (VisitEntity) -> Unit = {}
+    onOpenVisit: (VisitEntity) -> Unit = {},
+    onOpenOrder: (PurchaseEntryEntity) -> Unit = { viewModel.openOrderDetail(it, returnScreen = AppScreen.SUPPLIER_DETAIL) }
 ) {
     val context = LocalContext.current
     val allEntries by viewModel.allEntries.collectAsStateWithLifecycle()
@@ -122,10 +125,13 @@ fun SupplierDetailScreen(
         allVisits.associateBy { it.id }
     }
 
-    // All purchase entries belonging to this supplier
-    val supplierEntries = remember(allEntries, supplier.id, supplier.name) {
+    // All purchase entries belonging to this supplier (matched by ID, contact name, firm name, or brand)
+    val supplierEntries = remember(allEntries, supplier.id, supplier.name, supplier.firmName, supplier.brand) {
         allEntries.filter {
-            it.supplierId == supplier.id || it.supplierName.equals(supplier.name, ignoreCase = true)
+            it.supplierId == supplier.id ||
+            (supplier.name.isNotBlank() && it.supplierName.trim().equals(supplier.name.trim(), ignoreCase = true)) ||
+            (supplier.firmName.isNotBlank() && it.supplierName.trim().equals(supplier.firmName.trim(), ignoreCase = true)) ||
+            (supplier.brand.isNotBlank() && it.supplierName.contains(supplier.brand, ignoreCase = true))
         }.sortedByDescending { it.id }
     }
 
@@ -1187,9 +1193,12 @@ fun SupplierDetailScreen(
                     SupplierBillCard(
                         entry = entry,
                         visit = visit,
+                        onOpenOrder = { onOpenOrder(entry) },
                         onOpenSupplierCopy = {
                             if (visit != null) {
                                 viewModel.openSupplierCopy(visit, supplier)
+                            } else {
+                                onOpenOrder(entry)
                             }
                         },
                         onAdvanceStatus = { viewModel.advanceEntryDeliveryStatus(entry) },
@@ -1205,6 +1214,7 @@ fun SupplierDetailScreen(
 fun SupplierBillCard(
     entry: PurchaseEntryEntity,
     visit: VisitEntity?,
+    onOpenOrder: () -> Unit,
     onOpenSupplierCopy: () -> Unit,
     onAdvanceStatus: () -> Unit,
     onOpenVisit: (() -> Unit)? = null
@@ -1213,7 +1223,9 @@ fun SupplierBillCard(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.5.dp),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onOpenOrder() }
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             // Top Row: Order No & Status
@@ -1366,36 +1378,34 @@ fun SupplierBillCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (visit != null) {
-                        Button(
-                            onClick = onOpenSupplierCopy,
+                    Button(
+                        onClick = onOpenOrder,
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.defaultMinSize(minHeight = 34.dp)
+                    ) {
+                        Icon(Icons.Default.PictureAsPdf, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Preview & PDF",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    if (visit != null && onOpenVisit != null) {
+                        OutlinedButton(
+                            onClick = onOpenVisit,
                             shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                             modifier = Modifier.defaultMinSize(minHeight = 34.dp)
                         ) {
-                            Icon(Icons.Default.Assessment, contentDescription = null, modifier = Modifier.size(15.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(Icons.Default.Place, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(3.dp))
                             Text(
-                                text = "Voucher",
+                                text = "Open Trip",
                                 style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.SemiBold
                             )
-                        }
-                        if (onOpenVisit != null) {
-                            OutlinedButton(
-                                onClick = onOpenVisit,
-                                shape = RoundedCornerShape(10.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                                modifier = Modifier.defaultMinSize(minHeight = 34.dp)
-                            ) {
-                                Icon(Icons.Default.Place, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Text(
-                                    text = "Open Trip",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
                         }
                     }
                 }
