@@ -38,6 +38,7 @@ import { Card } from "../components/ui/Card"
 import { Button } from "../components/ui/Button"
 import { Badge } from "../components/ui/Badge"
 import { Dialog } from "../components/ui/Dialog"
+import { ImageLightboxModal } from "../components/ui/ImageLightboxModal"
 import { Input } from "../components/ui/Input"
 import { Tabs } from "../components/ui/Tabs"
 import { Supplier, Visit, PurchaseEntry, Customer } from "../types"
@@ -1138,38 +1139,13 @@ export function SupplierDetailView({
         </div>
       )}
 
-      {/* Lightbox Modal */}
-      {lightbox.open && (
-        <Dialog
-          open={lightbox.open}
-          onOpenChange={(open) => !open && setLightbox({ open: false, url: "", title: "" })}
-          title={lightbox.title}
-          description="Stored in Firebase Cloud Storage"
-        >
-          <div className="space-y-4 pt-2">
-            <div className="max-h-[75vh] overflow-hidden rounded-xl bg-zinc-950 flex items-center justify-center border border-zinc-800">
-              <img
-                src={lightbox.url}
-                alt={lightbox.title}
-                className="max-h-[72vh] w-auto object-contain"
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <a
-                href={lightbox.url}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-semibold text-blue-600 hover:underline inline-flex items-center gap-1"
-              >
-                <ExternalLink className="h-3.5 w-3.5" /> Open in New Browser Tab
-              </a>
-              <Button size="sm" onClick={() => setLightbox({ open: false, url: "", title: "" })}>
-                Close Preview
-              </Button>
-            </div>
-          </div>
-        </Dialog>
-      )}
+      {/* Fullscreen Lightbox Modal with Download & Zoom */}
+      <ImageLightboxModal
+        open={lightbox.open}
+        onClose={() => setLightbox({ open: false, url: "", title: "" })}
+        imageUrl={lightbox.url}
+        title={`${lightbox.title} • ${supplier.firmName || supplier.name}`}
+      />
 
       {/* Report Viewer Modal */}
       <ReportViewerModal

@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import com.example.ui.dialogs.FullScreenImageViewerDialog
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -736,65 +737,11 @@ fun SupplierDetailScreen(
                                     }
 
                                     if (showPreview) {
-                                        Dialog(onDismissRequest = { showPreview = false }) {
-                                            Card(
-                                                shape = RoundedCornerShape(16.dp),
-                                                colors = CardDefaults.cardColors(containerColor = Color.White),
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(16.dp)
-                                            ) {
-                                                Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth(),
-                                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                                        verticalAlignment = Alignment.CenterVertically
-                                                    ) {
-                                                        Text(label, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                                        IconButton(onClick = { showPreview = false }, modifier = Modifier.size(28.dp)) {
-                                                            Icon(Icons.Default.Close, contentDescription = "Close")
-                                                        }
-                                                    }
-                                                    Spacer(modifier = Modifier.height(10.dp))
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .fillMaxWidth()
-                                                            .height(300.dp)
-                                                            .clip(RoundedCornerShape(10.dp))
-                                                            .background(Color(0xFFF1F5F9)),
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        AsyncImage(
-                                                            model = url,
-                                                            contentDescription = label,
-                                                            contentScale = ContentScale.Fit,
-                                                            modifier = Modifier.fillMaxSize()
-                                                        )
-                                                    }
-                                                    Spacer(modifier = Modifier.height(12.dp))
-                                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                                                        if (url.startsWith("http")) {
-                                                            OutlinedButton(
-                                                                onClick = {
-                                                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                                                    context.startActivity(intent)
-                                                                },
-                                                                shape = RoundedCornerShape(8.dp),
-                                                                modifier = Modifier.padding(end = 8.dp)
-                                                            ) {
-                                                                Text("Open Full", fontSize = 11.sp)
-                                                            }
-                                                        }
-                                                        Button(
-                                                            onClick = { showPreview = false },
-                                                            shape = RoundedCornerShape(8.dp)
-                                                        ) {
-                                                            Text("Close", fontSize = 11.sp)
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
+                                        FullScreenImageViewerDialog(
+                                            imageUrl = url,
+                                            title = "$label • ${supplier.firmName.ifBlank { supplier.name }}",
+                                            onDismiss = { showPreview = false }
+                                        )
                                     }
                                 }
                             }

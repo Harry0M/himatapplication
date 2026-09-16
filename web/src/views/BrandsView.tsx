@@ -17,6 +17,7 @@ import { Badge } from "../components/ui/Badge"
 import { Dialog } from "../components/ui/Dialog"
 import { Input } from "../components/ui/Input"
 import { FileUpload } from "../components/ui/FileUpload"
+import { ImageLightboxModal } from "../components/ui/ImageLightboxModal"
 import { Brand } from "../types"
 import { GARMENT_CATEGORIES } from "../lib/constants"
 
@@ -25,6 +26,11 @@ export function BrandsView() {
   const [search, setSearch] = useState("")
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingBrand, setEditingBrand] = useState<Brand | null>(null)
+  const [lightbox, setLightbox] = useState<{ open: boolean; url: string; title: string }>({
+    open: false,
+    url: "",
+    title: "",
+  })
 
   // Form State
   const [brandName, setBrandName] = useState("")
@@ -151,7 +157,21 @@ export function BrandsView() {
             <Card key={brand.id} className="group relative overflow-hidden border border-zinc-200/80 p-4 transition-all hover:shadow-md dark:border-zinc-800">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-700 font-bold text-base dark:bg-amber-500/20 dark:text-amber-400 overflow-hidden border border-amber-200/50 dark:border-amber-800/50">
+                  <div
+                    onClick={() => {
+                      if (brand.logoPhotoUri) {
+                        setLightbox({
+                          open: true,
+                          url: brand.logoPhotoUri,
+                          title: `${brand.brandName || (brand as any).name || "Brand"} Logo`,
+                        })
+                      }
+                    }}
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-700 font-bold text-base dark:bg-amber-500/20 dark:text-amber-400 overflow-hidden border border-amber-200/50 dark:border-amber-800/50 ${
+                      brand.logoPhotoUri ? "cursor-pointer hover:ring-2 hover:ring-amber-500/50 hover:scale-105 transition-transform" : ""
+                    }`}
+                    title={brand.logoPhotoUri ? "Click to view full screen & download" : undefined}
+                  >
                     {brand.logoPhotoUri ? (
                       <img
                         src={brand.logoPhotoUri}
@@ -305,6 +325,14 @@ export function BrandsView() {
           </div>
         </form>
       </Dialog>
+
+      {/* Fullscreen Lightbox Modal with Download & Zoom */}
+      <ImageLightboxModal
+        open={lightbox.open}
+        onClose={() => setLightbox({ open: false, url: "", title: "" })}
+        imageUrl={lightbox.url}
+        title={lightbox.title}
+      />
     </div>
   )
 }

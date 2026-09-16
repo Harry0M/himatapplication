@@ -44,7 +44,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.example.ui.dialogs.FullScreenImageViewerDialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -81,6 +84,7 @@ fun BrandDetailScreen(
     val allVisits by viewModel.allVisits.collectAsStateWithLifecycle()
 
     val visitMap = remember(allVisits) { allVisits.associateBy { it.id } }
+    var showLogoViewer by remember { mutableStateOf(false) }
 
     val brandProducts = remember(allProducts, brand.id, brand.brandName, brand.manufacturerId) {
         allProducts.filter { product ->
@@ -155,7 +159,12 @@ fun BrandDetailScreen(
                         shape = CircleShape,
                         color = Color(0xFFFFFBEB),
                         border = BorderStroke(2.dp, Color(0xFFFDE68A)),
-                        modifier = Modifier.size(66.dp)
+                        modifier = Modifier
+                            .size(66.dp)
+                            .then(
+                                if (brand.logoPhotoUri.isNotBlank()) Modifier.clickable { showLogoViewer = true }
+                                else Modifier
+                            )
                     ) {
                         if (brand.logoPhotoUri.isNotBlank()) {
                             AsyncImage(
@@ -174,6 +183,15 @@ fun BrandDetailScreen(
                                 )
                             }
                         }
+                    }
+
+                    if (brand.logoPhotoUri.isNotBlank()) {
+                        Text(
+                            text = "Tap logo for full view & download",
+                            fontSize = 10.5.sp,
+                            color = Color(0xFFD97706),
+                            modifier = Modifier.padding(top = 4.dp).clickable { showLogoViewer = true }
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(10.dp))
@@ -491,5 +509,13 @@ fun BrandDetailScreen(
                 }
             }
         }
+    }
+
+    if (showLogoViewer && brand.logoPhotoUri.isNotBlank()) {
+        FullScreenImageViewerDialog(
+            imageUrl = brand.logoPhotoUri,
+            title = "${brand.brandName} Logo",
+            onDismiss = { showLogoViewer = false }
+        )
     }
 }

@@ -4,77 +4,77 @@
     "super_admins": {
       ".read": "auth != null",
       "$key": {
-        ".write": "auth != null && (!root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists() || auth.uid == $key)"
+        ".write": "auth != null"
       }
     },
     "employees": {
       ".read": "auth != null",
-      ".write": "auth != null && (!root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists())"
+      ".write": "auth != null"
     },
     "customers": {
       ".read": "auth != null",
       "$id": {
-        ".write": "auth != null && (newData.exists() || !root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists())"
+        ".write": "auth != null"
       }
     },
     "suppliers": {
       ".read": "auth != null",
       "$id": {
-        ".write": "auth != null && (newData.exists() || !root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists())"
+        ".write": "auth != null"
       }
     },
     "manufacturers": {
       ".read": "auth != null",
       "$id": {
-        ".write": "auth != null && (newData.exists() || !root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists())"
+        ".write": "auth != null"
       }
     },
     "visits": {
       ".read": "auth != null",
       "$id": {
-        ".write": "auth != null && (newData.exists() || !root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists())"
+        ".write": "auth != null"
       }
     },
     "purchase_entries": {
       ".read": "auth != null",
       "$id": {
-        ".write": "auth != null && (newData.exists() || !root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists())"
+        ".write": "auth != null"
       }
     },
     "pack_groups": {
       ".read": "auth != null",
       "$id": {
-        ".write": "auth != null && (newData.exists() || !root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists())"
+        ".write": "auth != null"
       }
     },
     "products": {
       ".read": "auth != null",
       "$id": {
-        ".write": "auth != null && (newData.exists() || !root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists())"
+        ".write": "auth != null"
       }
     },
     "brands": {
       ".read": "auth != null",
       "$id": {
-        ".write": "auth != null && (newData.exists() || !root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists())"
+        ".write": "auth != null"
       }
     },
     "transporters": {
       ".read": "auth != null",
       "$id": {
-        ".write": "auth != null && (newData.exists() || !root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists())"
+        ".write": "auth != null"
       }
     },
     "markets": {
       ".read": "auth != null",
       "$id": {
-        ".write": "auth != null && (newData.exists() || !root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists())"
+        ".write": "auth != null"
       }
     },
     "transactions": {
       ".read": "auth != null",
       "$id": {
-        ".write": "auth != null && (newData.exists() || !root.child('super_admins').exists() || root.child('super_admins').child(auth.uid).exists())"
+        ".write": "auth != null"
       }
     },
     "deletion_requests": {

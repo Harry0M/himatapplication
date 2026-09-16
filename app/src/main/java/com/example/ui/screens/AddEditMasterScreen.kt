@@ -19,6 +19,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 import com.example.data.remote.FirebaseStorageService
+import com.example.ui.dialogs.FullScreenImageViewerDialog
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -3953,80 +3954,11 @@ private fun PhotoUploadCard(
     }
 
     if (showPreviewDialog && uriString.isNotBlank()) {
-        Dialog(onDismissRequest = { showPreviewDialog = false }) {
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = title,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = NavyPrimary
-                        )
-                        IconButton(
-                            onClick = { showPreviewDialog = false },
-                            modifier = Modifier.size(28.dp)
-                        ) {
-                            Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(280.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFFF1F5F9)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        AsyncImage(
-                            model = uriString,
-                            contentDescription = title,
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        if (uriString.startsWith("http")) {
-                            OutlinedButton(
-                                onClick = {
-                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse(uriString))
-                                    context.startActivity(intent)
-                                },
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.padding(end = 8.dp)
-                            ) {
-                                Text("Open in Browser", fontSize = 11.sp)
-                            }
-                        }
-                        Button(
-                            onClick = { showPreviewDialog = false },
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary)
-                        ) {
-                            Text("Done", fontSize = 11.sp, color = Color.White)
-                        }
-                    }
-                }
-            }
-        }
+        FullScreenImageViewerDialog(
+            imageUrl = uriString,
+            title = title,
+            onDismiss = { showPreviewDialog = false }
+        )
     }
 }
 

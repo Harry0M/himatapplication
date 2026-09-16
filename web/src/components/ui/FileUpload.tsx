@@ -1,6 +1,7 @@
 import React, { useState, useRef } from "react"
 import { UploadCloud, CheckCircle2, X, Eye, Loader2, Image as ImageIcon } from "lucide-react"
 import { uploadFileToFirebaseStorage } from "../../lib/storage"
+import { ImageLightboxModal } from "./ImageLightboxModal"
 
 interface FileUploadProps {
   label: string
@@ -198,36 +199,13 @@ export const FileUpload: React.FC<FileUploadProps> = ({
         <p className="text-[11px] text-red-500 font-medium">⚠️ {errorMessage}</p>
       )}
 
-      {/* Lightbox / Zoom Modal */}
-      {showPreviewModal && value && (
-        <div
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={() => setShowPreviewModal(false)}
-        >
-          <div
-            className="relative max-w-2xl max-h-[85vh] bg-white dark:bg-zinc-900 rounded-2xl overflow-hidden shadow-2xl p-2"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between p-2 border-b border-zinc-100 dark:border-zinc-800">
-              <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100">{label}</h3>
-              <button
-                type="button"
-                onClick={() => setShowPreviewModal(false)}
-                className="p-1 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="p-2 flex items-center justify-center max-h-[70vh] overflow-auto">
-              <img
-                src={value}
-                alt={label}
-                className="max-h-[68vh] w-auto object-contain rounded-lg"
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Fullscreen Lightbox Modal with Download & Zoom */}
+      <ImageLightboxModal
+        open={showPreviewModal}
+        onClose={() => setShowPreviewModal(false)}
+        imageUrl={value}
+        title={label}
+      />
     </div>
   )
 }
