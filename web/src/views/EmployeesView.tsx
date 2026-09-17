@@ -51,6 +51,7 @@ export function EmployeesView({ onNavigate }: EmployeesViewProps) {
     employees,
     customers,
     suppliers,
+    markets,
     allEmployeeStats,
     saveEmployee,
     deleteEmployee,
@@ -61,6 +62,16 @@ export function EmployeesView({ onNavigate }: EmployeesViewProps) {
     selectedEmployeeId,
   } = useData()
   const { isAdmin } = useAuth()
+
+  const availableMarkets = React.useMemo(() => {
+    const list = [...AHMEDABAD_TEXTILE_MARKETS]
+    markets.forEach((m) => {
+      if (m.marketName && !list.includes(m.marketName)) {
+        list.push(m.marketName)
+      }
+    })
+    return list
+  }, [markets])
 
   const [search, setSearch] = useState<string>("")
   const [showSearch, setShowSearch] = useState<boolean>(false)
@@ -1078,7 +1089,7 @@ export function EmployeesView({ onNavigate }: EmployeesViewProps) {
                   <span className="text-[10px] text-muted-foreground">Select markets assigned to this agent</span>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-2 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
-                  {AHMEDABAD_TEXTILE_MARKETS.map((mkt) => {
+                  {availableMarkets.map((mkt) => {
                     const isSelected = selectedMarkets.includes(mkt)
                     return (
                       <button

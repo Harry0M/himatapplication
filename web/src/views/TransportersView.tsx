@@ -1,4 +1,4 @@
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import {
   Truck,
   Plus,
@@ -10,7 +10,8 @@ import {
   Trash2,
   ExternalLink,
   Building,
-  Navigation
+  Navigation,
+  Info
 } from "lucide-react"
 import { useData } from "../context/DataContext"
 import { Card } from "../components/ui/Card"
@@ -19,12 +20,14 @@ import { Badge } from "../components/ui/Badge"
 import { Dialog } from "../components/ui/Dialog"
 import { Input } from "../components/ui/Input"
 import { Transporter } from "../types"
+import { getMasterDraft, saveMasterDraft, clearMasterDraft } from "../lib/masterDrafts"
 
 export function TransportersView() {
   const { transporters, saveTransporter, deleteTransporter } = useData()
   const [search, setSearch] = useState("")
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingTransporter, setEditingTransporter] = useState<Transporter | null>(null)
+  const [hasDraft, setHasDraft] = useState(false)
 
   // Form State
   const [transporterName, setTransporterName] = useState("")
@@ -42,6 +45,42 @@ export function TransportersView() {
 
   const openAddModal = () => {
     setEditingTransporter(null)
+    const draft = getMasterDraft<any>("transporter")
+    if (draft) {
+      setTransporterName(draft.transporterName || "")
+      setContactPerson(draft.contactPerson || "")
+      setPhone(draft.phone || "")
+      setPhone2(draft.phone2 || "")
+      setPhone3(draft.phone3 || "")
+      setOfficeAddress(draft.officeAddress || "")
+      setGodownAddress(draft.godownAddress || "")
+      setCity(draft.city || "Ahmedabad")
+      setDestinationsCovered(draft.destinationsCovered || "")
+      setGstin(draft.gstin || "")
+      setTrackingUrl(draft.trackingUrl || "")
+      setNotes(draft.notes || "")
+      setHasDraft(true)
+    } else {
+      setTransporterName("")
+      setContactPerson("")
+      setPhone("")
+      setPhone2("")
+      setPhone3("")
+      setOfficeAddress("")
+      setGodownAddress("")
+      setCity("Ahmedabad")
+      setDestinationsCovered("")
+      setGstin("")
+      setTrackingUrl("")
+      setNotes("")
+      setHasDraft(false)
+    }
+    setIsModalOpen(true)
+  }
+
+  const handleDiscardDraft = () => {
+    clearMasterDraft("transporter")
+    setHasDraft(false)
     setTransporterName("")
     setContactPerson("")
     setPhone("")
@@ -54,8 +93,43 @@ export function TransportersView() {
     setGstin("")
     setTrackingUrl("")
     setNotes("")
-    setIsModalOpen(true)
   }
+
+  // Auto-save local draft
+  useEffect(() => {
+    if (!isModalOpen || editingTransporter !== null) return
+    if (transporterName.trim() || phone.trim() || contactPerson.trim() || destinationsCovered.trim()) {
+      saveMasterDraft("transporter", {
+        transporterName,
+        contactPerson,
+        phone,
+        phone2,
+        phone3,
+        officeAddress,
+        godownAddress,
+        city,
+        destinationsCovered,
+        gstin,
+        trackingUrl,
+        notes,
+      })
+    }
+  }, [
+    isModalOpen,
+    editingTransporter,
+    transporterName,
+    contactPerson,
+    phone,
+    phone2,
+    phone3,
+    officeAddress,
+    godownAddress,
+    city,
+    destinationsCovered,
+    gstin,
+    trackingUrl,
+    notes,
+  ])
 
   const openEditModal = (t: Transporter) => {
     setEditingTransporter(t)
@@ -71,6 +145,7 @@ export function TransportersView() {
     setGstin(t.gstin || "")
     setTrackingUrl(t.trackingUrl || "")
     setNotes(t.notes || "")
+    setHasDraft(false)
     setIsModalOpen(true)
   }
 
@@ -96,6 +171,8 @@ export function TransportersView() {
     }
 
     await saveTransporter(payload)
+    clearMasterDraft("transporter")
+    setHasDraft(false)
     setIsModalOpen(false)
   }
 
@@ -259,7 +336,25 @@ export function TransportersView() {
         onOpenChange={setIsModalOpen}
         title={editingTransporter ? "Edit Transporter" : "Add Transporter Master"}
       >
-        <form onSubmit={handleSave} className="space-y-3.5 text-xs max-h-[78vh] overflow-y-auto pr-1">
+        <div className="space-y-3.5 max-h-[78vh] overflow-y-auto pr-1">
+          {/* Draft Notification Banner */}
+          {hasDraft && !editingTransporter && (
+            <div className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-xs text-emerald-800">
+              <div className="flex items-center gap-2">
+                <Info className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span className="font-medium">Resumed from your local draft</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleDiscardDraft}
+                className="font-semibold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+              >
+                Discard Draft
+              </button>
+            </div>
+          )}
+
+          <form onSubmit={handleSave} className="space-y-3.5 text-xs">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
@@ -405,6 +500,7 @@ export function TransportersView() {
             </Button>
           </div>
         </form>
+        </div>
       </Dialog>
     </div>
   )

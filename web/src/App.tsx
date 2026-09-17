@@ -12,6 +12,7 @@ import { PaymentsView } from "./views/PaymentsView"
 import { DeliveriesView } from "./views/DeliveriesView"
 import { CustomersView } from "./views/CustomersView"
 import { SuppliersView } from "./views/SuppliersView"
+import { ProductsView } from "./views/ProductsView"
 import { EmployeesView } from "./views/EmployeesView"
 import { BrandsView } from "./views/BrandsView"
 import { TransportersView } from "./views/TransportersView"
@@ -60,6 +61,8 @@ function MainLayout() {
         return <CustomersView />
       case "suppliers":
         return <SuppliersView />
+      case "products":
+        return <ProductsView />
       case "brands":
         return <BrandsView />
       case "transporters":
@@ -83,6 +86,7 @@ function MainLayout() {
     employees: "Staff & Sales Agents",
     customers: "Customers",
     suppliers: "Suppliers & Mills",
+    products: "Product Master",
     brands: "Brand Master",
     transporters: "Transporter & Logistics Master",
     markets: "Textile Markets Master",

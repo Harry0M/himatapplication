@@ -12,7 +12,8 @@ import {
   Sparkles,
   ShieldAlert,
   Tag,
-  Compass
+  Compass,
+  Package
 } from "lucide-react"
 import { useAuth } from "../../context/AuthContext"
 import { useData } from "../../context/DataContext"
@@ -30,6 +31,7 @@ export type ActiveTab =
   | "employees"
   | "customers"
   | "suppliers"
+  | "products"
   | "brands"
   | "transporters"
   | "markets"
@@ -108,6 +110,11 @@ export function Sidebar({ activeTab, setActiveTab, isOpen, onClose }: SidebarPro
       id: "suppliers",
       label: "Suppliers & Mills",
       icon: Building2,
+    },
+    {
+      id: "products",
+      label: "Product Master",
+      icon: Package,
     },
     {
       id: "brands",

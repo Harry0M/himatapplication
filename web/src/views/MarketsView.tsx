@@ -7,7 +7,8 @@ import {
   Building2,
   Edit2,
   Trash2,
-  Sparkles
+  Sparkles,
+  Info
 } from "lucide-react"
 import { useData } from "../context/DataContext"
 import { Card } from "../components/ui/Card"
@@ -17,12 +18,14 @@ import { Dialog } from "../components/ui/Dialog"
 import { Input } from "../components/ui/Input"
 import { Market } from "../types"
 import { AHMEDABAD_TEXTILE_MARKETS } from "../lib/constants"
+import { getMasterDraft, saveMasterDraft, clearMasterDraft } from "../lib/masterDrafts"
 
 export function MarketsView() {
   const { markets, suppliers, saveMarket, deleteMarket } = useData()
   const [search, setSearch] = useState("")
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingMarket, setEditingMarket] = useState<Market | null>(null)
+  const [hasDraft, setHasDraft] = useState(false)
 
   // Form State
   const [marketName, setMarketName] = useState("")
@@ -58,6 +61,32 @@ export function MarketsView() {
 
   const openAddModal = () => {
     setEditingMarket(null)
+    const draft = getMasterDraft<any>("market")
+    if (draft) {
+      setMarketName(draft.marketName || "")
+      setCity(draft.city || "Ahmedabad")
+      setArea(draft.area || "")
+      setPincode(draft.pincode || "380002")
+      setLandmark(draft.landmark || "")
+      setMarketType(draft.marketType || "Readymade Garments & Wholesale")
+      setDescription(draft.description || "")
+      setHasDraft(true)
+    } else {
+      setMarketName("")
+      setCity("Ahmedabad")
+      setArea("")
+      setPincode("380002")
+      setLandmark("")
+      setMarketType("Readymade Garments & Wholesale")
+      setDescription("")
+      setHasDraft(false)
+    }
+    setIsModalOpen(true)
+  }
+
+  const handleDiscardDraft = () => {
+    clearMasterDraft("market")
+    setHasDraft(false)
     setMarketName("")
     setCity("Ahmedabad")
     setArea("")
@@ -65,8 +94,23 @@ export function MarketsView() {
     setLandmark("")
     setMarketType("Readymade Garments & Wholesale")
     setDescription("")
-    setIsModalOpen(true)
   }
+
+  // Auto-save local draft
+  useEffect(() => {
+    if (!isModalOpen || editingMarket !== null) return
+    if (marketName.trim() || area.trim() || landmark.trim() || description.trim()) {
+      saveMasterDraft("market", {
+        marketName,
+        city,
+        area,
+        pincode,
+        landmark,
+        marketType,
+        description,
+      })
+    }
+  }, [isModalOpen, editingMarket, marketName, city, area, pincode, landmark, marketType, description])
 
   const openEditModal = (m: Market) => {
     setEditingMarket(m)
@@ -77,6 +121,7 @@ export function MarketsView() {
     setLandmark(m.landmark || "")
     setMarketType(m.marketType || "Readymade Garments & Wholesale")
     setDescription(m.description || "")
+    setHasDraft(false)
     setIsModalOpen(true)
   }
 
@@ -97,6 +142,8 @@ export function MarketsView() {
     }
 
     await saveMarket(payload)
+    clearMasterDraft("market")
+    setHasDraft(false)
     setIsModalOpen(false)
   }
 
@@ -248,7 +295,25 @@ export function MarketsView() {
         onOpenChange={setIsModalOpen}
         title={editingMarket ? "Edit Market" : "Add Market Master"}
       >
-        <form onSubmit={handleSave} className="space-y-3.5 text-xs">
+        <div className="space-y-3.5 max-h-[78vh] overflow-y-auto pr-1">
+          {/* Draft Notification Banner */}
+          {hasDraft && !editingMarket && (
+            <div className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-xs text-emerald-800">
+              <div className="flex items-center gap-2">
+                <Info className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span className="font-medium">Resumed from your local draft</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleDiscardDraft}
+                className="font-semibold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+              >
+                Discard Draft
+              </button>
+            </div>
+          )}
+
+          <form onSubmit={handleSave} className="space-y-3.5 text-xs">
           <div>
             <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
               Market Name *
@@ -340,6 +405,7 @@ export function MarketsView() {
             </Button>
           </div>
         </form>
+        </div>
       </Dialog>
     </div>
   )

@@ -1,4 +1,4 @@
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import {
   Tag,
   Plus,
@@ -8,7 +8,8 @@ import {
   Trash2,
   Check,
   X,
-  Sparkles
+  Sparkles,
+  Info
 } from "lucide-react"
 import { useData } from "../context/DataContext"
 import { Card } from "../components/ui/Card"
@@ -20,6 +21,7 @@ import { FileUpload } from "../components/ui/FileUpload"
 import { ImageLightboxModal } from "../components/ui/ImageLightboxModal"
 import { Brand } from "../types"
 import { GARMENT_CATEGORIES } from "../lib/constants"
+import { getMasterDraft, saveMasterDraft, clearMasterDraft } from "../lib/masterDrafts"
 
 export function BrandsView() {
   const { brands, suppliers, saveBrand, deleteBrand } = useData()
@@ -39,18 +41,54 @@ export function BrandsView() {
   const [description, setDescription] = useState("")
   const [logoPhotoUri, setLogoPhotoUri] = useState("")
   const [isActive, setIsActive] = useState(true)
-
+  const [hasDraft, setHasDraft] = useState(false)
 
   const openAddModal = () => {
     setEditingBrand(null)
+    const draft = getMasterDraft<any>("brand")
+    if (draft) {
+      setBrandName(draft.brandName || "")
+      setManufacturerId(draft.manufacturerId || "")
+      setCategory(draft.category || GARMENT_CATEGORIES[0] || "Denim & Jeans")
+      setDescription(draft.description || "")
+      setLogoPhotoUri("")
+      setIsActive(true)
+      setHasDraft(true)
+    } else {
+      setBrandName("")
+      setManufacturerId("")
+      setCategory(GARMENT_CATEGORIES[0] || "Denim & Jeans")
+      setDescription("")
+      setLogoPhotoUri("")
+      setIsActive(true)
+      setHasDraft(false)
+    }
+    setIsModalOpen(true)
+  }
+
+  const handleDiscardDraft = () => {
+    clearMasterDraft("brand")
+    setHasDraft(false)
     setBrandName("")
     setManufacturerId("")
     setCategory(GARMENT_CATEGORIES[0] || "Denim & Jeans")
     setDescription("")
     setLogoPhotoUri("")
     setIsActive(true)
-    setIsModalOpen(true)
   }
+
+  // Auto-save local draft
+  useEffect(() => {
+    if (!isModalOpen || editingBrand !== null) return
+    if (brandName.trim() || description.trim()) {
+      saveMasterDraft("brand", {
+        brandName,
+        manufacturerId,
+        category,
+        description,
+      })
+    }
+  }, [isModalOpen, editingBrand, brandName, manufacturerId, category, description])
 
   const openEditModal = (b: Brand) => {
     setEditingBrand(b)
@@ -60,6 +98,7 @@ export function BrandsView() {
     setDescription(b.description || "")
     setLogoPhotoUri(b.logoPhotoUri || "")
     setIsActive(b.isActive ?? true)
+    setHasDraft(false)
     setIsModalOpen(true)
   }
 
@@ -82,6 +121,8 @@ export function BrandsView() {
     }
 
     await saveBrand(brandPayload)
+    clearMasterDraft("brand")
+    setHasDraft(false)
     setIsModalOpen(false)
   }
 
@@ -238,13 +279,30 @@ export function BrandsView() {
         </div>
       )}
 
-      {/* Add / Edit Dialog */}
       <Dialog
         open={isModalOpen}
         onOpenChange={setIsModalOpen}
         title={editingBrand ? "Edit Brand" : "Add Brand Master"}
       >
-        <form onSubmit={handleSave} className="space-y-4 text-xs">
+        <div className="space-y-4 pt-1 max-h-[80vh] overflow-y-auto pr-1">
+          {/* Draft Notification Banner */}
+          {hasDraft && !editingBrand && (
+            <div className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-xs text-emerald-800">
+              <div className="flex items-center gap-2">
+                <Info className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span className="font-medium">Resumed from your local draft</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleDiscardDraft}
+                className="font-semibold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+              >
+                Discard Draft
+              </button>
+            </div>
+          )}
+
+          <form onSubmit={handleSave} className="space-y-4 text-xs">
           <div>
             <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
               Brand Name *
@@ -324,6 +382,7 @@ export function BrandsView() {
             </Button>
           </div>
         </form>
+        </div>
       </Dialog>
 
       {/* Fullscreen Lightbox Modal with Download & Zoom */}
