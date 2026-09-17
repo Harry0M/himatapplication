@@ -1278,6 +1278,8 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         pieces: Int,
         rate: Double,
         caseSize: Int,
+        caseCount: Int? = null,
+        loosePieces: Int? = null,
         gstRate: Double,
         expectedDeliveryDate: String,
         transporter: String,
@@ -1291,6 +1293,9 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
             val totalAmount = pieces * rate
             val gstAmount = (totalAmount * gstRate) / 100.0
             val grandTotal = totalAmount + gstAmount
+
+            val resolvedCaseCount = caseCount ?: if (caseSize > 0) pieces / caseSize else 0
+            val resolvedLoosePieces = loosePieces ?: if (caseSize > 0) pieces % caseSize else 0
 
             val entry = PurchaseEntryEntity(
                 orderNo = seqOrderNo,
@@ -1306,8 +1311,8 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 gstAmount = gstAmount,
                 grandTotalWithGst = grandTotal,
                 caseSize = caseSize,
-                caseCount = if (caseSize > 0) pieces / caseSize else 0,
-                loosePieces = if (caseSize > 0) pieces % caseSize else 0,
+                caseCount = resolvedCaseCount,
+                loosePieces = resolvedLoosePieces,
                 expectedDeliveryDate = expectedDeliveryDate,
                 transporter = transporter,
                 paymentStatus = paymentStatus,
@@ -1336,8 +1341,8 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 gstAmount = gstAmount,
                 grandTotalWithGst = grandTotal,
                 caseSize = caseSize,
-                caseCount = if (caseSize > 0) pieces / caseSize else 0,
-                loosePieces = if (caseSize > 0) pieces % caseSize else 0,
+                caseCount = resolvedCaseCount,
+                loosePieces = resolvedLoosePieces,
                 deliveryStatus = "Pending",
                 transporter = transporter,
                 paymentStatus = paymentStatus,
@@ -1356,6 +1361,8 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         newPieces: Int,
         newRate: Double,
         newCaseSize: Int,
+        newCaseCount: Int? = null,
+        newLoosePieces: Int? = null,
         deliveryStatus: String,
         transporter: String,
         expectedDeliveryDate: String,
@@ -1376,10 +1383,15 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 else -> paidAmount
             }
 
+            val resolvedCaseCount = newCaseCount ?: if (newCaseSize > 0 && entry.caseCount == 0 && entry.loosePieces == 0) newPieces / newCaseSize else entry.caseCount
+            val resolvedLoosePieces = newLoosePieces ?: if (newCaseSize > 0 && entry.caseCount == 0 && entry.loosePieces == 0) newPieces % newCaseSize else entry.loosePieces
+
             val toUpdate = entry.copy(
                 pieces = newPieces,
                 rate = newRate,
                 caseSize = newCaseSize,
+                caseCount = resolvedCaseCount,
+                loosePieces = resolvedLoosePieces,
                 deliveryStatus = deliveryStatus,
                 transporter = transporter,
                 expectedDeliveryDate = expectedDeliveryDate,

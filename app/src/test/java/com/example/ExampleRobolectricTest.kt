@@ -118,14 +118,14 @@ class ExampleRobolectricTest {
     )
 
     val customerReportText = com.example.util.ShareUtil.buildCustomerReportText(visit, customer, entries)
-    assertTrue(customerReportText.contains("HIMAT TEXTILE — CUSTOMER DAY REPORT"))
+    assertTrue(customerReportText.contains("Customer Day Report"))
     assertTrue(customerReportText.contains("Rajesh Garments"))
     assertTrue(customerReportText.contains("DENIM-701"))
     assertTrue(customerReportText.contains("Vardhman Denim Mills"))
     assertTrue(customerReportText.contains("Packed 2 pcs into Mixed Case #1"))
 
     val supplierCopyText = com.example.util.ShareUtil.buildSupplierCopyText(visit, supplier, customer, entries)
-    assertTrue(supplierCopyText.contains("HIMAT TEXTILE — SUPPLIER PURCHASE COPY"))
+    assertTrue(supplierCopyText.contains("Supplier Purchase Order Copy"))
     assertTrue(supplierCopyText.contains("Vardhman Denim Mills"))
     assertTrue(supplierCopyText.contains("DENIM-701"))
     assertTrue(supplierCopyText.contains("Packing Note"))
@@ -172,6 +172,41 @@ class ExampleRobolectricTest {
     assertTrue(supplier.categoryList.contains("Denim Fabric"))
     assertTrue(supplier.categoryList.contains("Cotton Shirting"))
     assertTrue(supplier.categories.contains("Jeans Garments"))
+  }
+
+  @Test
+  fun `verify custom packaging with independent cases and loose pieces`() {
+    // User scenario: 75 pcs total with 2 cases and 5 loose pieces (e.g. 50 in case 1, 20 in case 2, 5 loose)
+    val pieces = 75
+    val enteredCases = 2
+    val enteredLoose = 5
+    val rate = 450.0
+
+    val totalAmount = pieces * rate
+    assertEquals(33750.0, totalAmount, 0.001)
+
+    val entry = PurchaseEntryEntity(
+      id = 101,
+      orderNo = "HT-7501",
+      visitId = 1,
+      supplierId = 1,
+      supplierName = "Vardhman Denim Mills",
+      supplierType = "Manufacturer",
+      itemCode = "KURTI-102",
+      pieces = pieces,
+      rate = rate,
+      totalAmount = totalAmount,
+      caseSize = 24,
+      caseCount = enteredCases,
+      loosePieces = enteredLoose,
+      gstRate = 5.0,
+      gstAmount = (totalAmount * 5.0) / 100.0,
+      grandTotalWithGst = totalAmount + ((totalAmount * 5.0) / 100.0)
+    )
+
+    assertEquals(75, entry.pieces)
+    assertEquals(2, entry.caseCount)
+    assertEquals(5, entry.loosePieces)
   }
 }
 

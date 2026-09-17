@@ -99,6 +99,8 @@ fun AddPurchaseEntryDialog(
         pieces: Int,
         rate: Double,
         caseSize: Int,
+        caseCount: Int,
+        loosePieces: Int,
         gstRate: Double,
         expectedDeliveryDate: String,
         transporter: String
@@ -107,6 +109,8 @@ fun AddPurchaseEntryDialog(
     var selectedSupplier by remember { mutableStateOf(suppliers.firstOrNull()) }
     var itemCode by remember { mutableStateOf("") }
     var piecesText by remember { mutableStateOf("") }
+    var casesText by remember { mutableStateOf("") }
+    var looseText by remember { mutableStateOf("") }
     var rateText by remember { mutableStateOf("") }
     var caseSizeText by remember { mutableStateOf((selectedSupplier?.defaultCaseSize ?: 24).toString()) }
     var gstRateText by remember { mutableStateOf("5.0") }
@@ -127,9 +131,11 @@ fun AddPurchaseEntryDialog(
     val pieces = piecesText.toIntOrNull() ?: 0
     val rate = rateText.toDoubleOrNull() ?: 0.0
     val caseSize = caseSizeText.toIntOrNull() ?: 24
+    val enteredCases = casesText.toIntOrNull()
+    val enteredLoose = looseText.toIntOrNull()
+    val caseCount = enteredCases ?: (if (caseSize > 0) pieces / caseSize else 0)
+    val loosePieces = enteredLoose ?: (if (caseSize > 0) pieces % caseSize else 0)
     val totalAmount = pieces * rate
-    val caseCount = if (caseSize > 0) pieces / caseSize else 0
-    val loosePieces = if (caseSize > 0) pieces % caseSize else 0
     val isIncomplete = loosePieces > 0
 
     Dialog(onDismissRequest = onDismiss) {
@@ -253,13 +259,13 @@ fun AddPurchaseEntryDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Pieces & Rate
+                // Row 1: Pieces & Rate
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = piecesText,
                         onValueChange = { piecesText = it },
-                        label = { Text("Pieces (Pc) *", fontSize = 11.sp) },
-                        placeholder = { Text("50", fontSize = 11.5.sp) },
+                        label = { Text("Total Pieces (Pc) *", fontSize = 11.sp) },
+                        placeholder = { Text("75", fontSize = 11.5.sp) },
                         textStyle = TextStyle(fontSize = 12.5.sp),
                         shape = RoundedCornerShape(10.dp),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -281,12 +287,41 @@ fun AddPurchaseEntryDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Case Size & GST Rate
+                // Row 2: Cases & Loose Pieces (Direct entry)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = casesText,
+                        onValueChange = { casesText = it },
+                        label = { Text("Cases (Cs)", fontSize = 11.sp) },
+                        placeholder = { Text("2", fontSize = 11.5.sp) },
+                        textStyle = TextStyle(fontSize = 12.5.sp),
+                        shape = RoundedCornerShape(10.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = looseText,
+                        onValueChange = { looseText = it },
+                        label = { Text("Loose Pieces (Pcs)", fontSize = 11.sp) },
+                        placeholder = { Text("5", fontSize = 11.5.sp) },
+                        textStyle = TextStyle(fontSize = 12.5.sp),
+                        shape = RoundedCornerShape(10.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Row 3: Case Size & GST Rate
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = caseSizeText,
                         onValueChange = { caseSizeText = it },
-                        label = { Text("Case Size (Pcs)", fontSize = 11.sp) },
+                        label = { Text("Case Size (Ref)", fontSize = 11.sp) },
+                        placeholder = { Text("24", fontSize = 11.5.sp) },
                         textStyle = TextStyle(fontSize = 12.5.sp),
                         shape = RoundedCornerShape(10.dp),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -478,6 +513,8 @@ fun AddPurchaseEntryDialog(
                                     pieces,
                                     rate,
                                     caseSize,
+                                    caseCount,
+                                    loosePieces,
                                     gstRateText.toDoubleOrNull() ?: 5.0,
                                     expectedDeliveryDate.trim(),
                                     transporter.trim()

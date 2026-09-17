@@ -540,12 +540,14 @@ fun VisitDetailScreen(
         EditStopBottomSheet(
             entry = entry,
             onDismiss = { editingEntry = null },
-            onSave = { updatedPieces, updatedRate, updatedCaseSize, status, transp, expDate, payStatus, payMode, paidAmt, remarks ->
+            onSave = { updatedPieces, updatedRate, updatedCaseSize, updatedCases, updatedLoose, status, transp, expDate, payStatus, payMode, paidAmt, remarks ->
                 viewModel.updatePurchaseEntry(
                     entry = entry,
                     newPieces = updatedPieces,
                     newRate = updatedRate,
                     newCaseSize = updatedCaseSize,
+                    newCaseCount = updatedCases,
+                    newLoosePieces = updatedLoose,
                     deliveryStatus = status,
                     transporter = transp,
                     expectedDeliveryDate = expDate,
@@ -1450,6 +1452,8 @@ fun EditStopBottomSheet(
         pieces: Int,
         rate: Double,
         caseSize: Int,
+        caseCount: Int,
+        loosePieces: Int,
         deliveryStatus: String,
         transporter: String,
         expectedDeliveryDate: String,
@@ -1462,6 +1466,8 @@ fun EditStopBottomSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var piecesText by remember(entry) { mutableStateOf(entry.pieces.toString()) }
+    var casesText by remember(entry) { mutableStateOf(entry.caseCount.toString()) }
+    var looseText by remember(entry) { mutableStateOf(entry.loosePieces.toString()) }
     var rateText by remember(entry) { mutableStateOf(entry.rate.toString()) }
     var caseSizeText by remember(entry) { mutableStateOf(entry.caseSize.toString()) }
     var deliveryStatus by remember(entry) { mutableStateOf(entry.deliveryStatus) }
@@ -1478,11 +1484,13 @@ fun EditStopBottomSheet(
     val pieces = piecesText.toIntOrNull() ?: 0
     val rate = rateText.toDoubleOrNull() ?: 0.0
     val caseSize = caseSizeText.toIntOrNull() ?: 24
+    val enteredCases = casesText.toIntOrNull()
+    val enteredLoose = looseText.toIntOrNull()
+    val caseCount = enteredCases ?: (if (caseSize > 0) pieces / caseSize else 0)
+    val loosePieces = enteredLoose ?: (if (caseSize > 0) pieces % caseSize else 0)
     val baseAmount = pieces * rate
     val gstAmount = (baseAmount * entry.gstRate) / 100.0
     val grandTotal = baseAmount + gstAmount
-    val caseCount = if (caseSize > 0) pieces / caseSize else 0
-    val loosePieces = if (caseSize > 0) pieces % caseSize else 0
 
     val isValid = pieces > 0 && rate > 0
 
@@ -1565,7 +1573,8 @@ fun EditStopBottomSheet(
                 OutlinedTextField(
                     value = piecesText,
                     onValueChange = { piecesText = it },
-                    label = { Text("Pieces") },
+                    label = { Text("Total Pieces (Pc)") },
+                    placeholder = { Text("75") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f),
                     singleLine = true,
@@ -1579,7 +1588,44 @@ fun EditStopBottomSheet(
                     value = rateText,
                     onValueChange = { rateText = it },
                     label = { Text("Rate (₹/pc)") },
+                    placeholder = { Text("450") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = NavyPrimary,
+                        unfocusedBorderColor = Color(0xFFE2E8F0)
+                    )
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedTextField(
+                    value = casesText,
+                    onValueChange = { casesText = it },
+                    label = { Text("Cases (Cs)") },
+                    placeholder = { Text("2") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = NavyPrimary,
+                        unfocusedBorderColor = Color(0xFFE2E8F0)
+                    )
+                )
+                OutlinedTextField(
+                    value = looseText,
+                    onValueChange = { looseText = it },
+                    label = { Text("Loose (Pcs)") },
+                    placeholder = { Text("5") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f),
                     singleLine = true,
                     shape = RoundedCornerShape(10.dp),
@@ -1592,6 +1638,7 @@ fun EditStopBottomSheet(
                     value = caseSizeText,
                     onValueChange = { caseSizeText = it },
                     label = { Text("Case Size") },
+                    placeholder = { Text("24") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f),
                     singleLine = true,
@@ -1870,6 +1917,8 @@ fun EditStopBottomSheet(
                             pieces,
                             rate,
                             caseSize,
+                            caseCount,
+                            loosePieces,
                             deliveryStatus,
                             transporter,
                             expectedDeliveryDate,

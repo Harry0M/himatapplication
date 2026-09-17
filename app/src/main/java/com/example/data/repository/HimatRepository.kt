@@ -306,8 +306,8 @@ class HimatRepository(private val database: AppDatabase) {
         val grandTotal = totalAmount + gstAmount
 
         val caseSize = if (entry.caseSize > 0) entry.caseSize else 24
-        val caseCount = entry.pieces / caseSize
-        val loosePieces = entry.pieces % caseSize
+        val caseCount = if (entry.caseCount > 0 || entry.loosePieces > 0) entry.caseCount else (if (caseSize > 0) entry.pieces / caseSize else 0)
+        val loosePieces = if (entry.caseCount > 0 || entry.loosePieces > 0) entry.loosePieces else (if (caseSize > 0) entry.pieces % caseSize else 0)
 
         val processedEntry = entry.copy(
             totalAmount = totalAmount,

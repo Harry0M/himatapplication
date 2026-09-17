@@ -41,6 +41,7 @@ export function VisitsView() {
     selectedEmployeeId,
     setSelectedEmployeeId,
     saveVisit,
+    savePurchaseEntry,
   } = useData()
 
   const [search, setSearch] = useState<string>("")
@@ -48,6 +49,17 @@ export function VisitsView() {
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null)
   const [isAddOpen, setIsAddOpen] = useState<boolean>(false)
+
+  // Add Stop / Order into Visit state
+  const [isAddOrderOpen, setIsAddOrderOpen] = useState<boolean>(false)
+  const [orderSupplierId, setOrderSupplierId] = useState<number>(0)
+  const [orderItemCode, setOrderItemCode] = useState<string>("")
+  const [orderPieces, setOrderPieces] = useState<string>("")
+  const [orderCases, setOrderCases] = useState<string>("")
+  const [orderLoose, setOrderLoose] = useState<string>("")
+  const [orderRate, setOrderRate] = useState<string>("")
+  const [orderCaseSize, setOrderCaseSize] = useState<string>("24")
+  const [orderTransporter, setOrderTransporter] = useState<string>("")
 
   // New Visit Form state
   const [customerName, setCustomerName] = useState<string>("")
@@ -131,6 +143,55 @@ export function VisitsView() {
     if (selectedVisit?.id === visit.id) {
       setSelectedVisit({ ...visit, status: "Completed" })
     }
+  }
+
+  const handleAddStopToTrip = async () => {
+    if (!selectedVisit || !orderItemCode.trim() || !orderPieces) return
+    const chosenSup = suppliers.find((s) => s.id === orderSupplierId) || suppliers[0]
+    if (!chosenSup) return
+
+    const pcs = parseInt(orderPieces, 10) || 0
+    const rt = parseFloat(orderRate) || 0
+    const cs = parseInt(orderCaseSize, 10) || 24
+    const csCount = orderCases !== "" ? parseInt(orderCases, 10) || 0 : (cs > 0 ? Math.floor(pcs / cs) : 0)
+    const lsPcs = orderLoose !== "" ? parseInt(orderLoose, 10) || 0 : (cs > 0 ? pcs % cs : 0)
+    const baseTotal = pcs * rt
+    const gstAmt = (baseTotal * 5) / 100
+    const grandTotal = baseTotal + gstAmt
+
+    const newOrder: PurchaseEntry = {
+      id: Date.now(),
+      visitId: selectedVisit.id,
+      orderNo: `HT-${Math.floor(1000 + Math.random() * 9000)}`,
+      supplierId: chosenSup.id,
+      supplierName: chosenSup.name,
+      supplierType: chosenSup.type,
+      itemCode: orderItemCode.trim().toUpperCase(),
+      pieces: pcs,
+      rate: rt,
+      caseSize: cs,
+      caseCount: csCount,
+      loosePieces: lsPcs,
+      pricePerPiece: rt,
+      totalAmount: baseTotal,
+      gstPercent: 5,
+      gstAmount: gstAmt,
+      grandTotalWithGst: grandTotal,
+      deliveryStatus: "Pending",
+      transporter: orderTransporter.trim() || undefined,
+      paymentStatus: "Pending",
+      paidAmount: 0,
+      createdAt: Date.now(),
+    }
+
+    await savePurchaseEntry(newOrder)
+    setIsAddOrderOpen(false)
+    setOrderItemCode("")
+    setOrderPieces("")
+    setOrderCases("")
+    setOrderLoose("")
+    setOrderRate("")
+    setOrderTransporter("")
   }
 
   // Visit entries breakdown
@@ -493,14 +554,37 @@ export function VisitsView() {
                 <h4 className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
                   Orders Booked During this Trip ({visitEntries.length})
                 </h4>
-                <span className="text-[11px] text-muted-foreground">
-                  Total Billed: ₹{formatInr(
-                    visitEntries.reduce(
-                      (sum, e) => sum + (Number(e.grandTotalWithGst) || (Number(e.totalAmount) + Number(e.gstAmount)) || 0),
-                      0
-                    )
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-muted-foreground">
+                    Total Billed: ₹{formatInr(
+                      visitEntries.reduce(
+                        (sum, e) => sum + (Number(e.grandTotalWithGst) || (Number(e.totalAmount) + Number(e.gstAmount)) || 0),
+                        0
+                      )
+                    )}
+                  </span>
+                  {selectedVisit.status?.toLowerCase() === "active" && (
+                    <Button
+                      size="sm"
+                      shape="pill"
+                      onClick={() => {
+                        setOrderSupplierId(suppliers[0]?.id || 0)
+                        setOrderCaseSize(suppliers[0]?.defaultCaseSize ? String(suppliers[0].defaultCaseSize) : "24")
+                        setOrderItemCode("")
+                        setOrderPieces("")
+                        setOrderCases("")
+                        setOrderLoose("")
+                        setOrderRate("")
+                        setOrderTransporter("")
+                        setIsAddOrderOpen(true)
+                      }}
+                      className="h-6 text-[10px] px-2 font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm gap-1"
+                    >
+                      <Plus className="h-3 w-3" />
+                      Add Stop
+                    </Button>
                   )}
-                </span>
+                </div>
               </div>
 
               {visitEntries.length === 0 ? (
@@ -677,6 +761,155 @@ export function VisitsView() {
           </div>
         </div>
       </Dialog>
+
+      {/* Add Stop / Order Modal */}
+      {selectedVisit && (
+        <Dialog
+          open={isAddOrderOpen}
+          onOpenChange={setIsAddOrderOpen}
+          title={`Add Purchase Stop: ${selectedVisit.visitCode}`}
+          description={`Customer: ${selectedVisit.customerName} • Agent: ${selectedVisit.employeeName}`}
+        >
+          <div className="space-y-3.5 pt-2 text-xs">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">
+                Select Supplier / Wholesaler *
+              </label>
+              <select
+                value={orderSupplierId}
+                onChange={(e) => {
+                  const id = Number(e.target.value)
+                  setOrderSupplierId(id)
+                  const sup = suppliers.find((s) => s.id === id)
+                  if (sup && sup.defaultCaseSize) {
+                    setOrderCaseSize(String(sup.defaultCaseSize))
+                  }
+                }}
+                aria-label="Select Supplier"
+                className="mt-1.5 w-full rounded-lg border border-zinc-200 bg-white p-2 text-xs font-medium text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
+              >
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    🏭 {s.name} ({s.marketArea || s.city || "Local"})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Item / Style Code *</label>
+              <Input
+                value={orderItemCode}
+                onChange={(e) => setOrderItemCode(e.target.value.toUpperCase())}
+                placeholder="e.g. KURTI-102, JEANS-88, ABC"
+                className="mt-1"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Total Pieces (Pc) *</label>
+                <Input
+                  type="number"
+                  value={orderPieces}
+                  onChange={(e) => setOrderPieces(e.target.value)}
+                  placeholder="e.g. 75"
+                  className="mt-1 font-semibold"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Rate (₹/Pc) *</label>
+                <Input
+                  type="number"
+                  value={orderRate}
+                  onChange={(e) => setOrderRate(e.target.value)}
+                  placeholder="e.g. 450"
+                  className="mt-1"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Cases (Cs)</label>
+                <Input
+                  type="number"
+                  value={orderCases}
+                  onChange={(e) => setOrderCases(e.target.value)}
+                  placeholder="e.g. 2"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Loose (Pcs)</label>
+                <Input
+                  type="number"
+                  value={orderLoose}
+                  onChange={(e) => setOrderLoose(e.target.value)}
+                  placeholder="e.g. 5"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Case Size (Ref)</label>
+                <Input
+                  type="number"
+                  value={orderCaseSize}
+                  onChange={(e) => setOrderCaseSize(e.target.value)}
+                  placeholder="24"
+                  className="mt-1"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Transporter (Optional)</label>
+              <Input
+                value={orderTransporter}
+                onChange={(e) => setOrderTransporter(e.target.value)}
+                placeholder="e.g. V-Trans, Navata, SafeX"
+                className="mt-1"
+              />
+            </div>
+
+            {/* Live Calculation Preview */}
+            <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/60 p-3">
+              <div className="flex items-center justify-between text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                <span>Total: ₹{formatInr((Number(orderPieces) || 0) * (Number(orderRate) || 0))}</span>
+                <span>
+                  {orderCases ? `${orderCases} Cases` : ""}{" "}
+                  {orderLoose ? `+ ${orderLoose} Loose` : ""}
+                  {!orderCases && !orderLoose && `${Number(orderPieces) || 0} Pcs`}
+                </span>
+              </div>
+              {Number(orderLoose) > 0 && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
+                  ⚠️ {orderLoose} loose pieces remaining. Can be packed with other bills in Mixed Pack.
+                </p>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                shape="pill"
+                size="sm"
+                onClick={() => setIsAddOrderOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                shape="pill"
+                size="sm"
+                disabled={!orderItemCode.trim() || !orderPieces}
+                onClick={handleAddStopToTrip}
+              >
+                Save Stop
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+      )}
 
       {/* Report Viewer Modal */}
       <ReportViewerModal

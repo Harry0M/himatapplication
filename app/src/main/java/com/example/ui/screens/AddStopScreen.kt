@@ -98,6 +98,8 @@ fun AddStopScreen(
     var selectedSupplier by remember { mutableStateOf<SupplierEntity?>(null) }
     var itemCode by remember { mutableStateOf("") }
     var piecesText by remember { mutableStateOf("") }
+    var casesText by remember { mutableStateOf("") }
+    var looseText by remember { mutableStateOf("") }
     var rateText by remember { mutableStateOf("") }
     var caseSizeText by remember { mutableStateOf("24") }
     var gstRateText by remember { mutableStateOf("5.0") }
@@ -122,9 +124,13 @@ fun AddStopScreen(
     val pieces = piecesText.toIntOrNull() ?: 0
     val rate = rateText.toDoubleOrNull() ?: 0.0
     val caseSize = caseSizeText.toIntOrNull() ?: 24
+    val enteredCases = casesText.toIntOrNull()
+    val enteredLoose = looseText.toIntOrNull()
+
+    // Respect user's explicit Cases and Loose entries directly without forced math logic
+    val caseCount = enteredCases ?: (if (caseSize > 0) pieces / caseSize else 0)
+    val loosePieces = enteredLoose ?: (if (caseSize > 0) pieces % caseSize else 0)
     val baseAmount = pieces * rate
-    val caseCount = if (caseSize > 0) pieces / caseSize else 0
-    val loosePieces = if (caseSize > 0) pieces % caseSize else 0
     val isIncomplete = loosePieces > 0
 
     val isFormValid = selectedSupplier != null && itemCode.isNotBlank() && pieces > 0 && rate > 0
@@ -173,6 +179,8 @@ fun AddStopScreen(
                                         pieces = pieces,
                                         rate = rate,
                                         caseSize = caseSize,
+                                        caseCount = caseCount,
+                                        loosePieces = loosePieces,
                                         gstRate = gstRateText.toDoubleOrNull() ?: 5.0,
                                         expectedDeliveryDate = expectedDeliveryDate,
                                         transporter = transporter,
@@ -491,9 +499,9 @@ fun AddStopScreen(
                             OutlinedTextField(
                                 value = piecesText,
                                 onValueChange = { piecesText = it },
-                                label = { Text("Pieces (Pc) *", fontSize = 11.sp) },
-                                placeholder = { Text("50", fontSize = 11.5.sp) },
-                                textStyle = TextStyle(fontSize = 12.5.sp),
+                                label = { Text("Total Pieces (Pc) *", fontSize = 11.sp) },
+                                placeholder = { Text("75", fontSize = 11.5.sp) },
+                                textStyle = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 modifier = Modifier.weight(1f),
                                 singleLine = true,
@@ -522,6 +530,46 @@ fun AddStopScreen(
 
                         Spacer(modifier = Modifier.height(6.dp))
 
+                        // Row 2: Cases & Loose Pieces (freely enterable per user specification)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = casesText,
+                                onValueChange = { casesText = it },
+                                label = { Text("Cases (Cs)", fontSize = 11.sp) },
+                                placeholder = { Text("2", fontSize = 11.5.sp) },
+                                textStyle = TextStyle(fontSize = 12.5.sp),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                shape = RoundedCornerShape(10.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = NavyPrimary,
+                                    unfocusedBorderColor = Color(0xFFE2E8F0)
+                                )
+                            )
+                            OutlinedTextField(
+                                value = looseText,
+                                onValueChange = { looseText = it },
+                                label = { Text("Loose Pieces (Pcs)", fontSize = 11.sp) },
+                                placeholder = { Text("5", fontSize = 11.5.sp) },
+                                textStyle = TextStyle(fontSize = 12.5.sp),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                shape = RoundedCornerShape(10.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = NavyPrimary,
+                                    unfocusedBorderColor = Color(0xFFE2E8F0)
+                                )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        // Row 3: Case Size & Garment GST (%)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 8.dp)
@@ -529,7 +577,8 @@ fun AddStopScreen(
                             OutlinedTextField(
                                 value = caseSizeText,
                                 onValueChange = { caseSizeText = it },
-                                label = { Text("Case Size", fontSize = 11.sp) },
+                                label = { Text("Case Size (Ref)", fontSize = 11.sp) },
+                                placeholder = { Text("24", fontSize = 11.5.sp) },
                                 textStyle = TextStyle(fontSize = 12.5.sp),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 modifier = Modifier.weight(1f),
@@ -543,7 +592,7 @@ fun AddStopScreen(
                             OutlinedTextField(
                                 value = gstRateText,
                                 onValueChange = { gstRateText = it },
-                                label = { Text("GST (%)", fontSize = 11.sp) },
+                                label = { Text("Garment GST (%)", fontSize = 11.sp) },
                                 textStyle = TextStyle(fontSize = 12.5.sp),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 modifier = Modifier.weight(1f),
