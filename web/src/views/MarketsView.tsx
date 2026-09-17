@@ -8,7 +8,8 @@ import {
   Edit2,
   Trash2,
   Sparkles,
-  Info
+  Info,
+  Eye
 } from "lucide-react"
 import { useData } from "../context/DataContext"
 import { Card } from "../components/ui/Card"
@@ -19,11 +20,13 @@ import { Input } from "../components/ui/Input"
 import { Market } from "../types"
 import { AHMEDABAD_TEXTILE_MARKETS } from "../lib/constants"
 import { getMasterDraft, saveMasterDraft, clearMasterDraft } from "../lib/masterDrafts"
+import { MarketDetailView } from "./MarketDetailView"
 
 export function MarketsView() {
   const { markets, suppliers, saveMarket, deleteMarket } = useData()
   const [search, setSearch] = useState("")
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [selectedMarketId, setSelectedMarketId] = useState<number | null>(null)
   const [editingMarket, setEditingMarket] = useState<Market | null>(null)
   const [hasDraft, setHasDraft] = useState(false)
 
@@ -174,6 +177,16 @@ export function MarketsView() {
     return counts
   }, [suppliers])
 
+  if (selectedMarketId !== null) {
+    return (
+      <MarketDetailView
+        marketId={selectedMarketId}
+        onBack={() => setSelectedMarketId(null)}
+        onEdit={(m) => openEditModal(m)}
+      />
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Header Banner */}
@@ -232,12 +245,15 @@ export function MarketsView() {
             return (
               <Card key={market.id} className="group relative overflow-hidden border border-zinc-200/80 p-4 transition-all hover:shadow-md dark:border-zinc-800">
                 <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
+                  <div
+                    className="flex items-center gap-3 cursor-pointer flex-1"
+                    onClick={() => setSelectedMarketId(market.id)}
+                  >
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-700 font-bold text-base dark:bg-emerald-500/20 dark:text-emerald-400">
                       <Compass className="h-5 w-5" />
                     </div>
                     <div>
-                      <h4 className="text-sm font-bold text-zinc-900 dark:text-zinc-50 line-clamp-1">
+                      <h4 className="text-sm font-bold text-zinc-900 dark:text-zinc-50 line-clamp-1 hover:text-emerald-600 transition-colors">
                         {market.marketName}
                       </h4>
                       <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
@@ -247,6 +263,15 @@ export function MarketsView() {
                   </div>
 
                   <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSelectedMarketId(market.id)}
+                      className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900"
+                      title="View Dedicated Details & Orders"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -266,7 +291,10 @@ export function MarketsView() {
                   </div>
                 </div>
 
-                <div className="mt-3 space-y-2 border-t border-zinc-100 pt-3 dark:border-zinc-800 text-xs">
+                <div
+                  className="mt-3 space-y-2 border-t border-zinc-100 pt-3 dark:border-zinc-800 text-xs cursor-pointer"
+                  onClick={() => setSelectedMarketId(market.id)}
+                >
                   {market.area && (
                     <div className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-400">
                       <MapPin className="h-3.5 w-3.5 text-zinc-400 shrink-0" />

@@ -27,9 +27,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocalShipping
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,6 +41,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -45,7 +50,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,6 +64,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.local.entity.CustomerEntity
 import com.example.data.local.entity.PurchaseEntryEntity
 import com.example.data.local.entity.TransporterEntity
 import com.example.ui.components.DeliveryStatusBadge
@@ -71,13 +79,18 @@ fun TransporterDetailScreen(
     transporter: TransporterEntity,
     onBack: () -> Unit,
     onEdit: () -> Unit = {},
-    onOpenOrder: (PurchaseEntryEntity) -> Unit = { viewModel.openOrderDetail(it, returnScreen = AppScreen.TRANSPORTER_DETAIL) }
+    onOpenOrder: (PurchaseEntryEntity) -> Unit = { viewModel.openOrderDetail(it, returnScreen = AppScreen.TRANSPORTER_DETAIL) },
+    onOpenCustomer: (CustomerEntity) -> Unit = { viewModel.openCustomerDetail(it) }
 ) {
     val context = LocalContext.current
     val allEntries by viewModel.allEntries.collectAsStateWithLifecycle()
     val allVisits by viewModel.allVisits.collectAsStateWithLifecycle()
+    val allCustomers by viewModel.allCustomers.collectAsStateWithLifecycle()
 
     val visitMap = remember(allVisits) { allVisits.associateBy { it.id } }
+
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedTab by remember { mutableStateOf("SHIPMENTS") } // "SHIPMENTS", "CUSTOMERS", "DEPOT"
 
     val shipments = remember(allEntries, transporter.transporterName) {
         allEntries.filter {
@@ -85,10 +98,43 @@ fun TransporterDetailScreen(
         }.sortedByDescending { it.id }
     }
 
+    val preferredCustomers = remember(allCustomers, transporter.transporterName, transporter.id) {
+        allCustomers.filter {
+            it.preferredTransporterName.contains(transporter.transporterName, ignoreCase = true) ||
+            it.transportPreference.contains(transporter.transporterName, ignoreCase = true) ||
+            (it.preferredTransporterId != null && it.preferredTransporterId != 0L && it.preferredTransporterId == transporter.id)
+        }.sortedBy { it.firmName.ifBlank { it.name } }
+    }
+
     val totalShipments = shipments.size
     val inTransitCount = shipments.count { it.deliveryStatus.equals("Dispatched", ignoreCase = true) }
     val deliveredCount = shipments.count { it.deliveryStatus.equals("Delivered", ignoreCase = true) }
     val pendingCount = shipments.count { it.deliveryStatus != "Delivered" && it.deliveryStatus != "Dispatched" }
+
+    // Filtered by Search
+    val filteredShipments = remember(shipments, searchQuery, visitMap) {
+        val q = searchQuery.trim()
+        if (q.isBlank()) shipments
+        else shipments.filter {
+            val visit = visitMap[it.visitId]
+            val custName = visit?.customerName ?: ""
+            it.orderNo.contains(q, ignoreCase = true) ||
+            it.itemCode.contains(q, ignoreCase = true) ||
+            custName.contains(q, ignoreCase = true) ||
+            it.deliveryStatus.contains(q, ignoreCase = true)
+        }
+    }
+
+    val filteredCustomers = remember(preferredCustomers, searchQuery) {
+        val q = searchQuery.trim()
+        if (q.isBlank()) preferredCustomers
+        else preferredCustomers.filter {
+            it.firmName.contains(q, ignoreCase = true) ||
+            it.name.contains(q, ignoreCase = true) ||
+            it.phone.contains(q) ||
+            it.city.contains(q, ignoreCase = true)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -213,7 +259,7 @@ fun TransporterDetailScreen(
                         }
                     }
 
-                    // Action Pills: Phone 1, Phone 2, Map Direction, Tracking URL
+                    // Action Pills: Phone, Tracking URL
                     Spacer(modifier = Modifier.height(10.dp))
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -236,33 +282,8 @@ fun TransporterDetailScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Icon(Icons.Default.Call, contentDescription = null, tint = Color(0xFF059669), modifier = Modifier.size(13.dp))
-                                    Text(text = transporter.phone1, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF065F46))
-                                }
-                            }
-                        }
-
-                        val mapAddr = transporter.godownAddress.ifBlank { transporter.officeAddress }.ifBlank { transporter.city }
-                        if (mapAddr.isNotBlank()) {
-                            Surface(
-                                shape = CircleShape,
-                                color = Color(0xFFEFF6FF),
-                                border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .clickable {
-                                        val geoUri = Uri.parse("geo:0,0?q=" + Uri.encode(mapAddr))
-                                        val mapIntent = Intent(Intent.ACTION_VIEW, geoUri)
-                                        context.startActivity(mapIntent)
-                                    }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Icon(Icons.Default.Place, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(13.dp))
-                                    Text("Depot", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1D4ED8))
+                                    Icon(Icons.Default.Call, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(13.dp))
+                                    Text("Call Hub", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF15803D))
                                 }
                             }
                         }
@@ -270,12 +291,12 @@ fun TransporterDetailScreen(
                         if (transporter.trackingUrl.isNotBlank()) {
                             Surface(
                                 shape = CircleShape,
-                                color = Color(0xFFFAF5FF),
-                                border = BorderStroke(1.dp, Color(0xFFE9D5FF)),
+                                color = Color(0xFFEFF6FF),
+                                border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
                                 modifier = Modifier
                                     .clip(CircleShape)
                                     .clickable {
-                                        val url = if (!transporter.trackingUrl.startsWith("http")) "https://${transporter.trackingUrl}" else transporter.trackingUrl
+                                        val url = if (transporter.trackingUrl.startsWith("http")) transporter.trackingUrl else "https://${transporter.trackingUrl}"
                                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                                         context.startActivity(intent)
                                     }
@@ -285,8 +306,8 @@ fun TransporterDetailScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = Color(0xFF9333EA), modifier = Modifier.size(13.dp))
-                                    Text("Tracking", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF7E22CE))
+                                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(13.dp))
+                                    Text("Online Track", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1D4ED8))
                                 }
                             }
                         }
@@ -341,159 +362,400 @@ fun TransporterDetailScreen(
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "$pendingCount",
+                            text = "${preferredCustomers.size}",
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (pendingCount > 0) Color(0xFFDC2626) else Color(0xFF059669)
+                            color = Color(0xFF7C3AED)
                         )
-                        Text("Pending", fontSize = 11.sp, color = Color(0xFF64748B))
+                        Text("Preferred By", fontSize = 11.sp, color = Color(0xFF64748B))
                     }
                 }
             }
 
-            // Logistics Hub Details
+            // Live Search Bar
             item {
-                Surface(
-                    color = Color.White,
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    placeholder = {
                         Text(
-                            text = "LOGISTICS & DEPOT DETAILS",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF475569),
-                            letterSpacing = 0.5.sp
+                            if (selectedTab == "SHIPMENTS") "Search shipments by order or buyer..."
+                            else if (selectedTab == "CUSTOMERS") "Search preferred customers..."
+                            else "Search details...",
+                            fontSize = 12.sp,
+                            color = Color(0xFF94A3B8)
                         )
-                        HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 0.5.dp)
-
-                        if (transporter.officeAddress.isNotBlank()) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Office Address:", fontSize = 12.sp, color = Color(0xFF64748B))
-                                Text(transporter.officeAddress, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color(0xFF0F172A))
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Default.Search, contentDescription = "Search", tint = Color(0xFF64748B), modifier = Modifier.size(18.dp))
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotBlank()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color(0xFF64748B), modifier = Modifier.size(16.dp))
                             }
                         }
-
-                        if (transporter.godownAddress.isNotBlank()) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Godown / Depot:", fontSize = 12.sp, color = Color(0xFF64748B))
-                                Text(transporter.godownAddress, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color(0xFF0F172A))
-                            }
-                        }
-
-                        if (transporter.destinationsCovered.isNotBlank()) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Routes Covered:", fontSize = 12.sp, color = Color(0xFF64748B))
-                                Text(transporter.destinationsCovered, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0891B2))
-                            }
-                        }
-
-                        if (transporter.phone2.isNotBlank() || transporter.phone3.isNotBlank()) {
-                            val extraPhones = listOfNotNull(transporter.phone2.takeIf { it.isNotBlank() }, transporter.phone3.takeIf { it.isNotBlank() }).joinToString(", ")
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Alternate Desks:", fontSize = 12.sp, color = Color(0xFF64748B))
-                                Text(extraPhones, fontSize = 12.sp, color = Color(0xFF0F172A))
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Shipments Section
-            item {
-                Text(
-                    text = "Shipments Handled (${shipments.size})",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(24.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White,
+                        focusedBorderColor = Color(0xFF0891B2),
+                        unfocusedBorderColor = Color(0xFFE2E8F0)
+                    )
                 )
             }
 
-            if (shipments.isEmpty()) {
-                item {
-                    ElevatedCard(
-                        shape = RoundedCornerShape(14.dp),
-                        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        modifier = Modifier.fillMaxWidth()
+            // Tab Selector Pills
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val isShip = selectedTab == "SHIPMENTS"
+                    Surface(
+                        shape = CircleShape,
+                        color = if (isShip) Color(0xFF0891B2) else Color.White,
+                        border = BorderStroke(1.dp, if (isShip) Color(0xFF0891B2) else Color(0xFFCBD5E1)),
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable { selectedTab = "SHIPMENTS" }
                     ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
                             Icon(
                                 Icons.Default.LocalShipping,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(36.dp)
+                                tint = if (isShip) Color.White else Color(0xFF0891B2),
+                                modifier = Modifier.size(14.dp)
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text("No shipments recorded under this transporter yet", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Text(
+                                text = "Shipments (${filteredShipments.size})",
+                                fontSize = 11.5.sp,
+                                fontWeight = if (isShip) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isShip) Color.White else Color(0xFF334155)
+                            )
+                        }
+                    }
+
+                    val isCust = selectedTab == "CUSTOMERS"
+                    Surface(
+                        shape = CircleShape,
+                        color = if (isCust) Color(0xFF7C3AED) else Color.White,
+                        border = BorderStroke(1.dp, if (isCust) Color(0xFF7C3AED) else Color(0xFFCBD5E1)),
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable { selectedTab = "CUSTOMERS" }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.People,
+                                contentDescription = null,
+                                tint = if (isCust) Color.White else Color(0xFF7C3AED),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "Preferred Customers (${filteredCustomers.size})",
+                                fontSize = 11.5.sp,
+                                fontWeight = if (isCust) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isCust) Color.White else Color(0xFF334155)
+                            )
+                        }
+                    }
+
+                    val isDepot = selectedTab == "DEPOT"
+                    Surface(
+                        shape = CircleShape,
+                        color = if (isDepot) Color(0xFF475569) else Color.White,
+                        border = BorderStroke(1.dp, if (isDepot) Color(0xFF475569) else Color(0xFFCBD5E1)),
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable { selectedTab = "DEPOT" }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Place,
+                                contentDescription = null,
+                                tint = if (isDepot) Color.White else Color(0xFF475569),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "Depot & Office",
+                                fontSize = 11.5.sp,
+                                fontWeight = if (isDepot) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isDepot) Color.White else Color(0xFF334155)
+                            )
                         }
                     }
                 }
-            } else {
-                items(shipments, key = { it.id }) { entry ->
-                    val visit = visitMap[entry.visitId]
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color.White,
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { onOpenOrder(entry) }
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+            }
+
+            // TAB 1: SHIPMENTS & ORDERS
+            if (selectedTab == "SHIPMENTS") {
+                if (filteredShipments.isEmpty()) {
+                    item {
+                        ElevatedCard(
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Text(entry.orderNo, fontWeight = FontWeight.Bold, fontSize = 13.5.sp, color = Color(0xFF2563EB))
-                                    DeliveryStatusBadge(status = entry.deliveryStatus)
-                                }
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "Buyer: ${visit?.customerName ?: "Direct Customer"} • ${entry.itemCode}",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = Color(0xFF0F172A),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    Icons.Default.LocalShipping,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(36.dp)
                                 )
-                                val packText = if (entry.caseCount > 0) "${entry.caseCount}c + ${entry.loosePieces}L (${entry.pieces} pcs)" else "${entry.pieces} loose pcs"
+                                Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "Pack: $packText • Date: ${visit?.date ?: entry.expectedDeliveryDate}",
-                                    fontSize = 11.sp,
-                                    color = Color(0xFF64748B)
+                                    if (searchQuery.isNotBlank()) "No shipments match your search"
+                                    else "No shipments recorded under this transporter yet",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
                                 )
                             }
+                        }
+                    }
+                } else {
+                    items(filteredShipments, key = { it.id }) { entry ->
+                        val visit = visitMap[entry.visitId]
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color.White,
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { onOpenOrder(entry) }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text(entry.orderNo, fontWeight = FontWeight.Bold, fontSize = 13.5.sp, color = Color(0xFF2563EB))
+                                        DeliveryStatusBadge(status = entry.deliveryStatus)
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "Buyer: ${visit?.customerName ?: "Direct Customer"} • ${entry.itemCode}",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = Color(0xFF0F172A),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    val packText = if (entry.caseCount > 0) "${entry.caseCount}c + ${entry.loosePieces}L (${entry.pieces} pcs)" else "${entry.pieces} loose pcs"
+                                    Text(
+                                        text = "Pack: $packText • Date: ${visit?.date ?: entry.expectedDeliveryDate}",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF64748B)
+                                    )
+                                }
 
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                if (entry.deliveryStatus != "Delivered") {
-                                    OutlinedButton(
-                                        onClick = { viewModel.advanceEntryDeliveryStatus(entry) },
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                        shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier.defaultMinSize(minHeight = 30.dp)
-                                    ) {
-                                        val nextLabel = when (entry.deliveryStatus.lowercase()) {
-                                            "pending" -> "Packed"
-                                            "packed" -> "Dispatch"
-                                            "dispatched" -> "Deliver"
-                                            else -> "Advance"
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    if (entry.deliveryStatus != "Delivered") {
+                                        OutlinedButton(
+                                            onClick = { viewModel.advanceEntryDeliveryStatus(entry) },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.defaultMinSize(minHeight = 30.dp)
+                                        ) {
+                                            val nextLabel = when (entry.deliveryStatus.lowercase()) {
+                                                "pending" -> "Packed"
+                                                "packed" -> "Dispatch"
+                                                "dispatched" -> "Deliver"
+                                                else -> "Advance"
+                                            }
+                                            Text(nextLabel, style = MaterialTheme.typography.labelSmall)
                                         }
-                                        Text(nextLabel, style = MaterialTheme.typography.labelSmall)
+                                    }
+
+                                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "View Order", tint = Color(0xFF94A3B8), modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // TAB 2: PREFERRED BY CUSTOMERS
+            if (selectedTab == "CUSTOMERS") {
+                if (filteredCustomers.isEmpty()) {
+                    item {
+                        ElevatedCard(
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    Icons.Default.People,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    if (searchQuery.isNotBlank()) "No customers match your search"
+                                    else "No customer has chosen this transporter as preferred yet",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    items(filteredCustomers, key = { it.id }) { cust ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color.White,
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { onOpenCustomer(cust) }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = cust.firmName.ifBlank { cust.name },
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.5.sp,
+                                        color = Color(0xFF0F172A)
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "📍 ${cust.city} • Phone: ${cust.phone}",
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF64748B)
+                                    )
+                                    if (cust.address.isNotBlank()) {
+                                        Text(
+                                            text = cust.address,
+                                            fontSize = 11.sp,
+                                            color = Color(0xFF94A3B8),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
                                     }
                                 }
 
-                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "View Order", tint = Color(0xFF94A3B8), modifier = Modifier.size(16.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Surface(
+                                        color = Color(0xFFF3E8FF),
+                                        shape = RoundedCornerShape(4.dp)
+                                    ) {
+                                        Text(
+                                            text = "Preferred",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFF7E22CE),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "View", tint = Color(0xFF94A3B8), modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // TAB 3: DEPOT & OFFICE DETAILS
+            if (selectedTab == "DEPOT") {
+                item {
+                    Surface(
+                        color = Color.White,
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "LOGISTICS & DEPOT DETAILS",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF475569),
+                                letterSpacing = 0.5.sp
+                            )
+                            HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 0.5.dp)
+
+                            if (transporter.officeAddress.isNotBlank()) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Office Address:", fontSize = 12.sp, color = Color(0xFF64748B))
+                                    Text(transporter.officeAddress, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color(0xFF0F172A))
+                                }
+                            }
+
+                            if (transporter.godownAddress.isNotBlank()) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Godown / Depot:", fontSize = 12.sp, color = Color(0xFF64748B))
+                                    Text(transporter.godownAddress, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color(0xFF0F172A))
+                                }
+                            }
+
+                            if (transporter.destinationsCovered.isNotBlank()) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Routes Covered:", fontSize = 12.sp, color = Color(0xFF64748B))
+                                    Text(transporter.destinationsCovered, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0891B2))
+                                }
+                            }
+
+                            if (transporter.phone2.isNotBlank() || transporter.phone3.isNotBlank()) {
+                                val extraPhones = listOfNotNull(transporter.phone2.takeIf { it.isNotBlank() }, transporter.phone3.takeIf { it.isNotBlank() }).joinToString(", ")
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Alternate Desks:", fontSize = 12.sp, color = Color(0xFF64748B))
+                                    Text(extraPhones, fontSize = 12.sp, color = Color(0xFF0F172A))
+                                }
+                            }
+
+                            if (transporter.trackingUrl.isNotBlank()) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Tracking Website:", fontSize = 12.sp, color = Color(0xFF64748B))
+                                    Text(transporter.trackingUrl, fontSize = 12.sp, color = Color(0xFF2563EB))
+                                }
+                            }
+
+                            if (transporter.notes.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text("Notes: ${transporter.notes}", fontSize = 11.5.sp, color = Color(0xFF64748B))
                             }
                         }
                     }

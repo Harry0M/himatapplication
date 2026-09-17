@@ -11,7 +11,8 @@ import {
   ExternalLink,
   Building,
   Navigation,
-  Info
+  Info,
+  Eye
 } from "lucide-react"
 import { useData } from "../context/DataContext"
 import { Card } from "../components/ui/Card"
@@ -21,11 +22,13 @@ import { Dialog } from "../components/ui/Dialog"
 import { Input } from "../components/ui/Input"
 import { Transporter } from "../types"
 import { getMasterDraft, saveMasterDraft, clearMasterDraft } from "../lib/masterDrafts"
+import { TransporterDetailView } from "./TransporterDetailView"
 
 export function TransportersView() {
   const { transporters, saveTransporter, deleteTransporter } = useData()
   const [search, setSearch] = useState("")
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [selectedTransporterId, setSelectedTransporterId] = useState<number | null>(null)
   const [editingTransporter, setEditingTransporter] = useState<Transporter | null>(null)
   const [hasDraft, setHasDraft] = useState(false)
 
@@ -193,6 +196,16 @@ export function TransportersView() {
     )
   })
 
+  if (selectedTransporterId !== null) {
+    return (
+      <TransporterDetailView
+        transporterId={selectedTransporterId}
+        onBack={() => setSelectedTransporterId(null)}
+        onEdit={(t) => openEditModal(t)}
+      />
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Header Banner */}
@@ -249,12 +262,15 @@ export function TransportersView() {
           {filteredTransporters.map((trans) => (
             <Card key={trans.id} className="group relative overflow-hidden border border-zinc-200/80 p-4 transition-all hover:shadow-md dark:border-zinc-800">
               <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
+                <div
+                  className="flex items-center gap-3 cursor-pointer flex-1"
+                  onClick={() => setSelectedTransporterId(trans.id)}
+                >
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-700 font-bold text-base dark:bg-blue-500/20 dark:text-blue-400">
                     <Truck className="h-5 w-5" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-bold text-zinc-900 dark:text-zinc-50 line-clamp-1">
+                    <h4 className="text-sm font-bold text-zinc-900 dark:text-zinc-50 line-clamp-1 hover:text-blue-600 transition-colors">
                       {trans.transporterName}
                     </h4>
                     <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
@@ -264,6 +280,15 @@ export function TransportersView() {
                 </div>
 
                 <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedTransporterId(trans.id)}
+                    className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900"
+                    title="View Dedicated Details & Orders"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -283,7 +308,10 @@ export function TransportersView() {
                 </div>
               </div>
 
-              <div className="mt-3 space-y-2 border-t border-zinc-100 pt-3 dark:border-zinc-800 text-xs">
+              <div
+                className="mt-3 space-y-2 border-t border-zinc-100 pt-3 dark:border-zinc-800 text-xs cursor-pointer"
+                onClick={() => setSelectedTransporterId(trans.id)}
+              >
                 {trans.contactPerson && (
                   <div className="text-zinc-700 dark:text-zinc-300 font-medium">
                     Contact: {trans.contactPerson}

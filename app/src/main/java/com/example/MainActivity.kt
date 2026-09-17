@@ -747,7 +747,8 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
                             onEdit = { viewModel.openEditTransporter(transporter) },
                             onOpenOrder = { entry ->
                                 viewModel.openOrderDetail(entry, returnScreen = AppScreen.TRANSPORTER_DETAIL)
-                            }
+                            },
+                            onOpenCustomer = { viewModel.openCustomerDetail(it) }
                         )
                     } else {
                         viewModel.navigateTo(AppScreen.TRANSPORTER_MASTER)
@@ -763,7 +764,11 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
                             onBack = { viewModel.navigateTo(AppScreen.MARKET_MASTER) },
                             onEdit = { viewModel.openEditMarket(market) },
                             onOpenCustomer = { viewModel.openCustomerDetail(it) },
-                            onOpenSupplier = { viewModel.openSupplierDetail(it) }
+                            onOpenSupplier = { viewModel.openSupplierDetail(it) },
+                            onOpenOrder = { entry ->
+                                viewModel.openOrderDetail(entry, returnScreen = AppScreen.MARKET_DETAIL)
+                            },
+                            onOpenEmployee = { viewModel.openEmployeeDetail(it) }
                         )
                     } else {
                         viewModel.navigateTo(AppScreen.MARKET_MASTER)

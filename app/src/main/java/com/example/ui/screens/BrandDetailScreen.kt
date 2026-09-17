@@ -26,9 +26,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Business
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Inventory
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
@@ -37,6 +43,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -47,7 +55,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import com.example.ui.dialogs.FullScreenImageViewerDialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,7 +70,9 @@ import coil.compose.AsyncImage
 import com.example.data.local.entity.BrandEntity
 import com.example.data.local.entity.ProductEntity
 import com.example.data.local.entity.PurchaseEntryEntity
+import com.example.data.local.entity.SupplierEntity
 import com.example.ui.components.DeliveryStatusBadge
+import com.example.ui.dialogs.FullScreenImageViewerDialog
 import com.example.ui.viewmodel.AppScreen
 import com.example.ui.viewmodel.HimatViewModel
 import com.example.util.PdfGenerator
@@ -76,15 +85,27 @@ fun BrandDetailScreen(
     onBack: () -> Unit,
     onEdit: () -> Unit = {},
     onOpenProduct: (ProductEntity) -> Unit = { viewModel.openProductDetail(it) },
-    onOpenOrder: (PurchaseEntryEntity) -> Unit = { viewModel.openOrderDetail(it, returnScreen = AppScreen.BRAND_DETAIL) }
+    onOpenOrder: (PurchaseEntryEntity) -> Unit = { viewModel.openOrderDetail(it, returnScreen = AppScreen.BRAND_DETAIL) },
+    onOpenSupplier: (SupplierEntity) -> Unit = { viewModel.openSupplierDetail(it) }
 ) {
     val context = LocalContext.current
     val allProducts by viewModel.allProducts.collectAsStateWithLifecycle()
     val allEntries by viewModel.allEntries.collectAsStateWithLifecycle()
     val allVisits by viewModel.allVisits.collectAsStateWithLifecycle()
+    val allSuppliers by viewModel.allSuppliers.collectAsStateWithLifecycle()
 
     val visitMap = remember(allVisits) { allVisits.associateBy { it.id } }
     var showLogoViewer by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedTab by remember { mutableStateOf("PRODUCTS") } // "PRODUCTS", "ORDERS", "MANUFACTURER"
+
+    // Linked Manufacturer / Supplier Mill
+    val linkedSupplier = remember(allSuppliers, brand.manufacturerId, brand.manufacturerName) {
+        allSuppliers.find { s ->
+            (brand.manufacturerId != null && brand.manufacturerId != 0L && s.id == brand.manufacturerId) ||
+            (brand.manufacturerName.isNotBlank() && (s.firmName.equals(brand.manufacturerName, ignoreCase = true) || s.name.equals(brand.manufacturerName, ignoreCase = true)))
+        }
+    }
 
     val brandProducts = remember(allProducts, brand.id, brand.brandName, brand.manufacturerId) {
         allProducts.filter { product ->
@@ -95,15 +116,39 @@ fun BrandDetailScreen(
         }.sortedBy { it.name }
     }
 
-    val brandOrders = remember(allEntries, brandProducts, brand.brandName) {
+    val brandOrders = remember(allEntries, brandProducts, brand.brandName, brand.manufacturerId) {
         val productCodes = brandProducts.map { it.productCode.lowercase() }.toSet()
         allEntries.filter { entry ->
             productCodes.contains(entry.itemCode.lowercase()) ||
-            entry.itemCode.contains(brand.brandName, ignoreCase = true)
+            entry.itemCode.contains(brand.brandName, ignoreCase = true) ||
+            (brand.manufacturerId != null && brand.manufacturerId != 0L && entry.supplierId == brand.manufacturerId)
         }.sortedByDescending { it.id }
     }
 
     val totalPiecesVolume = brandOrders.sumOf { it.pieces }
+
+    // Filtered by Search Query
+    val filteredProducts = remember(brandProducts, searchQuery) {
+        val q = searchQuery.trim()
+        if (q.isBlank()) brandProducts
+        else brandProducts.filter {
+            it.name.contains(q, ignoreCase = true) ||
+            it.productCode.contains(q, ignoreCase = true) ||
+            it.category.contains(q, ignoreCase = true) ||
+            it.description.contains(q, ignoreCase = true)
+        }
+    }
+
+    val filteredOrders = remember(brandOrders, searchQuery) {
+        val q = searchQuery.trim()
+        if (q.isBlank()) brandOrders
+        else brandOrders.filter {
+            it.itemCode.contains(q, ignoreCase = true) ||
+            it.orderNo.contains(q, ignoreCase = true) ||
+            it.supplierName.contains(q, ignoreCase = true) ||
+            it.deliveryStatus.contains(q, ignoreCase = true)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -206,9 +251,9 @@ fun BrandDetailScreen(
                     )
 
                     Spacer(modifier = Modifier.height(2.dp))
-                    val mfrText = if (brand.manufacturerName.isNotBlank()) "Mfr: ${brand.manufacturerName}" else "Direct Garment Label"
+                    val mfgSubtitle = if (brand.manufacturerName.isNotBlank()) "Mill: ${brand.manufacturerName}" else "Direct / Independent Brand"
                     Text(
-                        text = mfrText,
+                        text = mfgSubtitle,
                         fontSize = 12.5.sp,
                         fontWeight = FontWeight.Medium,
                         color = Color(0xFF64748B)
@@ -221,29 +266,30 @@ fun BrandDetailScreen(
                     ) {
                         if (brand.category.isNotBlank()) {
                             Surface(
-                                color = Color(0xFFEEF2FF),
+                                color = Color(0xFFFEF3C7),
                                 shape = RoundedCornerShape(4.dp),
-                                border = BorderStroke(0.5.dp, Color(0xFFC7D2FE))
+                                border = BorderStroke(0.5.dp, Color(0xFFFDE68A))
                             ) {
                                 Text(
                                     text = brand.category,
                                     fontSize = 10.5.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF4338CA),
+                                    color = Color(0xFFB45309),
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
                         }
 
                         Surface(
-                            color = if (brand.isActive) Color(0xFFECFDF5) else Color(0xFFFEE2E2),
-                            shape = RoundedCornerShape(4.dp)
+                            color = if (brand.isActive) Color(0xFFECFDF5) else Color(0xFFF1F5F9),
+                            shape = RoundedCornerShape(4.dp),
+                            border = BorderStroke(0.5.dp, if (brand.isActive) Color(0xFFA7F3D0) else Color(0xFFCBD5E1))
                         ) {
                             Text(
-                                text = if (brand.isActive) "Active Label" else "Inactive",
+                                text = if (brand.isActive) "Active" else "Inactive",
                                 fontSize = 10.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (brand.isActive) Color(0xFF065F46) else Color(0xFFB91C1C),
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (brand.isActive) Color(0xFF047857) else Color(0xFF64748B),
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
@@ -341,168 +387,386 @@ fun BrandDetailScreen(
                 }
             }
 
-            // Brand Details Card
-            if (brand.description.isNotBlank() || brand.manufacturerName.isNotBlank()) {
-                item {
-                    Surface(
-                        color = Color.White,
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(
-                                text = "ABOUT THE BRAND",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF475569),
-                                letterSpacing = 0.5.sp
-                            )
-                            HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 0.5.dp)
-
-                            if (brand.manufacturerName.isNotBlank()) {
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text("Manufacturer / Mill:", fontSize = 12.sp, color = Color(0xFF64748B))
-                                    Text(brand.manufacturerName, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0F172A))
-                                }
-                            }
-                            if (brand.category.isNotBlank()) {
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text("Segment / Category:", fontSize = 12.sp, color = Color(0xFF64748B))
-                                    Text(brand.category, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0F172A))
-                                }
-                            }
-                            if (brand.description.isNotBlank()) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(brand.description, fontSize = 11.5.sp, color = Color(0xFF334155))
+            // Live Search Bar
+            item {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    placeholder = {
+                        Text(
+                            if (selectedTab == "PRODUCTS") "Search products by name or code..."
+                            else if (selectedTab == "ORDERS") "Search orders by item or customer..."
+                            else "Search details...",
+                            fontSize = 12.sp,
+                            color = Color(0xFF94A3B8)
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Default.Search, contentDescription = "Search", tint = Color(0xFF64748B), modifier = Modifier.size(18.dp))
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotBlank()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color(0xFF64748B), modifier = Modifier.size(16.dp))
                             }
                         }
-                    }
-                }
-            }
-
-            // Section Header: Associated Products
-            item {
-                Text(
-                    text = "Products under this Brand (${brandProducts.size})",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(24.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White,
+                        focusedBorderColor = Color(0xFFD97706),
+                        unfocusedBorderColor = Color(0xFFE2E8F0)
+                    )
                 )
             }
 
-            if (brandProducts.isEmpty()) {
-                item {
-                    ElevatedCard(
-                        shape = RoundedCornerShape(14.dp),
-                        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        modifier = Modifier.fillMaxWidth()
+            // Tab Selector Pills
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val isProd = selectedTab == "PRODUCTS"
+                    Surface(
+                        shape = CircleShape,
+                        color = if (isProd) Color(0xFFD97706) else Color.White,
+                        border = BorderStroke(1.dp, if (isProd) Color(0xFFD97706) else Color(0xFFCBD5E1)),
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable { selectedTab = "PRODUCTS" }
                     ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
                             Icon(
                                 Icons.Default.Inventory,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(36.dp)
+                                tint = if (isProd) Color.White else Color(0xFFD97706),
+                                modifier = Modifier.size(14.dp)
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text("No catalog products linked to this brand yet", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Text(
+                                text = "Products (${filteredProducts.size})",
+                                fontSize = 11.5.sp,
+                                fontWeight = if (isProd) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isProd) Color.White else Color(0xFF334155)
+                            )
+                        }
+                    }
+
+                    val isOrder = selectedTab == "ORDERS"
+                    Surface(
+                        shape = CircleShape,
+                        color = if (isOrder) Color(0xFF2563EB) else Color.White,
+                        border = BorderStroke(1.dp, if (isOrder) Color(0xFF2563EB) else Color(0xFFCBD5E1)),
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable { selectedTab = "ORDERS" }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Receipt,
+                                contentDescription = null,
+                                tint = if (isOrder) Color.White else Color(0xFF2563EB),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "Orders (${filteredOrders.size})",
+                                fontSize = 11.5.sp,
+                                fontWeight = if (isOrder) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isOrder) Color.White else Color(0xFF334155)
+                            )
+                        }
+                    }
+
+                    val isMfg = selectedTab == "MANUFACTURER"
+                    Surface(
+                        shape = CircleShape,
+                        color = if (isMfg) Color(0xFF475569) else Color.White,
+                        border = BorderStroke(1.dp, if (isMfg) Color(0xFF475569) else Color(0xFFCBD5E1)),
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable { selectedTab = "MANUFACTURER" }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Business,
+                                contentDescription = null,
+                                tint = if (isMfg) Color.White else Color(0xFF475569),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "Linked Mill",
+                                fontSize = 11.5.sp,
+                                fontWeight = if (isMfg) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isMfg) Color.White else Color(0xFF334155)
+                            )
                         }
                     }
                 }
-            } else {
-                items(brandProducts, key = { it.id }) { prod ->
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color.White,
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { onOpenProduct(prod) }
-                    ) {
-                        Row(
+            }
+
+            // TAB 1: PRODUCTS
+            if (selectedTab == "PRODUCTS") {
+                if (filteredProducts.isEmpty()) {
+                    item {
+                        ElevatedCard(
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    Icons.Default.Inventory,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    if (searchQuery.isNotBlank()) "No products match your search"
+                                    else "No catalog products linked to this brand yet",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    items(filteredProducts, key = { it.id }) { prod ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color.White,
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { onOpenProduct(prod) }
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = Color(0xFFEEF2FF),
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(Icons.Default.Inventory, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(18.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = Color(0xFFEEF2FF),
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(Icons.Default.Inventory, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(18.dp))
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(prod.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF0F172A))
+                                        Text("Code: ${prod.productCode} • ${prod.category}", fontSize = 11.5.sp, color = Color(0xFF64748B))
                                     }
                                 }
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    Text(prod.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF0F172A))
-                                    Text("Code: ${prod.productCode} • ${prod.category}", fontSize = 11.5.sp, color = Color(0xFF64748B))
-                                }
-                            }
 
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("₹${prod.defaultRate.toInt()}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF059669))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Open", tint = Color(0xFF94A3B8), modifier = Modifier.size(16.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("₹${prod.defaultRate.toInt()}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF059669))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Open", tint = Color(0xFF94A3B8), modifier = Modifier.size(16.dp))
+                                }
                             }
                         }
                     }
                 }
             }
 
-            // Section Header: Associated Orders
-            if (brandOrders.isNotEmpty()) {
-                item {
-                    Text(
-                        text = "Orders for this Brand (${brandOrders.size})",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                items(brandOrders, key = { it.id }) { entry ->
-                    val visit = visitMap[entry.visitId]
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color.White,
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { onOpenOrder(entry) }
-                    ) {
-                        Row(
+            // TAB 2: ORDERS
+            if (selectedTab == "ORDERS") {
+                if (filteredOrders.isEmpty()) {
+                    item {
+                        ElevatedCard(
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    Icons.Default.Receipt,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    if (searchQuery.isNotBlank()) "No orders match your search"
+                                    else "No orders generated for this brand yet",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    items(filteredOrders, key = { it.id }) { entry ->
+                        val visit = visitMap[entry.visitId]
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color.White,
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { onOpenOrder(entry) }
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Text(entry.orderNo, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF2563EB))
-                                    DeliveryStatusBadge(status = entry.deliveryStatus)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text(entry.orderNo, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF2563EB))
+                                        DeliveryStatusBadge(status = entry.deliveryStatus)
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text("Item: ${entry.itemCode} • Buyer: ${visit?.customerName ?: "Direct"}", fontSize = 11.5.sp, color = Color(0xFF475569))
                                 }
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text("Item: ${entry.itemCode} • Buyer: ${visit?.customerName ?: "Direct"}", fontSize = 11.5.sp, color = Color(0xFF475569))
-                            }
 
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Column(horizontalAlignment = Alignment.End) {
-                                    Text("${entry.pieces} pcs", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF0F172A))
-                                    Text(PdfGenerator.formatInr(entry.grandTotalWithGst), fontSize = 11.sp, color = Color(0xFF059669))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text("${entry.pieces} pcs", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF0F172A))
+                                        Text(PdfGenerator.formatInr(entry.grandTotalWithGst), fontSize = 11.sp, color = Color(0xFF059669))
+                                    }
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "View", tint = Color(0xFF94A3B8), modifier = Modifier.size(16.dp))
                                 }
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "View", tint = Color(0xFF94A3B8), modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
+                }
+            }
+
+            // TAB 3: LINKED MANUFACTURER MILL
+            if (selectedTab == "MANUFACTURER") {
+                item {
+                    if (linkedSupplier != null) {
+                        Surface(
+                            color = Color.White,
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { onOpenSupplier(linkedSupplier) }
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = Color(0xFFFFFBEB),
+                                            modifier = Modifier.size(36.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(Icons.Default.Business, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(18.dp))
+                                            }
+                                        }
+                                        Column {
+                                            Text(linkedSupplier.firmName.ifBlank { linkedSupplier.name }, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF0F172A))
+                                            Text(linkedSupplier.type.ifBlank { "Textile Manufacturer" }, fontSize = 11.5.sp, color = Color(0xFF64748B))
+                                        }
+                                    }
+                                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Open Supplier", tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp))
+                                }
+
+                                HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 0.5.dp)
+
+                                if (linkedSupplier.contactPerson.isNotBlank()) {
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Contact Person:", fontSize = 12.sp, color = Color(0xFF64748B))
+                                        Text(linkedSupplier.contactPerson, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color(0xFF0F172A))
+                                    }
+                                }
+
+                                if (linkedSupplier.phone.isNotBlank()) {
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Primary Phone:", fontSize = 12.sp, color = Color(0xFF64748B))
+                                        Text(linkedSupplier.phone, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF2563EB))
+                                    }
+                                }
+
+                                if (linkedSupplier.city.isNotBlank()) {
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("City Hub:", fontSize = 12.sp, color = Color(0xFF64748B))
+                                        Text(linkedSupplier.city, fontSize = 12.sp, color = Color(0xFF0F172A))
+                                    }
+                                }
+
+                                if (linkedSupplier.address.isNotBlank()) {
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Mill Address:", fontSize = 12.sp, color = Color(0xFF64748B))
+                                        Text(linkedSupplier.address, fontSize = 12.sp, color = Color(0xFF0F172A), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
+
+                                if (linkedSupplier.gstin.isNotBlank()) {
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("GSTIN:", fontSize = 12.sp, color = Color(0xFF64748B))
+                                        Text(linkedSupplier.gstin, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF475569))
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        Surface(
+                            color = Color.White,
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(20.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(Icons.Default.Business, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(32.dp))
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    if (brand.manufacturerName.isNotBlank()) "Manufacturer \"${brand.manufacturerName}\" is not registered in Suppliers Master"
+                                    else "Independent Label: No linked manufacturer mill specified",
+                                    fontSize = 12.5.sp,
+                                    color = Color(0xFF64748B),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
                             }
                         }
                     }

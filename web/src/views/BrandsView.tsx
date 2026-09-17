@@ -9,7 +9,8 @@ import {
   Check,
   X,
   Sparkles,
-  Info
+  Info,
+  Eye
 } from "lucide-react"
 import { useData } from "../context/DataContext"
 import { Card } from "../components/ui/Card"
@@ -22,11 +23,13 @@ import { ImageLightboxModal } from "../components/ui/ImageLightboxModal"
 import { Brand } from "../types"
 import { GARMENT_CATEGORIES } from "../lib/constants"
 import { getMasterDraft, saveMasterDraft, clearMasterDraft } from "../lib/masterDrafts"
+import { BrandDetailView } from "./BrandDetailView"
 
 export function BrandsView() {
   const { brands, suppliers, saveBrand, deleteBrand } = useData()
   const [search, setSearch] = useState("")
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [selectedBrandId, setSelectedBrandId] = useState<number | null>(null)
   const [editingBrand, setEditingBrand] = useState<Brand | null>(null)
   const [lightbox, setLightbox] = useState<{ open: boolean; url: string; title: string }>({
     open: false,
@@ -141,6 +144,16 @@ export function BrandsView() {
     return name.includes(q) || mfg.includes(q) || cat.includes(q)
   })
 
+  if (selectedBrandId !== null) {
+    return (
+      <BrandDetailView
+        brandId={selectedBrandId}
+        onBack={() => setSelectedBrandId(null)}
+        onEdit={(b) => openEditModal(b)}
+      />
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Header Banner */}
@@ -197,10 +210,14 @@ export function BrandsView() {
           {filteredBrands.map((brand) => (
             <Card key={brand.id} className="group relative overflow-hidden border border-zinc-200/80 p-4 transition-all hover:shadow-md dark:border-zinc-800">
               <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
+                <div
+                  className="flex items-center gap-3 cursor-pointer flex-1"
+                  onClick={() => setSelectedBrandId(brand.id)}
+                >
                   <div
-                    onClick={() => {
+                    onClick={(e) => {
                       if (brand.logoPhotoUri) {
+                        e.stopPropagation()
                         setLightbox({
                           open: true,
                           url: brand.logoPhotoUri,
@@ -227,7 +244,7 @@ export function BrandsView() {
                     )}
                   </div>
                   <div>
-                    <h4 className="text-sm font-bold text-zinc-900 dark:text-zinc-50 line-clamp-1">
+                    <h4 className="text-sm font-bold text-zinc-900 dark:text-zinc-50 line-clamp-1 hover:text-amber-600 transition-colors">
                       {brand.brandName || (brand as any).name || "Brand"}
                     </h4>
                     <span className="inline-block text-[11px] font-medium text-amber-700 dark:text-amber-400">
@@ -236,8 +253,16 @@ export function BrandsView() {
                   </div>
                 </div>
 
-
                 <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedBrandId(brand.id)}
+                    className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900"
+                    title="View Dedicated Details & Orders"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -257,7 +282,10 @@ export function BrandsView() {
                 </div>
               </div>
 
-              <div className="mt-3 space-y-1.5 border-t border-zinc-100 pt-3 dark:border-zinc-800 text-xs">
+              <div
+                className="mt-3 space-y-1.5 border-t border-zinc-100 pt-3 dark:border-zinc-800 text-xs cursor-pointer"
+                onClick={() => setSelectedBrandId(brand.id)}
+              >
                 <div className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-400">
                   <Building2 className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
                   <span className="truncate">
