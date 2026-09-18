@@ -51,6 +51,7 @@ import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sell
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Store
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Warning
@@ -104,6 +105,7 @@ import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 import com.example.ui.viewmodel.HimatViewModel
 import com.example.ui.viewmodel.MasterTab
+import com.example.util.ShareUtil
 
 // -------------------------------------------------------------
 // Helper Data Models for Hub & Modals
@@ -578,6 +580,30 @@ fun MastersScreen(
 
                                 Spacer(modifier = Modifier.width(6.dp))
 
+                                // WhatsApp Customer Registration Link Share Button
+                                if (activeTab == MasterTab.CUSTOMERS) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = Color(0xFF25D366),
+                                        modifier = Modifier
+                                            .size(34.dp)
+                                            .clip(CircleShape)
+                                            .clickable {
+                                                ShareUtil.shareCustomerRegistrationLink(context)
+                                            }
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = Icons.Default.Share,
+                                                contentDescription = "Share Registration Link via WhatsApp",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(17.dp)
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                }
+
                                 // Tally XML Export Button
                                 if (activeTab == MasterTab.CUSTOMERS || activeTab == MasterTab.SUPPLIERS) {
                                     Surface(
@@ -788,6 +814,63 @@ fun MastersScreen(
                                     contentPadding = PaddingValues(bottom = 88.dp),
                                     verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
+                                    item(key = "whatsapp_reg_banner") {
+                                        Card(
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
+                                            border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .clickable {
+                                                    ShareUtil.shareCustomerRegistrationLink(context)
+                                                }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Surface(
+                                                    shape = CircleShape,
+                                                    color = Color(0xFF25D366),
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Box(contentAlignment = Alignment.Center) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Share,
+                                                            contentDescription = "Share Registration Link",
+                                                            tint = Color.White,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    }
+                                                }
+                                                Spacer(modifier = Modifier.width(10.dp))
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = "Share Registration Link via WhatsApp",
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 12.sp,
+                                                        color = Color(0xFF166534)
+                                                    )
+                                                    Text(
+                                                        text = "Send web portal link with SMS OTP to new retail buyers",
+                                                        fontSize = 10.sp,
+                                                        color = Color(0xFF15803D)
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = "Share ➜",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 11.sp,
+                                                    color = Color(0xFF166534)
+                                                )
+                                            }
+                                        }
+                                    }
+
                                     items(filtered, key = { it.id }) { customer ->
                                         CustomerCard(
                                             customer = customer,

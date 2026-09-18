@@ -51,7 +51,8 @@ export function Sidebar({ activeTab, setActiveTab, isOpen, onClose }: SidebarPro
     pendingDeliveriesCount,
     activeTripsCount,
     looseEntriesCount,
-    pendingDeletionsCount
+    pendingDeletionsCount,
+    pendingRegistrationRequestsCount
   } = useData()
 
   const totalPending =
@@ -105,6 +106,8 @@ export function Sidebar({ activeTab, setActiveTab, isOpen, onClose }: SidebarPro
       id: "customers",
       label: "Customers",
       icon: Users,
+      badge: pendingRegistrationRequestsCount > 0 ? `${pendingRegistrationRequestsCount}` : undefined,
+      badgeVariant: "warning" as const,
     },
     {
       id: "suppliers",

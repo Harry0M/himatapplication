@@ -328,3 +328,46 @@ export interface SoftDeletedItem {
   originalData: any
 }
 
+export interface CustomerRegistrationRequest {
+  id: string
+  firmName: string
+  name: string // Owner / Contact Person
+  phone: string // Mobile Number (Verified via SMS)
+  phone2?: string // WhatsApp Number
+  email?: string
+  address: string
+  shopAddress?: string
+  marketArea?: string
+  city: string
+  district?: string
+  state?: string
+  pincode?: string
+  shopMapLink?: string
+  garmentTypes?: string // Preferred Garment Categories
+  gstin?: string
+  panNumber?: string
+  preferredTransporterName?: string
+  transportPreference?: string
+  bankName?: string
+  accountNumber?: string
+  ifscCode?: string
+  shopPhotoUri?: string
+  gstCertPhotoUri?: string
+  panPhotoUri?: string
+  aadharPhotoUri?: string
+  notes?: string
+  status: "PENDING" | "APPROVED" | "REJECTED"
+  phoneVerified: boolean
+  verificationUid?: string
+  createdAt: number
+  approvedAt?: number
+  approvedBy?: string
+  assignedAgentId?: number | string
+  assignedAgentName?: string
+  creditType?: "Cash" | "Credit"
+  creditDays?: number
+  creditLimit?: number
+  createdCustomerId?: number
+  rejectionReason?: string
+}
+

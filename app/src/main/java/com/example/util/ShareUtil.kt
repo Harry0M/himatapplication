@@ -52,10 +52,22 @@ object ShareUtil {
 
     fun shareWhatsAppText(context: Context, text: String, phone: String? = null) {
         try {
+            if (!phone.isNullOrBlank()) {
+                val clean = phone.replace("+", "").replace("-", "").replace(" ", "").trim()
+                val targetPhone = if (clean.length == 10) "91$clean" else clean
+                val uri = Uri.parse("https://api.whatsapp.com/send?phone=$targetPhone&text=${Uri.encode(text)}")
+                val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                return
+            }
+
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_TEXT, text)
                 setPackage("com.whatsapp")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
         } catch (e: Exception) {
@@ -63,9 +75,29 @@ object ShareUtil {
             val fallback = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_TEXT, text)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            context.startActivity(Intent.createChooser(fallback, "Share via"))
+            context.startActivity(Intent.createChooser(fallback, "Share via").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
         }
+    }
+
+    fun shareCustomerRegistrationLink(context: Context, phone: String? = null) {
+        val regUrl = "https://himatsms.web.app/#/register-customer"
+        val msg = """
+            *श्री हिम्मत ट्रेडिंग कंपनी — नया ग्राहक खाता पंजीकरण*
+            
+            नमस्ते! हमारे साथ नया व्यापारिक खाता खोलने के लिए कृपया नीचे दिए गए लिंक पर जाकर अपनी बुनियादी व्यावसायिक जानकारी और आवश्यक विवरण भरें:
+            
+            🔗 $regUrl
+            
+            _नोट: फॉर्म भरने के बाद आपके नंबर पर एसएमएस ओटीपी सत्यापन होगा।_
+            
+            धन्यवाद!
+            श्री हिम्मत ट्रेडिंग कंपनी, अहमदाबाद
+        """.trimIndent()
+        shareWhatsAppText(context, msg, phone)
     }
 
     fun buildCustomerReportText(

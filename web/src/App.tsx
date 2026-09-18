@@ -1,4 +1,4 @@
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { useAuth } from "./context/AuthContext"
 import { useData } from "./context/DataContext"
 import { Sidebar, ActiveTab } from "./components/layout/Sidebar"
@@ -18,6 +18,7 @@ import { BrandsView } from "./views/BrandsView"
 import { TransportersView } from "./views/TransportersView"
 import { MarketsView } from "./views/MarketsView"
 import { DeletionsView } from "./views/DeletionsView"
+import { CustomerRegistrationView } from "./views/CustomerRegistrationView"
 import { Loader2 } from "lucide-react"
 
 function MainLayout() {
@@ -122,6 +123,45 @@ function MainLayout() {
 }
 
 export function App() {
+  const [isRegisterRoute, setIsRegisterRoute] = useState(() => {
+    const hash = window.location.hash || ""
+    const pathname = window.location.pathname || ""
+    const search = window.location.search || ""
+    const params = new URLSearchParams(search)
+    return (
+      hash.includes("register") ||
+      pathname.includes("register") ||
+      params.get("mode") === "register" ||
+      params.get("action") === "register-customer"
+    )
+  })
+
+  useEffect(() => {
+    const checkRoute = () => {
+      const hash = window.location.hash || ""
+      const pathname = window.location.pathname || ""
+      const search = window.location.search || ""
+      const params = new URLSearchParams(search)
+      setIsRegisterRoute(
+        hash.includes("register") ||
+        pathname.includes("register") ||
+        params.get("mode") === "register" ||
+        params.get("action") === "register-customer"
+      )
+    }
+
+    window.addEventListener("hashchange", checkRoute)
+    window.addEventListener("popstate", checkRoute)
+    return () => {
+      window.removeEventListener("hashchange", checkRoute)
+      window.removeEventListener("popstate", checkRoute)
+    }
+  }, [])
+
+  if (isRegisterRoute) {
+    return <CustomerRegistrationView />
+  }
+
   return <MainLayout />
 }
 

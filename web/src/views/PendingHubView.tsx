@@ -9,7 +9,9 @@ import {
   Plus,
   Trash2,
   X,
-  Layers
+  Layers,
+  User,
+  Clock
 } from "lucide-react"
 import { useData } from "../context/DataContext"
 import { formatInr, formatDate } from "../lib/utils"
@@ -36,6 +38,8 @@ export function PendingHubView() {
     updateDelivery,
     createPackGroup,
     deletePackGroup,
+    pendingRegistrationRequestsCount,
+    registrationRequests,
   } = useData()
 
   const [filterTab, setFilterTab] = useState<string>("all")
@@ -199,7 +203,11 @@ export function PendingHubView() {
   }
 
   const totalActionsCount =
-    pendingPayments.length + pendingDeliveries.length + activeTrips.length + looseEntries.length
+    pendingPayments.length +
+    pendingDeliveries.length +
+    activeTrips.length +
+    looseEntries.length +
+    pendingRegistrationRequestsCount
 
   // Pack group calculation preview
   const selectedEntriesForPacking = looseEntries.filter((e) => selectedEntryIds.includes(e.id))
@@ -245,6 +253,7 @@ export function PendingHubView() {
             onValueChange={setFilterTab}
             options={[
               { value: "all", label: "All", count: totalActionsCount },
+              { value: "requests", label: "User Requests", count: pendingRegistrationRequestsCount },
               { value: "payments", label: "Payments", count: pendingPayments.length },
               { value: "deliveries", label: "Deliveries", count: pendingDeliveries.length },
               { value: "trips", label: "Trips", count: activeTrips.length },
@@ -346,6 +355,32 @@ export function PendingHubView() {
 
       {/* Main List Section */}
       <div className="space-y-6">
+        {/* User Registration Requests Attention Card */}
+        {(filterTab === "all" || filterTab === "requests") && pendingRegistrationRequestsCount > 0 && (
+          <div className="p-4 rounded-2xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/30 dark:bg-amber-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-amber-100 dark:bg-amber-900/60 flex items-center justify-center text-amber-600 dark:text-amber-300 flex-shrink-0">
+                <User className="h-5 w-5" />
+              </div>
+              <div>
+                <h4 className="font-bold text-sm text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                  <span>{pendingRegistrationRequestsCount} New Retailer Registration Requests</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-white animate-pulse">
+                    Action Required
+                  </span>
+                </h4>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Retail buyers submitted self-registration KYC forms and verified via SMS OTP. Assign sales agents & approve.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <span className="text-[11px] text-muted-foreground">Open "Customers" → "User Requests"</span>
+            </div>
+          </div>
+        )}
+
         {/* 1. Payments Section */}
         {(filterTab === "all" || filterTab === "payments") && filteredPayments.length > 0 && (
           <div className="space-y-3">

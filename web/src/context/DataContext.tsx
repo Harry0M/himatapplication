@@ -13,7 +13,8 @@ import {
   Brand,
   Transporter,
   Market,
-  SoftDeletedItem
+  SoftDeletedItem,
+  CustomerRegistrationRequest
 } from "../types"
 
 // Helper to robustly extract arrays from Firebase snapshots (handles sparse arrays and keyed objects)
@@ -187,6 +188,25 @@ interface DataContextType {
     customNote?: string
   ) => Promise<void>
   deletePackGroup: (groupId: number) => Promise<void>
+
+  // Customer Self-Registration Requests (User Requests)
+  registrationRequests: CustomerRegistrationRequest[]
+  pendingRegistrationRequestsCount: number
+  submitRegistrationRequest: (
+    request: Omit<CustomerRegistrationRequest, "id" | "createdAt" | "status" | "phoneVerified"> & { verificationUid?: string }
+  ) => Promise<string>
+  approveRegistrationRequest: (
+    requestId: string,
+    options: {
+      assignedAgentId: number | string
+      assignedAgentName: string
+      creditType?: "Cash" | "Credit"
+      creditDays?: number
+      creditLimit?: number
+    }
+  ) => Promise<number>
+  rejectRegistrationRequest: (requestId: string, reason?: string) => Promise<void>
+  deleteRegistrationRequest: (requestId: string) => Promise<void>
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined)
@@ -203,6 +223,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [rawMarkets, setRawMarkets] = useState<Market[]>([])
   const [packGroups, setPackGroups] = useState<PackGroup[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [rawRegistrationRequests, setRawRegistrationRequests] = useState<CustomerRegistrationRequest[]>([])
   const [loading, setLoading] = useState<boolean>(true)
 
   // Global employee filter state
@@ -211,7 +232,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Real-time synchronization
   useEffect(() => {
     let activeListeners = 0
-    const totalListeners = 11
+    const totalListeners = 12
 
     const checkLoading = () => {
       activeListeners++
@@ -341,6 +362,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       checkLoading()
     })
 
+    // 12. Customer Registration Requests (User Requests)
+    const regRequestsRef = ref(rtdb, "customer_registration_requests")
+    const unsubRegRequests = onValue(regRequestsRef, (snapshot) => {
+      if (snapshot.exists()) {
+        setRawRegistrationRequests(parseRtdbList<CustomerRegistrationRequest>(snapshot.val()))
+      } else {
+        setRawRegistrationRequests([])
+      }
+      checkLoading()
+    })
+
     return () => {
       unsubVisits()
       unsubEntries()
@@ -353,6 +385,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       unsubBrands()
       unsubTransporters()
       unsubMarkets()
+      unsubRegRequests()
     }
   }, [])
 
@@ -468,6 +501,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return Array.from(map.values())
   }, [rawCustomers, visits])
+
+  // Customer registration requests (User Requests)
+  const registrationRequests = React.useMemo(() => {
+    return [...rawRegistrationRequests].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+  }, [rawRegistrationRequests])
+
+  const pendingRegistrationRequestsCount = React.useMemo(() => {
+    return registrationRequests.filter((r) => r.status === "PENDING").length
+  }, [registrationRequests])
 
   // Synthesize suppliers: ensure any supplier referenced in entries is never missing
   const suppliers = React.useMemo(() => {
@@ -1066,6 +1108,115 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await remove(requestRef)
   }
 
+  // Customer Self-Registration Request Methods
+  const submitRegistrationRequest = async (
+    request: Omit<CustomerRegistrationRequest, "id" | "createdAt" | "status" | "phoneVerified"> & { verificationUid?: string }
+  ): Promise<string> => {
+    const id = `req_${Date.now()}_${Math.floor(Math.random() * 1000)}`
+    const reqRef = ref(rtdb, `customer_registration_requests/${id}`)
+    const payload: CustomerRegistrationRequest = {
+      ...request,
+      id,
+      status: "PENDING",
+      phoneVerified: true,
+      createdAt: Date.now(),
+    }
+    await set(reqRef, sanitizePayload(payload))
+    return id
+  }
+
+  const approveRegistrationRequest = async (
+    requestId: string,
+    options: {
+      assignedAgentId: number | string
+      assignedAgentName: string
+      creditType?: "Cash" | "Credit"
+      creditDays?: number
+      creditLimit?: number
+    }
+  ) => {
+    const req = registrationRequests.find((r) => r.id === requestId)
+    if (!req) throw new Error("Registration request not found")
+
+    // Find next numeric customer ID
+    const maxId = customers.reduce((max, c) => Math.max(max, Number(c.id) || 0), 0)
+    const newCustId = maxId + 1
+
+    const newCustomer: Customer = {
+      id: newCustId,
+      customerId: `CUST-${newCustId}`,
+      name: req.name.trim(),
+      firmName: req.firmName?.trim() || req.name.trim(),
+      phone: req.phone.trim(),
+      phone2: req.phone2?.trim() || "",
+      email: req.email?.trim() || "",
+      address: req.address.trim(),
+      shopAddress: req.shopAddress?.trim() || req.address.trim(),
+      marketArea: req.marketArea?.trim() || "",
+      city: req.city?.trim() || "Ahmedabad",
+      district: req.district?.trim() || "",
+      state: req.state?.trim() || "Gujarat",
+      pincode: req.pincode?.trim() || "",
+      shopMapLink: req.shopMapLink?.trim() || "",
+      garmentTypes: req.garmentTypes?.trim() || "",
+      preferredCategories: req.garmentTypes?.trim() || "",
+      gstin: req.gstin?.trim() || "",
+      gstNumber: req.gstin?.trim() || "",
+      panNumber: req.panNumber?.trim() || "",
+      preferredTransporterName: req.preferredTransporterName?.trim() || "",
+      transportPreference: req.transportPreference?.trim() || "",
+      shopPhotoUri: req.shopPhotoUri || "",
+      gstCertPhotoUri: req.gstCertPhotoUri || "",
+      panPhotoUri: req.panPhotoUri || "",
+      aadharPhotoUri: req.aadharPhotoUri || "",
+      notes: [
+        req.bankName ? `Bank: ${req.bankName} | A/C: ${req.accountNumber || ""} | IFSC: ${req.ifscCode || ""}` : "",
+        req.notes ? `Customer Note: ${req.notes}` : "",
+        `Registered via Web Form on ${new Date(req.createdAt).toLocaleDateString()}`
+      ].filter(Boolean).join("\n"),
+      customerType: options.creditType || "Cash",
+      creditDays: Number(options.creditDays) || 0,
+      creditLimit: Number(options.creditLimit) || 0,
+      addedByAgentId: options.assignedAgentId,
+      addedByAgentName: options.assignedAgentName,
+      createdAt: Date.now(),
+    }
+
+    // Save newly approved customer
+    await saveCustomer(newCustomer)
+
+    // Mark registration request as APPROVED
+    const reqRef = ref(rtdb, `customer_registration_requests/${requestId}`)
+    await update(reqRef, sanitizePayload({
+      status: "APPROVED",
+      approvedAt: Date.now(),
+      approvedBy: "Admin",
+      assignedAgentId: options.assignedAgentId,
+      assignedAgentName: options.assignedAgentName,
+      creditType: options.creditType || "Cash",
+      creditDays: Number(options.creditDays) || 0,
+      creditLimit: Number(options.creditLimit) || 0,
+      createdCustomerId: newCustId,
+    }))
+
+    return newCustId
+  }
+
+  const rejectRegistrationRequest = async (requestId: string, reason?: string) => {
+    const reqRef = ref(rtdb, `customer_registration_requests/${requestId}`)
+    await update(reqRef, sanitizePayload({
+      status: "REJECTED",
+      rejectedAt: Date.now(),
+      rejectedBy: "Admin",
+      rejectionReason: reason || "Declined by Admin",
+    }))
+  }
+
+  const deleteRegistrationRequest = async (requestId: string) => {
+    const reqRef = ref(rtdb, `customer_registration_requests/${requestId}`)
+    await remove(reqRef)
+  }
+
   return (
     <DataContext.Provider
       value={{
@@ -1120,6 +1271,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         deletePurchaseEntry,
         createPackGroup,
         deletePackGroup,
+        registrationRequests,
+        pendingRegistrationRequestsCount,
+        submitRegistrationRequest,
+        approveRegistrationRequest,
+        rejectRegistrationRequest,
+        deleteRegistrationRequest,
       }}
     >
       {children}

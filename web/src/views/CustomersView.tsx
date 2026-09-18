@@ -24,11 +24,19 @@ import {
   Camera,
   Navigation,
   Truck,
-  Sparkles
+  Sparkles,
+  Share2,
+  Copy,
+  CheckCircle2,
+  Clock,
+  XCircle,
+  AlertTriangle,
+  MessageSquare,
+  Landmark
 } from "lucide-react"
 import { useData } from "../context/DataContext"
 import { useAuth } from "../context/AuthContext"
-import { formatInr } from "../lib/utils"
+import { formatInr, formatDate } from "../lib/utils"
 import { Card } from "../components/ui/Card"
 import { Button } from "../components/ui/Button"
 import { Badge } from "../components/ui/Badge"
@@ -36,7 +44,7 @@ import { Dialog } from "../components/ui/Dialog"
 import { Input } from "../components/ui/Input"
 import { ReferrerSelectModal } from "../components/ui/ReferrerSelectModal"
 import { Tabs } from "../components/ui/Tabs"
-import { Customer, CustomerContact, CustomerOutlet, Visit } from "../types"
+import { Customer, CustomerContact, CustomerOutlet, Visit, CustomerRegistrationRequest } from "../types"
 import { GARMENT_CATEGORIES } from "../lib/constants"
 import { ReportViewerModal } from "../components/ui/ReportViewerModal"
 import {
@@ -59,7 +67,44 @@ export function CustomersView() {
     suppliers,
     saveCustomer,
     deleteCustomer,
+    registrationRequests,
+    pendingRegistrationRequestsCount,
+    approveRegistrationRequest,
+    rejectRegistrationRequest,
+    deleteRegistrationRequest,
   } = useData()
+
+  // Top-level View Mode: Active Customers Master vs Registration Requests Hub
+  const [viewMode, setViewMode] = useState<"customers" | "requests">("customers")
+  const [isShareLinkModalOpen, setIsShareLinkModalOpen] = useState<boolean>(false)
+  const [copiedLink, setCopiedLink] = useState<boolean>(false)
+  const [directSharePhone, setDirectSharePhone] = useState<string>("")
+  const [approvedSuccessData, setApprovedSuccessData] = useState<{
+    open: boolean
+    customerId: number
+    req: CustomerRegistrationRequest
+    agentName: string
+  } | null>(null)
+
+  // Registration Requests Management State
+  const [requestFilterStatus, setRequestFilterStatus] = useState<"ALL" | "PENDING" | "APPROVED" | "REJECTED">("PENDING")
+  const [selectedRequestForApproval, setSelectedRequestForApproval] = useState<CustomerRegistrationRequest | null>(null)
+  const [approvalAssignedAgentId, setApprovalAssignedAgentId] = useState<number | string>("")
+  const [approvalAssignedAgentName, setApprovalAssignedAgentName] = useState<string>("")
+  const [approvalCreditType, setApprovalCreditType] = useState<"Cash" | "Credit">("Cash")
+  const [approvalCreditDays, setApprovalCreditDays] = useState<number>(30)
+  const [approvalCreditLimit, setApprovalCreditLimit] = useState<number>(0)
+  const [isApproving, setIsApproving] = useState<boolean>(false)
+  const [rejectModal, setRejectModal] = useState<{
+    open: boolean
+    request: CustomerRegistrationRequest | null
+    reason: string
+  }>({
+    open: false,
+    request: null,
+    reason: "",
+  })
+  const [isRejecting, setIsRejecting] = useState<boolean>(false)
 
   const [search, setSearch] = useState<string>("")
   const [showSearch, setShowSearch] = useState<boolean>(false)
@@ -501,6 +546,112 @@ export function CustomersView() {
       c.referredBy?.toLowerCase().includes(q)
   )
 
+  // Filter Registration Requests (User Requests)
+  const filteredRequests = registrationRequests.filter((req) => {
+    if (requestFilterStatus !== "ALL" && req.status !== requestFilterStatus) {
+      return false
+    }
+    if (!q) return true
+    return (
+      req.firmName?.toLowerCase().includes(q) ||
+      req.name?.toLowerCase().includes(q) ||
+      req.phone?.includes(q) ||
+      req.city?.toLowerCase().includes(q) ||
+      req.gstin?.toLowerCase().includes(q) ||
+      req.id?.toLowerCase().includes(q)
+    )
+  })
+
+  // Action Handlers for Registration Requests
+  const handleOpenApprovalDialog = (req: CustomerRegistrationRequest) => {
+    setSelectedRequestForApproval(req)
+    const activeEmps = employees.filter((e) => !e.isBlocked && !e.isDeleted)
+    const firstEmp = activeEmps[0] || employees[0]
+    setApprovalAssignedAgentId(firstEmp ? firstEmp.id : "")
+    setApprovalAssignedAgentName(firstEmp ? firstEmp.name : "")
+    setApprovalCreditType((req.creditType as "Cash" | "Credit") || "Cash")
+    setApprovalCreditDays(req.creditDays || 30)
+    setApprovalCreditLimit(req.creditLimit || 0)
+  }
+
+  const buildRegistrationInviteMessage = () => {
+    const regUrl = `${window.location.origin}/#/register-customer`
+    return `नमस्कार!\nश्री हिम्मत ट्रेडिंग कंपनी के साथ नया व्यापारिक खाता खोलने के लिए कृपया नीचे दिए गए लिंक पर अपनी व्यावसायिक जानकारी एवं आवश्यक विवरण भरें:\n\n${regUrl}\n\nधन्यवाद!\nश्री हिम्मत ट्रेडिंग कंपनी, अहमदाबाद`
+  }
+
+  const buildApprovalWelcomeMessage = (
+    req: CustomerRegistrationRequest,
+    createdId?: number,
+    agentName?: string
+  ) => {
+    const custCode = createdId || req.createdCustomerId || ""
+    const salesman = agentName || req.assignedAgentName || "श्री हिम्मत टीम"
+    return `प्रिय ${req.name} जी (${req.firmName}),\nबधाई हो! श्री हिम्मत ट्रेडिंग कंपनी में आपका व्यापारिक खाता सफलतापूर्वक स्वीकृत (Approve) कर दिया गया है।\n\n🆔 ग्राहक क्रमांक (Customer ID): #CUST-${custCode}\n🤵 आपके प्रतिनिधि (Sales Agent): ${salesman}\n📦 खाता प्रकार: ${req.creditType || "Cash"} ${req.creditDays ? `(${req.creditDays} दिन)` : ""}\n\nकिसी भी आर्डर या जानकारी के लिए आप अपने प्रतिनिधि या हमारे कार्यालय से संपर्क कर सकते हैं।\n\nहार्दिक शुभकामनाएं!\nश्री हिम्मत ट्रेडिंग कंपनी, अहमदाबाद`
+  }
+
+  const buildRejectionMessage = (req: CustomerRegistrationRequest) => {
+    return `प्रिय ${req.name} जी (${req.firmName}),\nश्री हिम्मत ट्रेडिंग कंपनी में आपके पंजीकरण आवेदन के संदर्भ में:\n\nवर्तमान में आपका आवेदन निम्नलिखित कारण से स्वीकृत नहीं हो सका है:\n"${req.rejectionReason || "अपूर्ण विवरण / सत्यापन समस्या"}"\n\nकृपया सही दस्तावेजों एवं विवरण के साथ पुनः आवेदन करें या अधिक जानकारी के लिए हमसे संपर्क करें।\n\nधन्यवाद!\nश्री हिम्मत ट्रेडिंग कंपनी`
+  }
+
+  const handleConfirmApproval = async () => {
+    if (!selectedRequestForApproval) return
+    setIsApproving(true)
+    try {
+      const currentReq = selectedRequestForApproval
+      const currentAgentName = approvalAssignedAgentName
+      const createdId = await approveRegistrationRequest(selectedRequestForApproval.id, {
+        assignedAgentId: approvalAssignedAgentId,
+        assignedAgentName: approvalAssignedAgentName,
+        creditType: approvalCreditType,
+        creditDays: approvalCreditDays,
+        creditLimit: approvalCreditLimit,
+      })
+      setSelectedRequestForApproval(null)
+      setApprovedSuccessData({
+        open: true,
+        customerId: createdId,
+        req: currentReq,
+        agentName: currentAgentName,
+      })
+    } catch (err: any) {
+      console.error("Approval error:", err)
+      alert(err.message || "Failed to approve customer registration request")
+    } finally {
+      setIsApproving(false)
+    }
+  }
+
+  const handleOpenRejectDialog = (req: CustomerRegistrationRequest) => {
+    setRejectModal({ open: true, request: req, reason: "" })
+  }
+
+  const handleConfirmReject = async () => {
+    if (!rejectModal.request) return
+    setIsRejecting(true)
+    try {
+      await rejectRegistrationRequest(rejectModal.request.id, rejectModal.reason)
+      setRejectModal({ open: false, request: null, reason: "" })
+    } catch (err: any) {
+      console.error("Reject error:", err)
+      alert(err.message || "Failed to reject customer registration request")
+    } finally {
+      setIsRejecting(false)
+    }
+  }
+
+  const handleDeleteRequest = async (id: string) => {
+    if (window.confirm("Are you sure you want to delete this customer registration request?")) {
+      await deleteRegistrationRequest(id)
+    }
+  }
+
+  const handleCopyRegistrationLink = () => {
+    const url = `${window.location.origin}/#/register-customer`
+    navigator.clipboard.writeText(url)
+    setCopiedLink(true)
+    setTimeout(() => setCopiedLink(false), 3000)
+  }
+
   return (
     <div className="space-y-6">
       {selectedCustomerId !== null ? (
@@ -553,6 +704,17 @@ export function CustomersView() {
               </Button>
 
               <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsShareLinkModalOpen(true)}
+                className="h-8 px-3 text-xs gap-1.5 border-indigo-500/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 font-semibold"
+                title="Share customer registration link with prospective retailers"
+              >
+                <Share2 className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>Share Registration Link</span>
+              </Button>
+
+              <Button
                 size="sm"
                 onClick={handleOpenAdd}
                 className="h-8 px-3 text-xs font-semibold shadow-sm bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 gap-1"
@@ -561,6 +723,47 @@ export function CustomersView() {
                 <span>New Customer</span>
               </Button>
             </div>
+          </div>
+
+          {/* Navigation Tabs: Customers vs User Requests */}
+          <div className="flex items-center gap-2 border-b border-zinc-200 dark:border-zinc-800">
+            <button
+              type="button"
+              onClick={() => setViewMode("customers")}
+              className={`flex items-center gap-2 py-2.5 px-3 border-b-2 font-medium text-xs transition-all ${
+                viewMode === "customers"
+                  ? "border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-100 font-bold"
+                  : "border-transparent text-muted-foreground hover:text-zinc-900 dark:hover:text-zinc-100"
+              }`}
+            >
+              <Store className="h-3.5 w-3.5" />
+              <span>Active Retailers</span>
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
+                {customers.length}
+              </Badge>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setViewMode("requests")}
+              className={`flex items-center gap-2 py-2.5 px-3 border-b-2 font-medium text-xs transition-all ${
+                viewMode === "requests"
+                  ? "border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-300 font-bold"
+                  : "border-transparent text-muted-foreground hover:text-indigo-600 dark:hover:text-indigo-400"
+              }`}
+            >
+              <User className="h-3.5 w-3.5" />
+              <span>User Requests (पंजीकरण)</span>
+              {pendingRegistrationRequestsCount > 0 ? (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-white animate-pulse">
+                  {pendingRegistrationRequestsCount} Pending
+                </span>
+              ) : (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
+                  {registrationRequests.length}
+                </Badge>
+              )}
+            </button>
           </div>
 
           {/* Search Input Bar */}
@@ -587,9 +790,10 @@ export function CustomersView() {
             </div>
           )}
 
-          {/* Customer Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredCustomers.length === 0 ? (
+          {viewMode === "customers" ? (
+            /* Customer Cards Grid */
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredCustomers.length === 0 ? (
               <div className="col-span-full p-12 text-center border border-dashed rounded-2xl">
                 <Store className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-60" />
                 <h3 className="font-semibold text-sm">No customer records found</h3>
@@ -728,9 +932,383 @@ export function CustomersView() {
                 )
               })
             )}
-          </div>
-        </>
-      )}
+              </div>
+            ) : (
+              /* Registration Requests (User Requests) View */
+              <div className="space-y-4">
+                {/* Sub-status filters */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                  {(["ALL", "PENDING", "APPROVED", "REJECTED"] as const).map((st) => {
+                    const count =
+                      st === "ALL"
+                        ? registrationRequests.length
+                        : registrationRequests.filter((r) => r.status === st).length
+
+                    const isSelected = requestFilterStatus === st
+                    return (
+                      <button
+                        key={st}
+                        type="button"
+                        onClick={() => setRequestFilterStatus(st)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all border ${
+                          isSelected
+                            ? st === "PENDING"
+                              ? "bg-amber-500 text-white border-amber-500 shadow-sm"
+                              : st === "APPROVED"
+                              ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                              : st === "REJECTED"
+                              ? "bg-rose-600 text-white border-rose-600 shadow-sm"
+                              : "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-transparent shadow-sm"
+                            : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-700"
+                        }`}
+                      >
+                        <span>
+                          {st === "ALL"
+                            ? "All Requests"
+                            : st === "PENDING"
+                            ? "Pending Review"
+                            : st === "APPROVED"
+                            ? "Approved"
+                            : "Rejected"}
+                        </span>
+                        <span
+                          className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                            isSelected
+                              ? "bg-white/20 text-white"
+                              : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+                          }`}
+                        >
+                          {count}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Requests Cards List */}
+                {filteredRequests.length === 0 ? (
+                  <div className="p-12 text-center border border-dashed border-zinc-200 dark:border-zinc-800 rounded-2xl bg-white dark:bg-zinc-900/40">
+                    <User className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-60" />
+                    <h3 className="font-semibold text-sm">No registration requests found</h3>
+                    <p className="text-xs text-muted-foreground max-w-sm mx-auto mt-1">
+                      {search
+                        ? "No customer applications match your search query."
+                        : "Share your onboarding link with retail buyers to receive self-registration applications with SMS OTP verification."}
+                    </p>
+                    <Button
+                      onClick={() => setIsShareLinkModalOpen(true)}
+                      variant="outline"
+                      size="sm"
+                      className="mt-4 text-xs gap-1.5 border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50"
+                    >
+                      <Share2 className="h-3.5 w-3.5" />
+                      Share Registration Link
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-3.5">
+                    {filteredRequests.map((req) => {
+                      const isPending = req.status === "PENDING"
+                      const isApproved = req.status === "APPROVED"
+                      const isRejected = req.status === "REJECTED"
+
+                      return (
+                        <Card
+                          key={req.id}
+                          className={`p-4 sm:p-5 border transition-all ${
+                            isPending
+                              ? "border-amber-200/80 dark:border-amber-900/50 bg-amber-50/10 dark:bg-amber-950/10 hover:shadow-md"
+                              : isApproved
+                              ? "border-emerald-200/80 dark:border-emerald-900/50 bg-emerald-50/10 dark:bg-emerald-950/10"
+                              : "border-zinc-200 dark:border-zinc-800 opacity-80"
+                          }`}
+                        >
+                          <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                            {/* Left: Details */}
+                            <div className="space-y-3 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                                  <Store className="h-4 w-4 text-indigo-600" />
+                                  <span>{req.firmName || req.name}</span>
+                                </h3>
+                                <Badge variant="outline" className="font-mono text-[10px] text-zinc-500">
+                                  {req.id}
+                                </Badge>
+                                {isPending && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                                    <Clock className="h-3 w-3" />
+                                    Pending Review
+                                  </span>
+                                )}
+                                {isApproved && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                                    <CheckCircle2 className="h-3 w-3" />
+                                    Approved
+                                  </span>
+                                )}
+                                {isRejected && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
+                                    <XCircle className="h-3 w-3" />
+                                    Rejected
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Attributes */}
+                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-y-2 gap-x-4 text-xs">
+                                <div>
+                                  <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                    <User className="h-3 w-3" /> Owner / Contact:
+                                  </span>
+                                  <p className="font-semibold text-zinc-800 dark:text-zinc-200">{req.name}</p>
+                                  <p className="font-mono text-zinc-600 dark:text-zinc-400 flex items-center gap-1 mt-0.5">
+                                    <Phone className="h-3 w-3 text-emerald-600" />
+                                    <span>{req.phone}</span>
+                                    {req.phoneVerified && (
+                                      <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-1 py-0.2 rounded">
+                                        ✓ Verified
+                                      </span>
+                                    )}
+                                  </p>
+                                </div>
+
+                                <div>
+                                  <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                    <MapPin className="h-3 w-3" /> Address & Location:
+                                  </span>
+                                  <p className="font-medium text-zinc-800 dark:text-zinc-200 truncate">
+                                    {req.address}
+                                  </p>
+                                  <p className="text-zinc-600 dark:text-zinc-400">
+                                    {req.city}{req.district ? `, ${req.district}` : ""}{req.state ? `, ${req.state}` : ""} {req.pincode ? `- ${req.pincode}` : ""}
+                                  </p>
+                                  {req.marketArea && (
+                                    <p className="text-[11px] text-indigo-600 dark:text-indigo-400 font-medium">
+                                      Market: {req.marketArea}
+                                    </p>
+                                  )}
+                                </div>
+
+                                <div>
+                                  <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                    <ShieldCheck className="h-3 w-3" /> Tax & Transporter:
+                                  </span>
+                                  <p className="font-mono text-zinc-700 dark:text-zinc-300">
+                                    GST: {req.gstin || "Unregistered"}
+                                  </p>
+                                  {req.panNumber && (
+                                    <p className="font-mono text-zinc-600 dark:text-zinc-400">
+                                      PAN: {req.panNumber}
+                                    </p>
+                                  )}
+                                  {req.preferredTransporterName && (
+                                    <p className="text-zinc-700 dark:text-zinc-300 font-medium flex items-center gap-1">
+                                      <Truck className="h-3 w-3 text-zinc-500" />
+                                      <span>{req.preferredTransporterName}</span>
+                                      {req.transportPreference && (
+                                        <span className="text-muted-foreground text-[10px]">({req.transportPreference})</span>
+                                      )}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Garment Categories */}
+                              {req.garmentTypes && (
+                                <div className="flex items-center gap-1.5 flex-wrap pt-1 text-[11px]">
+                                  <span className="text-muted-foreground">Garment Types:</span>
+                                  {req.garmentTypes.split(",").map((g, idx) => (
+                                    <span
+                                      key={idx}
+                                      className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-medium"
+                                    >
+                                      {g.trim()}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Bank & Notes */}
+                              {(req.bankName || req.notes) && (
+                                <div className="p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-zinc-800 text-xs space-y-1">
+                                  {req.bankName && (
+                                    <p className="text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                                      <Landmark className="h-3.5 w-3.5 text-zinc-400" />
+                                      <span className="font-medium">Bank:</span> {req.bankName}
+                                      {req.accountNumber && <span className="font-mono">• A/C: {req.accountNumber}</span>}
+                                      {req.ifscCode && <span className="font-mono">• IFSC: {req.ifscCode}</span>}
+                                    </p>
+                                  )}
+                                  {req.notes && (
+                                    <p className="text-muted-foreground text-[11px]">
+                                      <span className="font-semibold text-zinc-700 dark:text-zinc-300">Notes:</span> {req.notes}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* KYC Photos */}
+                              {(req.shopPhotoUri || req.gstCertPhotoUri || req.panPhotoUri || req.aadharPhotoUri) && (
+                                <div className="pt-1 space-y-1.5">
+                                  <span className="text-[11px] font-semibold text-muted-foreground block">
+                                    Uploaded KYC Photos:
+                                  </span>
+                                  <div className="flex items-center gap-3 overflow-x-auto pb-1">
+                                    {req.shopPhotoUri && (
+                                      <div className="flex flex-col items-center gap-1">
+                                        <a href={req.shopPhotoUri} target="_blank" rel="noreferrer" className="h-14 w-14 rounded-lg border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-zinc-100 dark:bg-zinc-800 group relative block">
+                                          <img src={req.shopPhotoUri} alt="Shop Front" className="h-full w-full object-cover group-hover:scale-105 transition-transform" />
+                                        </a>
+                                        <span className="text-[10px] text-muted-foreground">Shop Front</span>
+                                      </div>
+                                    )}
+                                    {req.gstCertPhotoUri && (
+                                      <div className="flex flex-col items-center gap-1">
+                                        <a href={req.gstCertPhotoUri} target="_blank" rel="noreferrer" className="h-14 w-14 rounded-lg border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-zinc-100 dark:bg-zinc-800 group relative block">
+                                          <img src={req.gstCertPhotoUri} alt="GST / Card" className="h-full w-full object-cover group-hover:scale-105 transition-transform" />
+                                        </a>
+                                        <span className="text-[10px] text-muted-foreground">GST / Card</span>
+                                      </div>
+                                    )}
+                                    {req.panPhotoUri && (
+                                      <div className="flex flex-col items-center gap-1">
+                                        <a href={req.panPhotoUri} target="_blank" rel="noreferrer" className="h-14 w-14 rounded-lg border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-zinc-100 dark:bg-zinc-800 group relative block">
+                                          <img src={req.panPhotoUri} alt="PAN Photo" className="h-full w-full object-cover group-hover:scale-105 transition-transform" />
+                                        </a>
+                                        <span className="text-[10px] text-muted-foreground">PAN Card</span>
+                                      </div>
+                                    )}
+                                    {req.aadharPhotoUri && (
+                                      <div className="flex flex-col items-center gap-1">
+                                        <a href={req.aadharPhotoUri} target="_blank" rel="noreferrer" className="h-14 w-14 rounded-lg border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-zinc-100 dark:bg-zinc-800 group relative block">
+                                          <img src={req.aadharPhotoUri} alt="Aadhaar ID" className="h-full w-full object-cover group-hover:scale-105 transition-transform" />
+                                        </a>
+                                        <span className="text-[10px] text-muted-foreground">Aadhaar ID</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Submitted Date */}
+                              <div className="text-[10px] text-muted-foreground pt-1 border-t border-zinc-100 dark:border-zinc-800">
+                                <span>Submitted on: {formatDate(req.createdAt)}</span>
+                              </div>
+                            </div>
+
+                            {/* Right: Action Buttons */}
+                            <div className="flex flex-col items-end gap-2 pt-2 md:pt-0 border-t md:border-t-0 border-zinc-200 dark:border-zinc-800 flex-shrink-0 min-w-[200px]">
+                              {/* Always Available: 1-Tap Direct WhatsApp Chat */}
+                              <div className="flex items-center gap-1.5 w-full justify-end">
+                                <a
+                                  href={`https://wa.me/91${req.phone.replace(/\D/g, "").slice(-10)}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center justify-center gap-1.5 h-7 px-2.5 text-[11px] font-medium rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors shadow-2xs"
+                                  title="Chat on WhatsApp"
+                                >
+                                  <MessageSquare className="h-3 w-3 text-emerald-600" />
+                                  <span>WhatsApp Chat</span>
+                                </a>
+                              </div>
+
+                              {isPending && (
+                                <div className="flex flex-wrap items-center justify-end gap-1.5 w-full">
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleOpenApprovalDialog(req)}
+                                    className="h-8 px-3 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shadow-sm"
+                                  >
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                    <span>Approve & Assign</span>
+                                  </Button>
+
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleOpenRejectDialog(req)}
+                                    className="h-8 px-2.5 text-xs text-rose-600 border-rose-200 hover:bg-rose-50 dark:hover:bg-rose-950/40 gap-1"
+                                  >
+                                    <XCircle className="h-3.5 w-3.5" />
+                                    <span>Reject</span>
+                                  </Button>
+
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteRequest(req.id)}
+                                    className="h-8 px-2 text-xs text-zinc-400 hover:text-red-600"
+                                    title="Delete Request"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              )}
+
+                              {isApproved && (
+                                <div className="text-right space-y-1.5 w-full">
+                                  <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 flex items-center justify-end gap-1">
+                                    <CheckCircle2 className="h-3.5 w-3.5" /> Approved by {req.approvedBy || "Admin"}
+                                  </p>
+                                  {req.createdCustomerId && (
+                                    <p className="text-xs font-mono font-bold text-zinc-800 dark:text-zinc-200">
+                                      Account #CUST-{req.createdCustomerId}
+                                    </p>
+                                  )}
+                                  {req.assignedAgentName && (
+                                    <p className="text-[11px] text-muted-foreground">
+                                      Agent: <span className="font-medium text-zinc-800 dark:text-zinc-200">{req.assignedAgentName}</span>
+                                    </p>
+                                  )}
+                                  <p className="text-[11px] text-muted-foreground">
+                                    Term: {req.creditType || "Cash"} {req.creditDays ? `(${req.creditDays}d)` : ""}
+                                  </p>
+
+                                  <a
+                                    href={`https://wa.me/91${req.phone.replace(/\D/g, "").slice(-10)}?text=${encodeURIComponent(buildApprovalWelcomeMessage(req))}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center justify-center gap-1.5 w-full h-8 px-3 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-colors mt-1"
+                                  >
+                                    <MessageSquare className="h-3.5 w-3.5" />
+                                    <span>Send Welcome on WhatsApp</span>
+                                  </a>
+                                </div>
+                              )}
+
+                              {isRejected && (
+                                <div className="text-right space-y-1.5 w-full">
+                                  <p className="text-xs font-semibold text-rose-600 flex items-center justify-end gap-1">
+                                    <XCircle className="h-3.5 w-3.5" /> Declined
+                                  </p>
+                                  {req.rejectionReason && (
+                                    <p className="text-[11px] text-muted-foreground max-w-xs text-right">
+                                      Reason: {req.rejectionReason}
+                                    </p>
+                                  )}
+
+                                  <a
+                                    href={`https://wa.me/91${req.phone.replace(/\D/g, "").slice(-10)}?text=${encodeURIComponent(buildRejectionMessage(req))}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center justify-center gap-1.5 w-full h-8 px-2.5 text-xs font-medium rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 transition-colors mt-1"
+                                  >
+                                    <MessageSquare className="h-3.5 w-3.5" />
+                                    <span>Send Reason on WhatsApp</span>
+                                  </a>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </Card>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
 
       {/* Add / Edit Customer Multi-Tab Dialog */}
       <Dialog
@@ -1341,6 +1919,396 @@ export function CustomersView() {
             </Button>
           </div>
         </div>
+      </Dialog>
+
+      {/* 1. Share Customer Registration Link Modal */}
+      <Dialog
+        open={isShareLinkModalOpen}
+        onOpenChange={setIsShareLinkModalOpen}
+        title="🔗 Share Customer Self-Registration Link"
+        description="Share this link with retail buyers. They will fill basic business & KYC details and verify via SMS OTP."
+      >
+        <div className="space-y-4 pt-2 text-xs">
+          <div className="p-3.5 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 space-y-2">
+            <p className="font-semibold text-indigo-900 dark:text-indigo-200">
+              Customer Public Onboarding Link
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                readOnly
+                value={`${window.location.origin}/#/register-customer`}
+                className="flex-1 px-3 py-2 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-zinc-900 font-mono text-xs text-zinc-800 dark:text-zinc-200"
+              />
+              <Button
+                size="sm"
+                onClick={handleCopyRegistrationLink}
+                className={`h-8 px-3 text-xs gap-1.5 transition-all ${
+                  copiedLink
+                    ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                    : "bg-indigo-600 hover:bg-indigo-700 text-white"
+                }`}
+              >
+                {copiedLink ? (
+                  <>
+                    <Check className="h-3.5 w-3.5" />
+                    <span>Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-3.5 w-3.5" />
+                    <span>Copy Link</span>
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+
+          {/* 1-Click WhatsApp Share */}
+          <div className="p-3.5 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/50 space-y-2">
+            <p className="font-semibold text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
+              <MessageSquare className="h-4 w-4 text-emerald-600" />
+              <span>Share Directly on WhatsApp</span>
+            </p>
+            <p className="text-muted-foreground text-[11px]">
+              Sends a pre-composed message invitation with the link directly to buyer on WhatsApp.
+            </p>
+            <Button
+              type="button"
+              onClick={() => {
+                const msg = encodeURIComponent(buildRegistrationInviteMessage())
+                window.open(`https://wa.me/?text=${msg}`, "_blank")
+              }}
+              className="w-full h-9 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shadow-sm"
+            >
+              <MessageSquare className="h-4 w-4" />
+              <span>Share Invite to Any WhatsApp Contact</span>
+            </Button>
+          </div>
+
+          {/* Direct Send to Specific WhatsApp Number */}
+          <div className="p-3.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 space-y-2">
+            <p className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+              <Phone className="h-3.5 w-3.5 text-emerald-600" />
+              <span>Send Directly to Buyer's Mobile Number</span>
+            </p>
+            <p className="text-muted-foreground text-[11px]">
+              Type the retailer's 10-digit number to open WhatsApp directly with their personal chat:
+            </p>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-zinc-400">
+                  +91
+                </span>
+                <input
+                  type="tel"
+                  maxLength={10}
+                  placeholder="9876543210"
+                  value={directSharePhone}
+                  onChange={(e) => setDirectSharePhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                  className="w-full pl-10 pr-3 py-2 text-xs rounded-lg border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+              <Button
+                type="button"
+                disabled={directSharePhone.length < 10}
+                onClick={() => {
+                  const msg = encodeURIComponent(buildRegistrationInviteMessage())
+                  window.open(`https://wa.me/91${directSharePhone}?text=${msg}`, "_blank")
+                }}
+                className="h-auto px-3.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40 gap-1.5 shadow-sm"
+              >
+                <MessageSquare className="h-3.5 w-3.5" />
+                <span>Send WhatsApp</span>
+              </Button>
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 space-y-1 text-[11px] text-muted-foreground">
+            <p className="font-semibold text-zinc-700 dark:text-zinc-300">
+              Form Configuration Note:
+            </p>
+            <ul className="list-disc list-inside space-y-0.5">
+              <li>Sales Agent and Religion fields are intentionally excluded from the customer portal.</li>
+              <li>Customers verify their phone number through SMS OTP via Firebase Phone Auth.</li>
+              <li>Once submitted, the request will appear in your <strong>User Requests</strong> tab for approval.</li>
+            </ul>
+          </div>
+
+          <div className="pt-2 flex justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsShareLinkModalOpen(false)}
+              className="h-8 text-xs"
+            >
+              Close
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* 2. Approve Request & Assign Agent Dialog */}
+      <Dialog
+        open={selectedRequestForApproval !== null}
+        onOpenChange={(open) => !open && setSelectedRequestForApproval(null)}
+        title="Approve Customer Registration & Assign Agent"
+        description={`Approving retail buyer application for ${selectedRequestForApproval?.firmName || selectedRequestForApproval?.name}`}
+      >
+        {selectedRequestForApproval && (
+          <div className="space-y-4 pt-2 text-xs">
+            {/* Quick summary of submitted application */}
+            <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 space-y-1.5">
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-muted-foreground">Firm Name:</span>
+                <span className="font-bold text-zinc-900 dark:text-zinc-100">{selectedRequestForApproval.firmName}</span>
+              </div>
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-muted-foreground">Owner Name:</span>
+                <span className="font-semibold text-zinc-900 dark:text-zinc-100">{selectedRequestForApproval.name}</span>
+              </div>
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-muted-foreground">Verified Phone:</span>
+                <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+                  {selectedRequestForApproval.phone} (SMS Verified)
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-muted-foreground">Location:</span>
+                <span className="text-zinc-800 dark:text-zinc-200">
+                  {selectedRequestForApproval.city}{selectedRequestForApproval.marketArea ? `, ${selectedRequestForApproval.marketArea}` : ""}
+                </span>
+              </div>
+            </div>
+
+            {/* Admin assignment controls */}
+            <div className="space-y-3 pt-1">
+              {/* Assign Sales Agent */}
+              <div className="space-y-1">
+                <label className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1">
+                  <span>Assign Sales Agent (कर्मचारी / सेल्समैन)</span>
+                  <span className="text-red-500 font-bold">*</span>
+                </label>
+                <select
+                  required
+                  value={approvalAssignedAgentId}
+                  onChange={(e) => {
+                    const id = e.target.value
+                    setApprovalAssignedAgentId(id)
+                    const found = employees.find((emp) => String(emp.id) === String(id))
+                    setApprovalAssignedAgentName(found ? found.name : "")
+                  }}
+                  className="w-full h-9 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                >
+                  <option value="">-- Select Sales Agent --</option>
+                  {employees
+                    .filter((e) => !e.isBlocked && !e.isDeleted)
+                    .map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.name} ({emp.role})
+                      </option>
+                    ))}
+                </select>
+                <p className="text-[10px] text-muted-foreground">
+                  The customer will be managed under this salesman's portfolio.
+                </p>
+              </div>
+
+              {/* Billing / Credit Terms */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                <div className="space-y-1">
+                  <label className="font-semibold text-zinc-800 dark:text-zinc-200">
+                    Customer Type
+                  </label>
+                  <select
+                    value={approvalCreditType}
+                    onChange={(e) => {
+                      const type = e.target.value as "Cash" | "Credit"
+                      setApprovalCreditType(type)
+                      if (type === "Cash") setApprovalCreditDays(0)
+                      else if (approvalCreditDays === 0) setApprovalCreditDays(30)
+                    }}
+                    className="w-full h-8 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-2.5 text-xs"
+                  >
+                    <option value="Cash">Cash (नकद)</option>
+                    <option value="Credit">Credit (उधार)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-semibold text-zinc-800 dark:text-zinc-200">
+                    Credit Days
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={approvalCreditDays}
+                    onChange={(e) => setApprovalCreditDays(Number(e.target.value) || 0)}
+                    disabled={approvalCreditType === "Cash"}
+                    className="w-full h-8 px-2.5 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs font-mono disabled:opacity-50"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-semibold text-zinc-800 dark:text-zinc-200">
+                    Credit Limit (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={5000}
+                    placeholder="50000"
+                    value={approvalCreditLimit || ""}
+                    onChange={(e) => setApprovalCreditLimit(Number(e.target.value) || 0)}
+                    disabled={approvalCreditType === "Cash"}
+                    className="w-full h-8 px-2.5 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs font-mono disabled:opacity-50"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="pt-3 border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedRequestForApproval(null)}
+                className="h-8 text-xs"
+              >
+                Cancel
+              </Button>
+
+              <Button
+                type="button"
+                size="sm"
+                disabled={isApproving || !approvalAssignedAgentId}
+                onClick={handleConfirmApproval}
+                className="h-8 px-4 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shadow-sm"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                <span>{isApproving ? "Approving & Creating..." : "Confirm & Create Customer"}</span>
+              </Button>
+            </div>
+          </div>
+        )}
+      </Dialog>
+
+      {/* 3. Reject Request Dialog */}
+      <Dialog
+        open={rejectModal.open}
+        onOpenChange={(open) => !open && setRejectModal({ open: false, request: null, reason: "" })}
+        title="Reject Customer Registration Request"
+        description={`Declining application for ${rejectModal.request?.firmName || "this customer"}`}
+      >
+        <div className="space-y-3 pt-2 text-xs">
+          <div className="space-y-1.5">
+            <label className="font-semibold text-zinc-800 dark:text-zinc-200">
+              Reason for Rejection (अस्वीकृति का कारण)
+            </label>
+            <textarea
+              rows={3}
+              placeholder="e.g. Incomplete address, unable to verify business documents, outside delivery area..."
+              value={rejectModal.reason}
+              onChange={(e) => setRejectModal((prev) => ({ ...prev, reason: e.target.value }))}
+              className="w-full p-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs focus:outline-none focus:ring-2 focus:ring-rose-500"
+            />
+          </div>
+
+          <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setRejectModal({ open: false, request: null, reason: "" })}
+              className="h-8 text-xs"
+            >
+              Cancel
+            </Button>
+
+            <Button
+              type="button"
+              size="sm"
+              disabled={isRejecting}
+              onClick={handleConfirmReject}
+              className="h-8 px-4 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white gap-1.5"
+            >
+              <XCircle className="h-3.5 w-3.5" />
+              <span>{isRejecting ? "Rejecting..." : "Confirm Rejection"}</span>
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* 4. Post-Approval Instant WhatsApp Welcome Dialog */}
+      <Dialog
+        open={approvedSuccessData?.open || false}
+        onOpenChange={(open) => !open && setApprovedSuccessData(null)}
+        title="Customer Approved & Created!"
+        description="The customer account has been created and added to your active database."
+      >
+        {approvedSuccessData && (
+          <div className="space-y-4 pt-2 text-xs">
+            <div className="p-4 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-center space-y-2">
+              <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/60 rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400 mx-auto">
+                <CheckCircle2 className="w-6 h-6" />
+              </div>
+              <h4 className="text-sm font-bold text-emerald-950 dark:text-emerald-200">
+                {approvedSuccessData.req.firmName || approvedSuccessData.req.name}
+              </h4>
+              <p className="font-mono font-bold text-xs text-zinc-800 dark:text-zinc-200">
+                Customer ID: #CUST-{approvedSuccessData.customerId}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Assigned Sales Agent: <strong className="text-zinc-800 dark:text-zinc-200">{approvedSuccessData.agentName}</strong>
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 space-y-2">
+              <p className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                <MessageSquare className="h-4 w-4 text-emerald-600" />
+                <span>Send Welcome & Customer ID on WhatsApp</span>
+              </p>
+              <p className="text-muted-foreground text-[11px]">
+                Notify the retailer on WhatsApp that their account has been approved, provide their new Customer ID, and introduce their assigned sales representative.
+              </p>
+              <Button
+                type="button"
+                onClick={() => {
+                  const msg = encodeURIComponent(
+                    buildApprovalWelcomeMessage(
+                      approvedSuccessData.req,
+                      approvedSuccessData.customerId,
+                      approvedSuccessData.agentName
+                    )
+                  )
+                  window.open(
+                    `https://wa.me/91${approvedSuccessData.req.phone.replace(/\D/g, "").slice(-10)}?text=${msg}`,
+                    "_blank"
+                  )
+                  setApprovedSuccessData(null)
+                }}
+                className="w-full h-9 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shadow-sm"
+              >
+                <MessageSquare className="h-4 w-4" />
+                <span>Send Welcome to {approvedSuccessData.req.phone} on WhatsApp</span>
+              </Button>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setApprovedSuccessData(null)}
+                className="h-8 text-xs"
+              >
+                Close & View Requests
+              </Button>
+            </div>
+          </div>
+        )}
       </Dialog>
 
       {/* Report Modal */}
