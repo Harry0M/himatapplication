@@ -2,9 +2,17 @@ package com.example.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +28,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -49,6 +59,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,7 +67,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -136,6 +151,43 @@ fun TransporterDetailScreen(
         }
     }
 
+    val listState = rememberLazyListState()
+    var isProfileExpanded by remember { mutableStateOf(true) }
+
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            private var accumulatedDelta = 0f
+
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source == NestedScrollSource.UserInput) {
+                    val delta = available.y
+                    if (delta < -15f) {
+                        if (accumulatedDelta > 0) accumulatedDelta = 0f
+                        accumulatedDelta += delta
+                        if (accumulatedDelta < -25f) {
+                            isProfileExpanded = false
+                        }
+                    } else if (delta > 15f) {
+                        if (accumulatedDelta < 0) accumulatedDelta = 0f
+                        accumulatedDelta += delta
+                        if (accumulatedDelta > 20f) {
+                            isProfileExpanded = true
+                        }
+                    }
+                }
+                return Offset.Zero
+            }
+        }
+    }
+
+    LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, searchQuery) {
+        if (searchQuery.isNotBlank()) {
+            // Keep search bar visible
+        } else if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset <= 10) {
+            isProfileExpanded = true
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -169,211 +221,224 @@ fun TransporterDetailScreen(
             )
         }
     ) { paddingValues ->
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xFFF6F8FB))
+                .nestedScroll(nestedScrollConnection)
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(horizontal = 16.dp)
         ) {
-            // Cardless Hero Profile Header
-            item {
+            // 1. Collapsible Profile Details (above Search Bar)
+            AnimatedVisibility(
+                visible = isProfileExpanded && searchQuery.isBlank(),
+                enter = expandVertically(tween(240, easing = FastOutSlowInEasing)) + fadeIn(tween(200)),
+                exit = shrinkVertically(tween(220, easing = FastOutSlowInEasing)) + fadeOut(tween(180))
+            ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 2.dp, bottom = 4.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .padding(bottom = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = Color(0xFFECFEFF),
-                        border = BorderStroke(2.dp, Color(0xFFA5F3FC)),
-                        modifier = Modifier.size(66.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.LocalShipping,
-                                contentDescription = null,
-                                tint = Color(0xFF0891B2),
-                                modifier = Modifier.size(32.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Text(
-                        text = transporter.transporterName,
-                        fontSize = 19.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF0F172A),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-
-                    Spacer(modifier = Modifier.height(2.dp))
-                    val contactSubtitle = if (transporter.contactPerson.isNotBlank()) "Desk: ${transporter.contactPerson}" else "Hub: ${transporter.city}"
-                    Text(
-                        text = contactSubtitle,
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFF64748B)
-                    )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    // Cardless Hero Profile Header
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 2.dp, bottom = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Surface(
-                            color = Color(0xFFF1F5F9),
-                            shape = RoundedCornerShape(4.dp),
-                            border = BorderStroke(0.5.dp, Color(0xFFCBD5E1))
+                            shape = CircleShape,
+                            color = Color(0xFFECFEFF),
+                            border = BorderStroke(2.dp, Color(0xFFA5F3FC)),
+                            modifier = Modifier.size(66.dp)
                         ) {
-                            Text(
-                                text = "📍 ${transporter.city}",
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF334155),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-
-                        if (transporter.gstin.isNotBlank()) {
-                            Surface(
-                                color = Color(0xFFEFF6FF),
-                                shape = RoundedCornerShape(4.dp),
-                                border = BorderStroke(0.5.dp, Color(0xFFBFDBFE))
-                            ) {
-                                Text(
-                                    text = "GST: ${transporter.gstin}",
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF1D4ED8),
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.LocalShipping,
+                                    contentDescription = null,
+                                    tint = Color(0xFF0891B2),
+                                    modifier = Modifier.size(32.dp)
                                 )
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Text(
+                            text = transporter.transporterName,
+                            fontSize = 19.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0F172A),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+
+                        Spacer(modifier = Modifier.height(2.dp))
+                        val contactSubtitle = if (transporter.contactPerson.isNotBlank()) "Desk: ${transporter.contactPerson}" else "Hub: ${transporter.city}"
+                        Text(
+                            text = contactSubtitle,
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF64748B)
+                        )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                color = Color(0xFFF1F5F9),
+                                shape = RoundedCornerShape(4.dp),
+                                border = BorderStroke(0.5.dp, Color(0xFFCBD5E1))
+                            ) {
+                                Text(
+                                    text = "📍 ${transporter.city}",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF334155),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+
+                            if (transporter.gstin.isNotBlank()) {
+                                Surface(
+                                    color = Color(0xFFEFF6FF),
+                                    shape = RoundedCornerShape(4.dp),
+                                    border = BorderStroke(0.5.dp, Color(0xFFBFDBFE))
+                                ) {
+                                    Text(
+                                        text = "GST: ${transporter.gstin}",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFF1D4ED8),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Action Pills: Phone, Tracking URL
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (transporter.phone1.isNotBlank()) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color(0xFFF0FDF4),
+                                    border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .clickable {
+                                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${transporter.phone1}"))
+                                            context.startActivity(intent)
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(Icons.Default.Call, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(13.dp))
+                                        Text("Call Hub", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF15803D))
+                                    }
+                                }
+                            }
+
+                            if (transporter.trackingUrl.isNotBlank()) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color(0xFFEFF6FF),
+                                    border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .clickable {
+                                            val url = if (transporter.trackingUrl.startsWith("http")) transporter.trackingUrl else "https://${transporter.trackingUrl}"
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                            context.startActivity(intent)
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(13.dp))
+                                        Text("Online Track", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1D4ED8))
+                                    }
+                                }
+                            }
+                        }
                     }
 
-                    // Action Pills: Phone, Tracking URL
-                    Spacer(modifier = Modifier.height(10.dp))
+                    // Cardless Stats Row
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (transporter.phone1.isNotBlank()) {
-                            Surface(
-                                shape = CircleShape,
-                                color = Color(0xFFF0FDF4),
-                                border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .clickable {
-                                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${transporter.phone1}"))
-                                        context.startActivity(intent)
-                                    }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Icon(Icons.Default.Call, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(13.dp))
-                                    Text("Call Hub", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF15803D))
-                                }
-                            }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "$totalShipments",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF0F172A)
+                            )
+                            Text("Shipments", fontSize = 11.sp, color = Color(0xFF64748B))
                         }
 
-                        if (transporter.trackingUrl.isNotBlank()) {
-                            Surface(
-                                shape = CircleShape,
-                                color = Color(0xFFEFF6FF),
-                                border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .clickable {
-                                        val url = if (transporter.trackingUrl.startsWith("http")) transporter.trackingUrl else "https://${transporter.trackingUrl}"
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                        context.startActivity(intent)
-                                    }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(13.dp))
-                                    Text("Online Track", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1D4ED8))
-                                }
-                            }
+                        Box(modifier = Modifier.height(24.dp).width(1.dp).background(Color(0xFFE2E8F0)))
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "$inTransitCount",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF2563EB)
+                            )
+                            Text("Dispatched", fontSize = 11.sp, color = Color(0xFF64748B))
+                        }
+
+                        Box(modifier = Modifier.height(24.dp).width(1.dp).background(Color(0xFFE2E8F0)))
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "$deliveredCount",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF059669)
+                            )
+                            Text("Delivered", fontSize = 11.sp, color = Color(0xFF64748B))
+                        }
+
+                        Box(modifier = Modifier.height(24.dp).width(1.dp).background(Color(0xFFE2E8F0)))
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "${preferredCustomers.size}",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF7C3AED)
+                            )
+                            Text("Preferred By", fontSize = 11.sp, color = Color(0xFF64748B))
                         }
                     }
                 }
             }
 
-            // Cardless Stats Row
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "$totalShipments",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF0F172A)
-                        )
-                        Text("Shipments", fontSize = 11.sp, color = Color(0xFF64748B))
-                    }
-
-                    Box(modifier = Modifier.height(24.dp).width(1.dp).background(Color(0xFFE2E8F0)))
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "$inTransitCount",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF2563EB)
-                        )
-                        Text("Dispatched", fontSize = 11.sp, color = Color(0xFF64748B))
-                    }
-
-                    Box(modifier = Modifier.height(24.dp).width(1.dp).background(Color(0xFFE2E8F0)))
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "$deliveredCount",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF059669)
-                        )
-                        Text("Delivered", fontSize = 11.sp, color = Color(0xFF64748B))
-                    }
-
-                    Box(modifier = Modifier.height(24.dp).width(1.dp).background(Color(0xFFE2E8F0)))
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "${preferredCustomers.size}",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF7C3AED)
-                        )
-                        Text("Preferred By", fontSize = 11.sp, color = Color(0xFF64748B))
-                    }
-                }
-            }
-
-            // Live Search Bar
-            item {
+            // 2. Fixed/Pinned Search Bar
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+            ) {
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
@@ -410,100 +475,109 @@ fun TransporterDetailScreen(
                 )
             }
 
-            // Tab Selector Pills
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val isShip = selectedTab == "SHIPMENTS"
-                    Surface(
-                        shape = CircleShape,
-                        color = if (isShip) Color(0xFF0891B2) else Color.White,
-                        border = BorderStroke(1.dp, if (isShip) Color(0xFF0891B2) else Color(0xFFCBD5E1)),
+            // 3. Scrollable List Content
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Tab Selector Pills (Horizontally Scrollable)
+                item {
+                    Row(
                         modifier = Modifier
-                            .clip(CircleShape)
-                            .clickable { selectedTab = "SHIPMENTS" }
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        val isShip = selectedTab == "SHIPMENTS"
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isShip) Color(0xFF0891B2) else Color.White,
+                            border = BorderStroke(1.dp, if (isShip) Color(0xFF0891B2) else Color(0xFFCBD5E1)),
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable { selectedTab = "SHIPMENTS" }
                         ) {
-                            Icon(
-                                Icons.Default.LocalShipping,
-                                contentDescription = null,
-                                tint = if (isShip) Color.White else Color(0xFF0891B2),
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Text(
-                                text = "Shipments (${filteredShipments.size})",
-                                fontSize = 11.5.sp,
-                                fontWeight = if (isShip) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isShip) Color.White else Color(0xFF334155)
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.LocalShipping,
+                                    contentDescription = null,
+                                    tint = if (isShip) Color.White else Color(0xFF0891B2),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = "Shipments (${filteredShipments.size})",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (isShip) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isShip) Color.White else Color(0xFF334155)
+                                )
+                            }
                         }
-                    }
 
-                    val isCust = selectedTab == "CUSTOMERS"
-                    Surface(
-                        shape = CircleShape,
-                        color = if (isCust) Color(0xFF7C3AED) else Color.White,
-                        border = BorderStroke(1.dp, if (isCust) Color(0xFF7C3AED) else Color(0xFFCBD5E1)),
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .clickable { selectedTab = "CUSTOMERS" }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        val isCust = selectedTab == "CUSTOMERS"
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isCust) Color(0xFF7C3AED) else Color.White,
+                            border = BorderStroke(1.dp, if (isCust) Color(0xFF7C3AED) else Color(0xFFCBD5E1)),
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable { selectedTab = "CUSTOMERS" }
                         ) {
-                            Icon(
-                                Icons.Default.People,
-                                contentDescription = null,
-                                tint = if (isCust) Color.White else Color(0xFF7C3AED),
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Text(
-                                text = "Preferred Customers (${filteredCustomers.size})",
-                                fontSize = 11.5.sp,
-                                fontWeight = if (isCust) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isCust) Color.White else Color(0xFF334155)
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.People,
+                                    contentDescription = null,
+                                    tint = if (isCust) Color.White else Color(0xFF7C3AED),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = "Preferred Customers (${filteredCustomers.size})",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (isCust) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isCust) Color.White else Color(0xFF334155)
+                                )
+                            }
                         }
-                    }
 
-                    val isDepot = selectedTab == "DEPOT"
-                    Surface(
-                        shape = CircleShape,
-                        color = if (isDepot) Color(0xFF475569) else Color.White,
-                        border = BorderStroke(1.dp, if (isDepot) Color(0xFF475569) else Color(0xFFCBD5E1)),
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .clickable { selectedTab = "DEPOT" }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        val isDepot = selectedTab == "DEPOT"
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isDepot) Color(0xFF475569) else Color.White,
+                            border = BorderStroke(1.dp, if (isDepot) Color(0xFF475569) else Color(0xFFCBD5E1)),
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable { selectedTab = "DEPOT" }
                         ) {
-                            Icon(
-                                Icons.Default.Place,
-                                contentDescription = null,
-                                tint = if (isDepot) Color.White else Color(0xFF475569),
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Text(
-                                text = "Depot & Office",
-                                fontSize = 11.5.sp,
-                                fontWeight = if (isDepot) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isDepot) Color.White else Color(0xFF334155)
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Place,
+                                    contentDescription = null,
+                                    tint = if (isDepot) Color.White else Color(0xFF475569),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = "Depot & Office",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (isDepot) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isDepot) Color.White else Color(0xFF334155)
+                                )
+                            }
                         }
                     }
                 }
-            }
 
             // TAB 1: SHIPMENTS & ORDERS
             if (selectedTab == "SHIPMENTS") {
@@ -764,3 +838,5 @@ fun TransporterDetailScreen(
         }
     }
 }
+}
+

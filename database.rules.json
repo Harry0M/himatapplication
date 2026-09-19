@@ -86,7 +86,13 @@
     "customer_registration_requests": {
       ".read": "auth != null",
       "$id": {
-        ".write": "auth != null"
+        ".write": true
+      }
+    },
+    "supplier_registration_requests": {
+      ".read": "auth != null",
+      "$id": {
+        ".write": true
       }
     }
   }

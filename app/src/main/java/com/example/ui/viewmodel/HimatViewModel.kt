@@ -15,6 +15,9 @@ import com.google.firebase.auth.FirebaseUser
 import com.example.data.local.AppDatabase
 import com.example.data.local.entity.BrandEntity
 import com.example.data.local.entity.CustomerEntity
+import com.example.data.local.entity.CustomerRegistrationRequestEntity
+import com.example.data.local.entity.SupplierRegistrationRequestEntity
+import com.example.data.local.entity.LeadEntity
 import com.example.data.local.entity.EmployeeEntity
 import com.example.data.local.entity.GarmentItemEntity
 import com.example.data.local.entity.MarketEntity
@@ -76,7 +79,8 @@ enum class AppScreen {
     ADD_EDIT_MASTER,
     PAYMENTS,
     PENDINGS,
-    PROFILE
+    PROFILE,
+    LEADS
 }
 
 enum class MasterTab {
@@ -245,6 +249,32 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
     val distinctItemCodes: StateFlow<List<String>> = repository.distinctItemCodes
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // Leads & Customer Registration Requests
+    val allLeads: StateFlow<List<LeadEntity>> = repository.allLeads
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val customerLeads: StateFlow<List<LeadEntity>> = allLeads.map { list ->
+        list.filter { it.type == "customer" }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val supplierLeads: StateFlow<List<LeadEntity>> = allLeads.map { list ->
+        list.filter { it.type == "supplier" }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _registrationRequests = MutableStateFlow<List<CustomerRegistrationRequestEntity>>(emptyList())
+    val registrationRequests: StateFlow<List<CustomerRegistrationRequestEntity>> = _registrationRequests.asStateFlow()
+
+    val pendingRegistrationRequestsCount: StateFlow<Int> = _registrationRequests.map { list ->
+        list.count { it.status.uppercase() == "PENDING" }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    private val _supplierRegistrationRequests = MutableStateFlow<List<SupplierRegistrationRequestEntity>>(emptyList())
+    val supplierRegistrationRequests: StateFlow<List<SupplierRegistrationRequestEntity>> = _supplierRegistrationRequests.asStateFlow()
+
+    val pendingSupplierRegistrationRequestsCount: StateFlow<Int> = _supplierRegistrationRequests.map { list ->
+        list.count { it.status.uppercase() == "PENDING" }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
     // Visible Streams (Filtered for Soft Deletion & Scoped by Employee Role)
     val visibleCustomers: StateFlow<List<CustomerEntity>> = allCustomers
         .map { list -> list.filter { !it.isDeleted } }
@@ -401,6 +431,23 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch(Dispatchers.IO) {
                 repository.syncMarketsFromCloud(markets)
             }
+        }
+
+        // Start listening to Leads
+        rtdbService.listenToLeads { leads ->
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.syncLeadsFromCloud(leads)
+            }
+        }
+
+        // Start listening to Registration Requests
+        rtdbService.listenToRegistrationRequests { reqs ->
+            _registrationRequests.value = reqs
+        }
+
+        // Start listening to Supplier Registration Requests
+        rtdbService.listenToSupplierRegistrationRequests { reqs ->
+            _supplierRegistrationRequests.value = reqs
         }
 
         // Full Startup Cloud -> Local Sync
@@ -803,6 +850,15 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 val markets = rtdbService.fetchMarkets()
                 repository.syncMarketsFromCloud(markets)
 
+                val leads = rtdbService.fetchLeads()
+                repository.syncLeadsFromCloud(leads)
+
+                val reqs = rtdbService.fetchRegistrationRequests()
+                _registrationRequests.value = reqs
+
+                val supplierReqs = rtdbService.fetchSupplierRegistrationRequests()
+                _supplierRegistrationRequests.value = supplierReqs
+
                 // Sync any local records that aren't yet in RTDB up to the cloud!
                 syncAllLocalMastersToCloud()
             }
@@ -863,7 +919,313 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 // Sync all transactions
                 val transactions = repository.allTransactions.first()
                 transactions.filter { it.id > 0L }.forEach { rtdbService.syncTransaction(it) }
+
+                // Sync all leads
+                val leads = repository.allLeads.first()
+                leads.filter { it.leadId.isNotBlank() && !it.isDeleted }.forEach { rtdbService.syncLead(it) }
             } catch (_: Exception) {
+            }
+        }
+    }
+
+    // Lead Operations
+    fun saveLead(lead: LeadEntity, onComplete: () -> Unit = {}) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val user = currentUser.value
+            val emp = currentEmployee.value
+            val finalLeadId = lead.leadId.ifBlank { "lead_${System.currentTimeMillis()}" }
+            val leadWithMeta = lead.copy(
+                leadId = finalLeadId,
+                createdByUid = lead.createdByUid.ifBlank { user?.uid ?: "" },
+                createdByName = lead.createdByName.ifBlank { emp?.name ?: user?.displayName ?: "Staff" }
+            )
+            val generatedId = repository.saveLead(leadWithMeta)
+            val toSync = if (leadWithMeta.id == 0L) leadWithMeta.copy(id = generatedId) else leadWithMeta
+            rtdbService.syncLead(toSync)
+            launch(Dispatchers.Main) {
+                onComplete()
+            }
+        }
+    }
+
+    fun deleteLead(lead: LeadEntity, onComplete: () -> Unit = {}) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.deleteLead(lead)
+            if (lead.leadId.isNotBlank()) {
+                rtdbService.deleteLead(lead.leadId)
+            }
+            launch(Dispatchers.Main) {
+                onComplete()
+            }
+        }
+    }
+
+    fun convertLeadToCustomer(lead: LeadEntity, onComplete: (Long) -> Unit = {}) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val allCusts = repository.allCustomers.first()
+            val maxId = allCusts.maxOfOrNull { it.id } ?: 0L
+            val nextId = maxId + 1L
+
+            val newCustomer = CustomerEntity(
+                id = nextId,
+                customerId = nextId.toString(),
+                firmName = lead.firmName.ifBlank { lead.name },
+                name = lead.name.ifBlank { lead.firmName },
+                phone = lead.phone,
+                phone2 = lead.phone2,
+                address = lead.meetingPlace,
+                shopAddress = lead.meetingPlace,
+                city = lead.city.ifBlank { "Ahmedabad" },
+                state = lead.state.ifBlank { "Gujarat" },
+                notes = (if (lead.notes.isNotBlank()) "Notes: ${lead.notes}\n" else "") +
+                        "Converted from Lead (Met at: ${lead.meetingPlace})",
+                customerType = "Cash",
+                creditDays = 30
+            )
+            repository.saveCustomer(newCustomer)
+            rtdbService.syncCustomer(newCustomer)
+
+            val updatedLead = lead.copy(
+                status = "Converted",
+                convertedAt = System.currentTimeMillis(),
+                convertedTargetId = nextId
+            )
+            repository.saveLead(updatedLead)
+            rtdbService.syncLead(updatedLead)
+
+            launch(Dispatchers.Main) {
+                onComplete(nextId)
+            }
+        }
+    }
+
+    fun convertLeadToSupplier(lead: LeadEntity, onComplete: (Long) -> Unit = {}) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val allSupps = repository.allSuppliers.first()
+            val maxId = allSupps.maxOfOrNull { it.id } ?: 0L
+            val nextId = maxId + 1L
+
+            val newSupplier = SupplierEntity(
+                id = nextId,
+                supplierId = nextId.toString(),
+                firmName = lead.firmName.ifBlank { lead.name },
+                name = lead.name.ifBlank { lead.firmName },
+                type = if (lead.supplierType.equals("Wholesaler", ignoreCase = true)) "Wholesaler" else "Manufacturer",
+                brand = lead.firmName.ifBlank { lead.name },
+                phone = lead.phone,
+                phone2 = lead.phone2,
+                address = lead.meetingPlace,
+                officeAddress = lead.meetingPlace,
+                city = lead.city.ifBlank { "Ahmedabad" },
+                notes = (if (lead.notes.isNotBlank()) "Notes: ${lead.notes}\n" else "") +
+                        "Converted from Supplier Lead (Met at: ${lead.meetingPlace}, State: ${lead.state.ifBlank { "Gujarat" }})",
+                createdAt = System.currentTimeMillis()
+            )
+            repository.saveSupplier(newSupplier)
+            rtdbService.syncSupplier(newSupplier)
+
+            val updatedLead = lead.copy(
+                status = "Converted",
+                convertedAt = System.currentTimeMillis(),
+                convertedTargetId = nextId
+            )
+            repository.saveLead(updatedLead)
+            rtdbService.syncLead(updatedLead)
+
+            launch(Dispatchers.Main) {
+                onComplete(nextId)
+            }
+        }
+    }
+
+    // Customer Registration Requests Operations
+    fun approveRegistrationRequest(
+        request: CustomerRegistrationRequestEntity,
+        adminReligion: String,
+        creditType: String = "Cash",
+        creditDays: Int = 30,
+        creditLimit: Double = 0.0,
+        assignedAgentId: Long? = null,
+        assignedAgentName: String = "",
+        onComplete: (Long) -> Unit = {}
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val allCusts = repository.allCustomers.first()
+            val maxId = allCusts.maxOfOrNull { it.id } ?: 0L
+            val nextId = maxId + 1L
+
+            val notesList = mutableListOf<String>()
+            if (request.bankName.isNotBlank()) {
+                notesList.add("Bank: ${request.bankName} | A/C: ${request.accountNumber} | IFSC: ${request.ifscCode}")
+            }
+            if (request.notes.isNotBlank()) {
+                notesList.add("Request Note: ${request.notes}")
+            }
+            notesList.add("Approved via Android App on ${SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date())}")
+
+            val newCustomer = CustomerEntity(
+                id = nextId,
+                customerId = nextId.toString(),
+                firmName = request.firmName.ifBlank { request.name },
+                name = request.name.ifBlank { request.firmName },
+                phone = request.phone,
+                phone2 = request.phone2,
+                email = request.email,
+                address = request.address.ifBlank { request.shopAddress },
+                shopAddress = request.shopAddress.ifBlank { request.address },
+                marketArea = request.marketArea,
+                city = request.city.ifBlank { "Ahmedabad" },
+                district = request.district,
+                state = request.state.ifBlank { "Gujarat" },
+                pincode = request.pincode,
+                shopMapLink = request.shopMapLink,
+                garmentTypes = request.garmentTypes,
+                gstin = request.gstin,
+                panNumber = request.panNumber,
+                preferredTransporterName = request.preferredTransporterName,
+                transportPreference = request.transportPreference,
+                shopPhotoUri = request.shopPhotoUri,
+                gstCertPhotoUri = request.gstCertPhotoUri,
+                panPhotoUri = request.panPhotoUri,
+                aadharPhotoUri = request.aadharPhotoUri,
+                religion = adminReligion.trim(),
+                customerType = creditType,
+                creditDays = creditDays,
+                creditLimit = creditLimit,
+                addedByAgentId = assignedAgentId,
+                addedByAgentName = assignedAgentName,
+                notes = notesList.joinToString("\n")
+            )
+
+            repository.saveCustomer(newCustomer)
+            rtdbService.syncCustomer(newCustomer)
+
+            val adminName = currentEmployee.value?.name ?: "Admin"
+            rtdbService.approveRegistrationRequest(
+                requestId = request.id,
+                newCustomerId = nextId,
+                religion = adminReligion.trim(),
+                creditType = creditType,
+                creditDays = creditDays,
+                creditLimit = creditLimit,
+                assignedAgentId = assignedAgentId,
+                assignedAgentName = assignedAgentName,
+                approvedBy = adminName
+            )
+
+            val updatedReqs = rtdbService.fetchRegistrationRequests()
+            _registrationRequests.value = updatedReqs
+
+            launch(Dispatchers.Main) {
+                onComplete(nextId)
+            }
+        }
+    }
+
+    fun rejectRegistrationRequest(
+        request: CustomerRegistrationRequestEntity,
+        reason: String,
+        onComplete: () -> Unit = {}
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            rtdbService.rejectRegistrationRequest(request.id, reason)
+            val updatedReqs = rtdbService.fetchRegistrationRequests()
+            _registrationRequests.value = updatedReqs
+            launch(Dispatchers.Main) {
+                onComplete()
+            }
+        }
+    }
+
+    // Supplier Registration Requests Operations
+    fun approveSupplierRegistrationRequest(
+        request: SupplierRegistrationRequestEntity,
+        brand: String = "",
+        marketName: String = "",
+        type: String = "",
+        onComplete: (Long) -> Unit = {}
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val allSupps = repository.allSuppliers.first()
+            val maxId = allSupps.maxOfOrNull { it.id } ?: 0L
+            val nextId = maxId + 1L
+
+            val notesList = mutableListOf<String>()
+            if (request.bankName.isNotBlank()) {
+                notesList.add("Bank: ${request.bankName} | A/C: ${request.accountNumber} | IFSC: ${request.ifscCode}")
+            }
+            if (request.notes.isNotBlank()) {
+                notesList.add("Request Note: ${request.notes}")
+            }
+            if (request.district.isNotBlank() || request.state.isNotBlank() || request.pincode.isNotBlank()) {
+                notesList.add("Location: ${listOf(request.district, request.state, request.pincode).filter { it.isNotBlank() }.joinToString(", ")}")
+            }
+            notesList.add("Approved via Android App on ${SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date())}")
+
+            val finalBrand = brand.ifBlank { request.brand.ifBlank { request.firmName } }
+            val finalMarket = marketName.ifBlank { request.marketArea }
+            val finalType = type.ifBlank { request.type.ifBlank { "Manufacturer" } }
+
+            val newSupplier = SupplierEntity(
+                id = nextId,
+                supplierId = nextId.toString(),
+                firmName = request.firmName.ifBlank { request.name },
+                name = request.name.ifBlank { request.firmName },
+                contactPerson = request.contactPerson.ifBlank { request.name },
+                type = finalType,
+                brand = finalBrand,
+                phone = request.phone,
+                phone2 = request.phone2,
+                email = request.email,
+                address = request.address.ifBlank { request.officeAddress },
+                officeAddress = request.officeAddress.ifBlank { request.address },
+                marketArea = finalMarket,
+                marketName = finalMarket,
+                city = request.city.ifBlank { "Ahmedabad" },
+                officeLocation = request.mapLink,
+                productsMade = request.productsMade,
+                categories = request.categories,
+                priceRange = request.priceRange,
+                gstin = request.gstin,
+                panNumber = request.panNumber,
+                visitingCardPhotoUri = request.visitingCardPhotoUri,
+                shopPhotoUri = request.shopPhotoUri,
+                notes = notesList.joinToString("\n"),
+                createdAt = System.currentTimeMillis()
+            )
+
+            repository.saveSupplier(newSupplier)
+            rtdbService.syncSupplier(newSupplier)
+
+            val adminName = currentEmployee.value?.name ?: "Admin"
+            rtdbService.approveSupplierRegistrationRequest(
+                requestId = request.id,
+                newSupplierId = nextId,
+                brand = finalBrand,
+                marketName = finalMarket,
+                approvedBy = adminName
+            )
+
+            val updatedReqs = rtdbService.fetchSupplierRegistrationRequests()
+            _supplierRegistrationRequests.value = updatedReqs
+
+            launch(Dispatchers.Main) {
+                onComplete(nextId)
+            }
+        }
+    }
+
+    fun rejectSupplierRegistrationRequest(
+        request: SupplierRegistrationRequestEntity,
+        reason: String,
+        onComplete: () -> Unit = {}
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            rtdbService.rejectSupplierRegistrationRequest(request.id, reason)
+            val updatedReqs = rtdbService.fetchSupplierRegistrationRequests()
+            _supplierRegistrationRequests.value = updatedReqs
+            launch(Dispatchers.Main) {
+                onComplete()
             }
         }
     }

@@ -190,7 +190,7 @@ export function BrandsView() {
         </div>
       </div>
 
-      {/* Grid of Brands */}
+      {/* Brands Master List Table */}
       {filteredBrands.length === 0 ? (
         <Card className="flex flex-col items-center justify-center p-12 text-center border-dashed">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 mb-3">
@@ -206,104 +206,125 @@ export function BrandsView() {
           </Button>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filteredBrands.map((brand) => (
-            <Card key={brand.id} className="group relative overflow-hidden border border-zinc-200/80 p-4 transition-all hover:shadow-md dark:border-zinc-800">
-              <div className="flex items-start justify-between">
-                <div
-                  className="flex items-center gap-3 cursor-pointer flex-1"
-                  onClick={() => setSelectedBrandId(brand.id)}
-                >
-                  <div
-                    onClick={(e) => {
-                      if (brand.logoPhotoUri) {
-                        e.stopPropagation()
-                        setLightbox({
-                          open: true,
-                          url: brand.logoPhotoUri,
-                          title: `${brand.brandName || (brand as any).name || "Brand"} Logo`,
-                        })
-                      }
-                    }}
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-700 font-bold text-base dark:bg-amber-500/20 dark:text-amber-400 overflow-hidden border border-amber-200/50 dark:border-amber-800/50 ${
-                      brand.logoPhotoUri ? "cursor-pointer hover:ring-2 hover:ring-amber-500/50 hover:scale-105 transition-transform" : ""
-                    }`}
-                    title={brand.logoPhotoUri ? "Click to view full screen & download" : undefined}
-                  >
-                    {brand.logoPhotoUri ? (
-                      <img
-                        src={brand.logoPhotoUri}
-                        alt={brand.brandName}
-                        className="h-full w-full object-cover"
-                        onError={(e) => {
-                          (e.target as HTMLElement).style.display = "none"
-                        }}
-                      />
-                    ) : (
-                      (brand.brandName || (brand as any).name) ? (brand.brandName || (brand as any).name)[0].toUpperCase() : "B"
-                    )}
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-zinc-900 dark:text-zinc-50 line-clamp-1 hover:text-amber-600 transition-colors">
-                      {brand.brandName || (brand as any).name || "Brand"}
-                    </h4>
-                    <span className="inline-block text-[11px] font-medium text-amber-700 dark:text-amber-400">
-                      {brand.category || "Apparel"}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
-                  <Button
-                    variant="ghost"
-                    size="sm"
+        <div className="overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xs">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/80 text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                <tr>
+                  <th className="py-3 px-4">Brand</th>
+                  <th className="py-3 px-4">Category</th>
+                  <th className="py-3 px-4">Manufacturer / Mill</th>
+                  <th className="py-3 px-4">Description</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+                {filteredBrands.map((brand) => (
+                  <tr
+                    key={brand.id}
                     onClick={() => setSelectedBrandId(brand.id)}
-                    className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900"
-                    title="View Dedicated Details & Orders"
+                    className="hover:bg-amber-50/40 dark:hover:bg-amber-950/20 cursor-pointer transition-colors group"
                   >
-                    <Eye className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => openEditModal(brand)}
-                    className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900"
-                  >
-                    <Edit2 className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDelete(brand.id)}
-                    className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-
-              <div
-                className="mt-3 space-y-1.5 border-t border-zinc-100 pt-3 dark:border-zinc-800 text-xs cursor-pointer"
-                onClick={() => setSelectedBrandId(brand.id)}
-              >
-                <div className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-400">
-                  <Building2 className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                  <span className="truncate">
-                    {brand.manufacturerName ? (
-                      <span className="font-medium text-zinc-800 dark:text-zinc-200">{brand.manufacturerName}</span>
-                    ) : (
-                      <span className="italic text-zinc-400">Direct / Independent</span>
-                    )}
-                  </span>
-                </div>
-                {brand.description && (
-                  <p className="text-[11px] text-zinc-500 line-clamp-2 italic pt-1">
-                    "{brand.description}"
-                  </p>
-                )}
-              </div>
-            </Card>
-          ))}
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-3">
+                        <div
+                          onClick={(e) => {
+                            if (brand.logoPhotoUri) {
+                              e.stopPropagation()
+                              setLightbox({
+                                open: true,
+                                url: brand.logoPhotoUri,
+                                title: `${brand.brandName || (brand as any).name || "Brand"} Logo`,
+                              })
+                            }
+                          }}
+                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-700 font-bold text-sm dark:bg-amber-500/20 dark:text-amber-400 overflow-hidden border border-amber-200/60 dark:border-amber-800/60 ${
+                            brand.logoPhotoUri ? "cursor-pointer hover:ring-2 hover:ring-amber-500/50 hover:scale-105 transition-transform" : ""
+                          }`}
+                          title={brand.logoPhotoUri ? "Click to view full screen & download" : undefined}
+                        >
+                          {brand.logoPhotoUri ? (
+                            <img
+                              src={brand.logoPhotoUri}
+                              alt={brand.brandName}
+                              className="h-full w-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.display = "none"
+                              }}
+                            />
+                          ) : (
+                            (brand.brandName || (brand as any).name) ? (brand.brandName || (brand as any).name)[0].toUpperCase() : "B"
+                          )}
+                        </div>
+                        <div>
+                          <div className="font-bold text-zinc-900 dark:text-zinc-100 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+                            {brand.brandName || (brand as any).name || "Brand"}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <Badge variant="outline" className="text-[10px] font-semibold text-amber-800 dark:text-amber-400 border-amber-200 dark:border-amber-800/60 bg-amber-50/60 dark:bg-amber-950/30">
+                        {brand.category || "Apparel"}
+                      </Badge>
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300">
+                        <Building2 className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                        <span className="truncate max-w-xs font-medium">
+                          {brand.manufacturerName ? (
+                            brand.manufacturerName
+                          ) : (
+                            <span className="italic text-zinc-400 font-normal">Direct / Independent</span>
+                          )}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-3 px-4">
+                      {brand.description ? (
+                        <p className="text-[11px] text-zinc-500 line-clamp-1 italic max-w-md">
+                          "{brand.description}"
+                        </p>
+                      ) : (
+                        <span className="text-zinc-400">—</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-right whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSelectedBrandId(brand.id)}
+                          className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900"
+                          title="View Dedicated Details & Orders"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openEditModal(brand)}
+                          className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900"
+                          title="Edit Brand"
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(brand.id)}
+                          className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
+                          title="Delete Brand"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

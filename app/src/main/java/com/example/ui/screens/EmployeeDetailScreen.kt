@@ -2,6 +2,13 @@ package com.example.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,6 +28,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,6 +65,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,13 +73,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
 import com.example.data.local.entity.EmployeeEntity
 import com.example.data.local.entity.PurchaseEntryEntity
 import com.example.data.local.entity.VisitEntity
@@ -93,6 +108,38 @@ fun EmployeeDetailScreen(
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedFilterTab by remember { mutableStateOf("ALL") } // "ALL", "PENDING", "CLEARED", "VISITS"
+
+    val listState = rememberLazyListState()
+    var isProfileExpanded by remember { mutableStateOf(true) }
+
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            private var accumulatedDelta = 0f
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source == NestedScrollSource.UserInput) {
+                    val delta = available.y
+                    if (delta < -15f) {
+                        if (accumulatedDelta > 0) accumulatedDelta = 0f
+                        accumulatedDelta += delta
+                        if (accumulatedDelta < -25f) isProfileExpanded = false
+                    } else if (delta > 15f) {
+                        if (accumulatedDelta < 0) accumulatedDelta = 0f
+                        accumulatedDelta += delta
+                        if (accumulatedDelta > 20f) isProfileExpanded = true
+                    }
+                }
+                return Offset.Zero
+            }
+        }
+    }
+
+    LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, searchQuery) {
+        if (searchQuery.isNotBlank()) {
+            // Keep pinned
+        } else if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset <= 10) {
+            isProfileExpanded = true
+        }
+    }
 
     // All visits handled or assisted by this employee/agent
     val employeeVisits = remember(allVisits, employee.id, employee.name) {
@@ -208,364 +255,386 @@ fun EmployeeDetailScreen(
             )
         }
     ) { paddingValues ->
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(Color(0xFFF6F8FB))
+                .nestedScroll(nestedScrollConnection)
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(horizontal = 16.dp)
         ) {
-            // Cardless Hero Profile Header
-            item {
+            // 1. Collapsible Profile Details (above Search Bar)
+            AnimatedVisibility(
+                visible = isProfileExpanded && searchQuery.isBlank(),
+                enter = expandVertically(tween(240, easing = FastOutSlowInEasing)) + fadeIn(tween(200)),
+                exit = shrinkVertically(tween(220, easing = FastOutSlowInEasing)) + fadeOut(tween(180))
+            ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 4.dp, bottom = 4.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .padding(bottom = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // 66dp Hero Centered Circle Avatar
-                    Surface(
-                        shape = CircleShape,
-                        color = Color(0xFFEFF6FF),
-                        border = BorderStroke(2.dp, Color(0xFFBFDBFE)),
-                        modifier = Modifier.size(66.dp)
+                    // Cardless Hero Profile Header
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp, bottom = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.Person,
-                                contentDescription = null,
-                                tint = Color(0xFF2563EB),
-                                modifier = Modifier.size(34.dp)
-                            )
+                        // 66dp Hero Centered Circle Avatar
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFFEFF6FF),
+                            border = BorderStroke(2.dp, Color(0xFFBFDBFE)),
+                            modifier = Modifier.size(66.dp)
+                        ) {
+                            if (employee.photoUri.isNotBlank()) {
+                                AsyncImage(
+                                    model = employee.photoUri,
+                                    contentDescription = employee.name,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.Person,
+                                        contentDescription = null,
+                                        tint = Color(0xFF2563EB),
+                                        modifier = Modifier.size(34.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Text(
+                            text = employee.name,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0F172A),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Surface(
+                                color = if (employee.role.equals("Admin", ignoreCase = true)) Color(0xFFFEF3C7) else Color(0xFFEFF6FF),
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = employee.role,
+                                    color = if (employee.role.equals("Admin", ignoreCase = true)) Color(0xFF92400E) else Color(0xFF1D4ED8),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                )
+                            }
+                            if (employee.employeeId.isNotBlank()) {
+                                Surface(
+                                    color = Color(0xFFF1F5F9),
+                                    shape = RoundedCornerShape(4.dp),
+                                    border = BorderStroke(0.5.dp, Color(0xFFCBD5E1))
+                                ) {
+                                    Text(
+                                        text = "ID: ${employee.employeeId}",
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = Color(0xFF475569),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Action Pills: Phone & Email
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (employee.phone.isNotBlank()) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color(0xFFF0FDF4),
+                                    border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .clickable {
+                                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${employee.phone}"))
+                                            context.startActivity(intent)
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(Icons.Default.Call, contentDescription = "Call", tint = Color(0xFF059669), modifier = Modifier.size(13.dp))
+                                        Text(text = employee.phone, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF065F46))
+                                    }
+                                }
+                            }
+
+                            if (employee.email.isNotBlank()) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color(0xFFF8FAFC),
+                                    border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .clickable {
+                                            val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:${employee.email}"))
+                                            context.startActivity(intent)
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(Icons.Default.Email, contentDescription = "Email", tint = Color(0xFF475569), modifier = Modifier.size(13.dp))
+                                        Text(text = "Email", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
+                                    }
+                                }
+                            }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Text(
-                        text = employee.name,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF0F172A),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
+                    // Cardless Stats Row (NO cards around the numbers, clean typography with 1dp vertical dividers)
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Surface(
-                            color = if (employee.role.equals("Admin", ignoreCase = true)) Color(0xFFFEF3C7) else Color(0xFFEFF6FF),
-                            shape = RoundedCornerShape(4.dp)
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.clickable { selectedFilterTab = "ALL" }
                         ) {
                             Text(
-                                text = employee.role,
-                                color = if (employee.role.equals("Admin", ignoreCase = true)) Color(0xFF92400E) else Color(0xFF1D4ED8),
+                                text = "$totalEntriesCount",
+                                fontSize = 17.sp,
                                 fontWeight = FontWeight.Bold,
+                                color = Color(0xFF0F172A)
+                            )
+                            Text(
+                                text = "Orders",
                                 fontSize = 11.sp,
-                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                color = Color(0xFF64748B)
                             )
                         }
-                        if (employee.employeeId.isNotBlank()) {
-                            Surface(
-                                color = Color(0xFFF1F5F9),
-                                shape = RoundedCornerShape(4.dp),
-                                border = BorderStroke(0.5.dp, Color(0xFFCBD5E1))
-                            ) {
-                                Text(
-                                    text = "ID: ${employee.employeeId}",
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = Color(0xFF475569),
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                    }
 
-                    // Action Pills: Phone & Email
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (employee.phone.isNotBlank()) {
-                            Surface(
-                                shape = CircleShape,
-                                color = Color(0xFFF0FDF4),
-                                border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .clickable {
-                                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${employee.phone}"))
-                                        context.startActivity(intent)
-                                    }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Icon(Icons.Default.Call, contentDescription = "Call", tint = Color(0xFF059669), modifier = Modifier.size(13.dp))
-                                    Text(text = employee.phone, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF065F46))
-                                }
-                            }
-                        }
-
-                        if (employee.email.isNotBlank()) {
-                            Surface(
-                                shape = CircleShape,
-                                color = Color(0xFFF8FAFC),
-                                border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .clickable {
-                                        val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:${employee.email}"))
-                                        context.startActivity(intent)
-                                    }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Icon(Icons.Default.Email, contentDescription = "Email", tint = Color(0xFF475569), modifier = Modifier.size(13.dp))
-                                    Text(text = "Email", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Cardless Stats Row (NO cards around the numbers, clean typography with 1dp vertical dividers)
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.clickable { selectedFilterTab = "ALL" }
-                    ) {
-                        Text(
-                            text = "$totalEntriesCount",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF0F172A)
-                        )
-                        Text(
-                            text = "Orders",
-                            fontSize = 11.sp,
-                            color = Color(0xFF64748B)
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .height(24.dp)
-                            .width(1.dp)
-                            .background(Color(0xFFE2E8F0))
-                    )
-
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.clickable { selectedFilterTab = "PENDING" }
-                    ) {
-                        Text(
-                            text = "$pendingCount",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (pendingCount > 0) Color(0xFFDC2626) else Color(0xFF059669)
-                        )
-                        Text(
-                            text = "Pending",
-                            fontSize = 11.sp,
-                            color = Color(0xFF64748B)
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .height(24.dp)
-                            .width(1.dp)
-                            .background(Color(0xFFE2E8F0))
-                    )
-
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.clickable { selectedFilterTab = "CLEARED" }
-                    ) {
-                        Text(
-                            text = "$clearedCount",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF059669)
-                        )
-                        Text(
-                            text = "Cleared",
-                            fontSize = 11.sp,
-                            color = Color(0xFF64748B)
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .height(24.dp)
-                            .width(1.dp)
-                            .background(Color(0xFFE2E8F0))
-                    )
-
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.clickable { selectedFilterTab = "VISITS" }
-                    ) {
-                        Text(
-                            text = "$totalVisitsCount",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF2563EB)
-                        )
-                        Text(
-                            text = "Visits",
-                            fontSize = 11.sp,
-                            color = Color(0xFF64748B)
-                        )
-                    }
-                }
-            }
-
-            // Extended details card: territory, addresses, emergency
-            val hasExtendedDetails = employee.assignedMarkets.isNotBlank() ||
-                    employee.currentAddress.isNotBlank() ||
-                    employee.emergencyContactPhone.isNotBlank() ||
-                    employee.referredBy.isNotBlank()
-
-            if (hasExtendedDetails) {
-                item {
-                    Surface(
-                        color = Color(0xFFF8FAFC),
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            if (employee.assignedMarkets.isNotBlank()) {
-                                Row(verticalAlignment = Alignment.Top) {
-                                    Text("Territory: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
-                                    Text(employee.assignedMarkets, fontSize = 11.sp, color = Color(0xFF0F766E), fontWeight = FontWeight.Medium)
-                                }
-                            }
-                            if (employee.currentAddress.isNotBlank()) {
-                                Row(verticalAlignment = Alignment.Top) {
-                                    Text("Address: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
-                                    Text(employee.currentAddress, fontSize = 11.sp, color = Color(0xFF1E293B))
-                                }
-                            }
-                            if (employee.emergencyContactPhone.isNotBlank()) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.clickable {
-                                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${employee.emergencyContactPhone}"))
-                                        context.startActivity(intent)
-                                    }
-                                ) {
-                                    Text("Emergency: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDC2626))
-                                    Text("${employee.emergencyContactName.ifBlank { "Contact" }} (${employee.emergencyContactPhone})", fontSize = 11.sp, color = Color(0xFFB91C1C), fontWeight = FontWeight.SemiBold)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Compact 36dp Pill Search Bar
-            item {
-                Surface(
-                    shape = CircleShape,
-                    color = Color.White,
-                    border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(36.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = Color(0xFF64748B)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
                         Box(
-                            modifier = Modifier.weight(1f),
-                            contentAlignment = Alignment.CenterStart
+                            modifier = Modifier
+                                .height(24.dp)
+                                .width(1.dp)
+                                .background(Color(0xFFE2E8F0))
+                        )
+
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.clickable { selectedFilterTab = "PENDING" }
                         ) {
-                            if (searchQuery.isEmpty()) {
-                                Text(
-                                    text = "Search Customer, Order #, Item, Supplier...",
-                                    fontSize = 12.sp,
-                                    color = Color(0xFF94A3B8),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            BasicTextField(
-                                value = searchQuery,
-                                onValueChange = { searchQuery = it },
-                                singleLine = true,
-                                textStyle = androidx.compose.ui.text.TextStyle(
-                                    fontSize = 12.sp,
-                                    color = Color(0xFF0F172A),
-                                    fontWeight = FontWeight.Medium
-                                ),
-                                cursorBrush = androidx.compose.ui.graphics.SolidColor(Color(0xFF2563EB)),
-                                modifier = Modifier.fillMaxWidth()
+                            Text(
+                                text = "$pendingCount",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (pendingCount > 0) Color(0xFFDC2626) else Color(0xFF059669)
+                            )
+                            Text(
+                                text = "Pending",
+                                fontSize = 11.sp,
+                                color = Color(0xFF64748B)
                             )
                         }
-                        if (searchQuery.isNotEmpty()) {
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Box(
-                                modifier = Modifier
-                                    .size(18.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFFE2E8F0))
-                                    .clickable { searchQuery = "" },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Clear,
-                                    contentDescription = "Clear",
-                                    modifier = Modifier.size(11.dp),
-                                    tint = Color(0xFF475569)
-                                )
+
+                        Box(
+                            modifier = Modifier
+                                .height(24.dp)
+                                .width(1.dp)
+                                .background(Color(0xFFE2E8F0))
+                        )
+
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.clickable { selectedFilterTab = "CLEARED" }
+                        ) {
+                            Text(
+                                text = "$clearedCount",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF059669)
+                            )
+                            Text(
+                                text = "Cleared",
+                                fontSize = 11.sp,
+                                color = Color(0xFF64748B)
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .height(24.dp)
+                                .width(1.dp)
+                                .background(Color(0xFFE2E8F0))
+                        )
+
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.clickable { selectedFilterTab = "VISITS" }
+                        ) {
+                            Text(
+                                text = "$totalVisitsCount",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF2563EB)
+                            )
+                            Text(
+                                text = "Visits",
+                                fontSize = 11.sp,
+                                color = Color(0xFF64748B)
+                            )
+                        }
+                    }
+
+                    // Extended details card: territory, addresses, emergency
+                    val hasExtendedDetails = employee.assignedMarkets.isNotBlank() ||
+                            employee.currentAddress.isNotBlank() ||
+                            employee.emergencyContactPhone.isNotBlank() ||
+                            employee.referredBy.isNotBlank()
+
+                    if (hasExtendedDetails) {
+                        Surface(
+                            color = Color(0xFFF8FAFC),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                if (employee.assignedMarkets.isNotBlank()) {
+                                    Row(verticalAlignment = Alignment.Top) {
+                                        Text("Territory: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                        Text(employee.assignedMarkets, fontSize = 11.sp, color = Color(0xFF0F766E), fontWeight = FontWeight.Medium)
+                                    }
+                                }
+                                if (employee.currentAddress.isNotBlank()) {
+                                    Row(verticalAlignment = Alignment.Top) {
+                                        Text("Address: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                        Text(employee.currentAddress, fontSize = 11.sp, color = Color(0xFF1E293B))
+                                    }
+                                }
+                                if (employee.emergencyContactPhone.isNotBlank()) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.clickable {
+                                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${employee.emergencyContactPhone}"))
+                                            context.startActivity(intent)
+                                        }
+                                    ) {
+                                        Text("Emergency: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDC2626))
+                                        Text("${employee.emergencyContactName.ifBlank { "Contact" }} (${employee.emergencyContactPhone})", fontSize = 11.sp, color = Color(0xFFB91C1C), fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
 
-            // Unboxed Segment Filter Chips
-            item {
+            // 2. Compact 36dp Pill Search Bar (Fixed / Pinned directly below Hero)
+            Surface(
+                shape = CircleShape,
+                color = Color.White,
+                border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+            ) {
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        .fillMaxSize()
+                        .padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = Color(0xFF64748B)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier.weight(1f),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        if (searchQuery.isEmpty()) {
+                            Text(
+                                text = "Search Customer, Order #, Item, Supplier...",
+                                fontSize = 12.sp,
+                                color = Color(0xFF94A3B8),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        BasicTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            singleLine = true,
+                            textStyle = androidx.compose.ui.text.TextStyle(
+                                fontSize = 12.sp,
+                                color = Color(0xFF0F172A),
+                                fontWeight = FontWeight.Medium
+                            ),
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(Color(0xFF2563EB)),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    if (searchQuery.isNotEmpty()) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(18.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFE2E8F0))
+                                .clickable { searchQuery = "" },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Clear,
+                                contentDescription = "Clear",
+                                modifier = Modifier.size(11.dp),
+                                tint = Color(0xFF475569)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 3. LazyColumn for List items & Filters
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Unboxed Segment Filter Chips
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                     listOf(
                         "ALL" to "All ($totalEntriesCount)",
                         "PENDING" to "Pending ($pendingCount)",
@@ -693,6 +762,7 @@ fun EmployeeDetailScreen(
             }
         }
     }
+}
 }
 
 @Composable

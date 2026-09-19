@@ -62,6 +62,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import com.example.ui.components.DeliveryDaysSelector
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -400,16 +401,15 @@ fun AddPurchaseEntryDialog(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 // Delivery info
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = expectedDeliveryDate,
-                        onValueChange = { expectedDeliveryDate = it },
-                        label = { Text("Exp Delivery", fontSize = 11.sp) },
-                        textStyle = TextStyle(fontSize = 12.5.sp),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.weight(1f),
-                        singleLine = true
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    DeliveryDaysSelector(
+                        expectedDeliveryDate = expectedDeliveryDate,
+                        onDeliveryDateChange = { expectedDeliveryDate = it }
                     )
+
                     OutlinedTextField(
                         value = transporter,
                         onValueChange = { transporter = it },
@@ -417,7 +417,7 @@ fun AddPurchaseEntryDialog(
                         placeholder = { Text("e.g. VRL / Jaipur Golden", fontSize = 11.5.sp) },
                         textStyle = TextStyle(fontSize = 12.5.sp),
                         shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.weight(1.2f),
+                        modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
                 }

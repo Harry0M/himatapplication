@@ -32,7 +32,8 @@ import {
   XCircle,
   AlertTriangle,
   MessageSquare,
-  Landmark
+  Landmark,
+  Eye
 } from "lucide-react"
 import { useData } from "../context/DataContext"
 import { useAuth } from "../context/AuthContext"
@@ -43,6 +44,7 @@ import { Badge } from "../components/ui/Badge"
 import { Dialog } from "../components/ui/Dialog"
 import { Input } from "../components/ui/Input"
 import { ReferrerSelectModal } from "../components/ui/ReferrerSelectModal"
+import { ImageLightboxModal } from "../components/ui/ImageLightboxModal"
 import { Tabs } from "../components/ui/Tabs"
 import { Customer, CustomerContact, CustomerOutlet, Visit, CustomerRegistrationRequest } from "../types"
 import { GARMENT_CATEGORIES } from "../lib/constants"
@@ -94,6 +96,7 @@ export function CustomersView() {
   const [approvalCreditType, setApprovalCreditType] = useState<"Cash" | "Credit">("Cash")
   const [approvalCreditDays, setApprovalCreditDays] = useState<number>(30)
   const [approvalCreditLimit, setApprovalCreditLimit] = useState<number>(0)
+  const [approvalReligion, setApprovalReligion] = useState<string>("")
   const [isApproving, setIsApproving] = useState<boolean>(false)
   const [rejectModal, setRejectModal] = useState<{
     open: boolean
@@ -105,6 +108,18 @@ export function CustomersView() {
     reason: "",
   })
   const [isRejecting, setIsRejecting] = useState<boolean>(false)
+
+  const [selectedRequestForDetails, setSelectedRequestForDetails] = useState<CustomerRegistrationRequest | null>(null)
+  const [lightbox, setLightbox] = useState<{ open: boolean; url: string; title: string }>({
+    open: false,
+    url: "",
+    title: "",
+  })
+
+  // Synced detail request
+  const activeDetailRequest = selectedRequestForDetails
+    ? registrationRequests.find((r) => String(r.id) === String(selectedRequestForDetails.id)) || selectedRequestForDetails
+    : null
 
   const [search, setSearch] = useState<string>("")
   const [showSearch, setShowSearch] = useState<boolean>(false)
@@ -558,7 +573,7 @@ export function CustomersView() {
       req.phone?.includes(q) ||
       req.city?.toLowerCase().includes(q) ||
       req.gstin?.toLowerCase().includes(q) ||
-      req.id?.toLowerCase().includes(q)
+      String(req.id || "").toLowerCase().includes(q)
     )
   })
 
@@ -572,11 +587,19 @@ export function CustomersView() {
     setApprovalCreditType((req.creditType as "Cash" | "Credit") || "Cash")
     setApprovalCreditDays(req.creditDays || 30)
     setApprovalCreditLimit(req.creditLimit || 0)
+    setApprovalReligion(req.religion || "")
+  }
+
+  const getPublicRegistrationUrl = () => {
+    if (typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")) {
+      return "https://himatsms.web.app/#/register-customer"
+    }
+    return `${window.location.origin}/#/register-customer`
   }
 
   const buildRegistrationInviteMessage = () => {
-    const regUrl = `${window.location.origin}/#/register-customer`
-    return `नमस्कार!\nश्री हिम्मत ट्रेडिंग कंपनी के साथ नया व्यापारिक खाता खोलने के लिए कृपया नीचे दिए गए लिंक पर अपनी व्यावसायिक जानकारी एवं आवश्यक विवरण भरें:\n\n${regUrl}\n\nधन्यवाद!\nश्री हिम्मत ट्रेडिंग कंपनी, अहमदाबाद`
+    const regUrl = getPublicRegistrationUrl()
+    return `नमस्कार!\nहिम्मत टेक्सटाइल (Himat Textile) के साथ नया व्यापारिक खाता खोलने के लिए कृपया नीचे दिए गए लिंक पर अपनी व्यावसायिक जानकारी एवं आवश्यक विवरण भरें:\n\n${regUrl}\n\nधन्यवाद!\nहिम्मत टेक्सटाइल, अहमदाबाद`
   }
 
   const buildApprovalWelcomeMessage = (
@@ -585,12 +608,12 @@ export function CustomersView() {
     agentName?: string
   ) => {
     const custCode = createdId || req.createdCustomerId || ""
-    const salesman = agentName || req.assignedAgentName || "श्री हिम्मत टीम"
-    return `प्रिय ${req.name} जी (${req.firmName}),\nबधाई हो! श्री हिम्मत ट्रेडिंग कंपनी में आपका व्यापारिक खाता सफलतापूर्वक स्वीकृत (Approve) कर दिया गया है।\n\n🆔 ग्राहक क्रमांक (Customer ID): #CUST-${custCode}\n🤵 आपके प्रतिनिधि (Sales Agent): ${salesman}\n📦 खाता प्रकार: ${req.creditType || "Cash"} ${req.creditDays ? `(${req.creditDays} दिन)` : ""}\n\nकिसी भी आर्डर या जानकारी के लिए आप अपने प्रतिनिधि या हमारे कार्यालय से संपर्क कर सकते हैं।\n\nहार्दिक शुभकामनाएं!\nश्री हिम्मत ट्रेडिंग कंपनी, अहमदाबाद`
+    const salesman = agentName || req.assignedAgentName || "हिम्मत टेक्सटाइल टीम"
+    return `प्रिय ${req.name} जी (${req.firmName}),\nबधाई हो! हिम्मत टेक्सटाइल (Himat Textile) में आपका व्यापारिक खाता सफलतापूर्वक स्वीकृत (Approve) कर दिया गया है।\n\n🆔 ग्राहक क्रमांक (Customer ID): #CUST-${custCode}\n🤵 आपके प्रतिनिधि (Sales Agent): ${salesman}\n📦 खाता प्रकार: ${req.creditType || "Cash"} ${req.creditDays ? `(${req.creditDays} दिन)` : ""}\n\nकिसी भी आर्डर या जानकारी के लिए आप अपने प्रतिनिधि या हमारे कार्यालय से संपर्क कर सकते हैं।\n\nहार्दिक शुभकामनाएं!\nहिम्मत टेक्सटाइल, अहमदाबाद`
   }
 
   const buildRejectionMessage = (req: CustomerRegistrationRequest) => {
-    return `प्रिय ${req.name} जी (${req.firmName}),\nश्री हिम्मत ट्रेडिंग कंपनी में आपके पंजीकरण आवेदन के संदर्भ में:\n\nवर्तमान में आपका आवेदन निम्नलिखित कारण से स्वीकृत नहीं हो सका है:\n"${req.rejectionReason || "अपूर्ण विवरण / सत्यापन समस्या"}"\n\nकृपया सही दस्तावेजों एवं विवरण के साथ पुनः आवेदन करें या अधिक जानकारी के लिए हमसे संपर्क करें।\n\nधन्यवाद!\nश्री हिम्मत ट्रेडिंग कंपनी`
+    return `प्रिय ${req.name} जी (${req.firmName}),\nहिम्मत टेक्सटाइल (Himat Textile) में आपके पंजीकरण आवेदन के संदर्भ में:\n\nवर्तमान में आपका आवेदन निम्नलिखित कारण से स्वीकृत नहीं हो सका है:\n"${req.rejectionReason || "अपूर्ण विवरण / सत्यापन समस्या"}"\n\nकृपया सही दस्तावेजों एवं विवरण के साथ पुनः आवेदन करें या अधिक जानकारी के लिए हमसे संपर्क करें।\n\nधन्यवाद!\nहिम्मत टेक्सटाइल`
   }
 
   const handleConfirmApproval = async () => {
@@ -605,6 +628,8 @@ export function CustomersView() {
         creditType: approvalCreditType,
         creditDays: approvalCreditDays,
         creditLimit: approvalCreditLimit,
+        religion: approvalReligion.trim(),
+        fallbackRequest: currentReq,
       })
       setSelectedRequestForApproval(null)
       setApprovedSuccessData({
@@ -629,7 +654,7 @@ export function CustomersView() {
     if (!rejectModal.request) return
     setIsRejecting(true)
     try {
-      await rejectRegistrationRequest(rejectModal.request.id, rejectModal.reason)
+      await rejectRegistrationRequest(rejectModal.request.id, rejectModal.reason, rejectModal.request.phone)
       setRejectModal({ open: false, request: null, reason: "" })
     } catch (err: any) {
       console.error("Reject error:", err)
@@ -639,14 +664,14 @@ export function CustomersView() {
     }
   }
 
-  const handleDeleteRequest = async (id: string) => {
+  const handleDeleteRequest = async (id: string, phone?: string) => {
     if (window.confirm("Are you sure you want to delete this customer registration request?")) {
-      await deleteRegistrationRequest(id)
+      await deleteRegistrationRequest(id, phone)
     }
   }
 
   const handleCopyRegistrationLink = () => {
-    const url = `${window.location.origin}/#/register-customer`
+    const url = getPublicRegistrationUrl()
     navigator.clipboard.writeText(url)
     setCopiedLink(true)
     setTimeout(() => setCopiedLink(false), 3000)
@@ -791,10 +816,9 @@ export function CustomersView() {
           )}
 
           {viewMode === "customers" ? (
-            /* Customer Cards Grid */
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredCustomers.length === 0 ? (
-              <div className="col-span-full p-12 text-center border border-dashed rounded-2xl">
+            /* Active Customers Master List View */
+            filteredCustomers.length === 0 ? (
+              <div className="p-12 text-center border border-dashed rounded-2xl bg-white dark:bg-zinc-900/40">
                 <Store className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-60" />
                 <h3 className="font-semibold text-sm">No customer records found</h3>
                 <p className="text-xs text-muted-foreground max-w-sm mx-auto mt-1">
@@ -806,507 +830,860 @@ export function CustomersView() {
                 </Button>
               </div>
             ) : (
-              filteredCustomers.map((cust) => {
-                const hasGst = Boolean(cust.gstin || cust.gstNumber)
-                const outletCount = (cust.outlets && cust.outlets.length) || cust.shopCount || 1
-                const primaryPhone = cust.phone || (cust.contacts && cust.contacts[0]?.phone) || ""
+              <div className="overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xs">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/80 text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                        <th className="py-3 px-4">Firm & Proprietor</th>
+                        <th className="py-3 px-4">City & Market</th>
+                        <th className="py-3 px-4">Contact Phone</th>
+                        <th className="py-3 px-4">Terms</th>
+                        <th className="py-3 px-4">GST / Outlets</th>
+                        <th className="py-3 px-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+                      {filteredCustomers.map((cust) => {
+                        const hasGst = Boolean(cust.gstin || cust.gstNumber)
+                        const outletCount = (cust.outlets && cust.outlets.length) || cust.shopCount || 1
+                        const primaryPhone = cust.phone || (cust.contacts && cust.contacts[0]?.phone) || ""
 
-                return (
-                  <Card
-                    key={cust.id}
-                    className="group relative flex flex-col justify-between p-4 border border-zinc-200/80 dark:border-zinc-800 hover:shadow-md transition-all"
-                  >
-                    <div
-                      className="cursor-pointer"
-                      onClick={() => setSelectedCustomerId(cust.id)}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-700 font-bold text-sm dark:bg-indigo-500/20 dark:text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                            {(cust.firmName || cust.name || "C")[0].toUpperCase()}
-                          </div>
-                          <div className="min-w-0">
-                            <h4 className="font-bold text-sm text-zinc-900 dark:text-zinc-50 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                              {cust.firmName || cust.name}
-                            </h4>
-                            <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 truncate">
-                              <User className="h-3 w-3 shrink-0" />
-                              <span>{cust.name || "Proprietor"}</span>
-                              {cust.customerId && (
-                                <span className="font-mono text-[10px] text-zinc-400 font-semibold">
-                                  • {cust.customerId}
+                        return (
+                          <tr
+                            key={cust.id}
+                            onClick={() => setSelectedCustomerId(cust.id)}
+                            className="hover:bg-indigo-50/30 dark:hover:bg-indigo-950/20 cursor-pointer transition-colors group"
+                          >
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2.5">
+                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-700 font-bold text-xs dark:bg-indigo-500/20 dark:text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                                  {(cust.firmName || cust.name || "C")[0].toUpperCase()}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="font-bold text-sm text-zinc-900 dark:text-zinc-50 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate">
+                                    {cust.firmName || cust.name}
+                                  </p>
+                                  <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 truncate">
+                                    <User className="h-3 w-3 shrink-0" />
+                                    <span>{cust.name || "Proprietor"}</span>
+                                    {cust.customerId && (
+                                      <span className="font-mono text-[10px] text-zinc-400 font-semibold">
+                                        • {cust.customerId}
+                                      </span>
+                                    )}
+                                  </p>
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-4">
+                              <p className="font-medium text-zinc-800 dark:text-zinc-200">
+                                {cust.city || "Ahmedabad"}
+                              </p>
+                              <p className="text-[11px] text-muted-foreground truncate">
+                                {cust.marketArea || cust.address || "Main Bazaar"}
+                              </p>
+                            </td>
+
+                            <td className="py-3 px-4 whitespace-nowrap">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-medium text-zinc-800 dark:text-zinc-200">
+                                  {primaryPhone || "N/A"}
                                 </span>
+                                {cust.contacts && cust.contacts.length > 1 && (
+                                  <span className="text-[10px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 px-1.5 py-0.5 rounded-full">
+                                    +{cust.contacts.length - 1}
+                                  </span>
+                                )}
+                                {primaryPhone && (
+                                  <a
+                                    href={`https://wa.me/91${primaryPhone.replace(/\D/g, "").slice(-10)}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="p-1 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/50"
+                                    title="Chat on WhatsApp"
+                                  >
+                                    <MessageSquare className="h-3.5 w-3.5" />
+                                  </a>
+                                )}
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-4 whitespace-nowrap">
+                              <Badge
+                                variant={cust.customerType === "Credit" ? "warning" : "default"}
+                                className="text-[10px] uppercase font-bold"
+                              >
+                                {cust.customerType || "Cash"}
+                                {cust.creditDays ? ` (${cust.creditDays}d)` : ""}
+                              </Badge>
+                            </td>
+
+                            <td className="py-3 px-4 whitespace-nowrap">
+                              <p className="text-[11px] text-zinc-700 dark:text-zinc-300">
+                                {outletCount} {outletCount === 1 ? "Outlet" : "Outlets"}
+                              </p>
+                              {hasGst ? (
+                                <span className="font-mono text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold block">
+                                  {cust.gstin || cust.gstNumber}
+                                </span>
+                              ) : (
+                                <span className="italic text-[10px] text-zinc-400 block">Unregistered</span>
                               )}
-                            </p>
-                          </div>
-                        </div>
+                            </td>
 
-                        <Badge
-                          variant={cust.customerType === "Credit" ? "warning" : "default"}
-                          className="text-[10px] uppercase font-bold shrink-0"
-                        >
-                          {cust.customerType || "Cash"}
-                        </Badge>
-                      </div>
+                            <td className="py-3 px-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleGenerateCustomerReport(cust)}
+                                  className="h-7 text-xs px-2 text-indigo-600 dark:text-indigo-400 font-medium"
+                                  title="View Day Report & WhatsApp Copy"
+                                >
+                                  <Printer className="h-3 w-3 mr-1" />
+                                  Report
+                                </Button>
 
-                      <div className="mt-3.5 space-y-1.5 text-xs text-zinc-600 dark:text-zinc-300">
-                        <div className="flex items-center gap-1.5">
-                          <MapPin className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                          <span className="truncate">
-                            {cust.city || "Ahmedabad"}{cust.state ? `, ${cust.state}` : ""}
-                            {cust.pincode ? ` (${cust.pincode})` : ""}
-                          </span>
-                        </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setSelectedCustomerId(cust.id)}
+                                  className="h-7 text-xs font-medium"
+                                >
+                                  <Info className="h-3 w-3 mr-1" />
+                                  Profile
+                                </Button>
 
-                        {primaryPhone && (
-                          <div className="flex items-center justify-between text-xs">
-                            <div className="flex items-center gap-1.5 font-medium text-zinc-800 dark:text-zinc-200">
-                              <Phone className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                              <span>{primaryPhone}</span>
-                            </div>
-                            {cust.contacts && cust.contacts.length > 1 && (
-                              <span className="text-[10px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 px-1.5 py-0.5 rounded-full">
-                                +{cust.contacts.length - 1} lines
-                              </span>
-                            )}
-                          </div>
-                        )}
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleOpenEdit(cust)}
+                                  className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900"
+                                  title="Edit Customer"
+                                >
+                                  <Edit2 className="h-3.5 w-3.5" />
+                                </Button>
 
-                        <div className="flex items-center justify-between text-[11px] pt-1 text-muted-foreground">
-                          <span>{outletCount} {outletCount === 1 ? "Outlet" : "Outlets"}</span>
-                          {hasGst ? (
-                            <span className="font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
-                              GST: {cust.gstin || cust.gstNumber}
-                            </span>
-                          ) : (
-                            <span className="italic text-zinc-400">Unregistered</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Bottom Actions */}
-                    <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between gap-1.5">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleGenerateCustomerReport(cust)}
-                        className="h-7 text-xs px-2 text-indigo-600 dark:text-indigo-400 font-medium"
-                        title="View Day Report & WhatsApp Copy"
-                      >
-                        <Printer className="h-3 w-3 mr-1" />
-                        Report
-                      </Button>
-
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setSelectedCustomerId(cust.id)}
-                        className="flex-1 h-7 text-xs font-medium"
-                      >
-                        <Info className="h-3 w-3 mr-1" />
-                        Full Profile
-                      </Button>
-
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleOpenEdit(cust)}
-                        className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900"
-                        title="Edit Customer"
-                      >
-                        <Edit2 className="h-3.5 w-3.5" />
-                      </Button>
-
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleDelete(cust.id)}
-                        className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
-                        title="Delete Customer"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </Card>
-                )
-              })
-            )}
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleDelete(cust.id)}
+                                  className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
+                                  title="Delete Customer"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            ) : (
-              /* Registration Requests (User Requests) View */
-              <div className="space-y-4">
-                {/* Sub-status filters */}
-                <div className="flex items-center gap-2 overflow-x-auto pb-1">
-                  {(["ALL", "PENDING", "APPROVED", "REJECTED"] as const).map((st) => {
-                    const count =
-                      st === "ALL"
-                        ? registrationRequests.length
-                        : registrationRequests.filter((r) => r.status === st).length
+            )
+          ) : (
+            /* Registration Requests (User Requests) Master List View */
+            <div className="space-y-4">
+              {/* Sub-status filters */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                {(["ALL", "PENDING", "APPROVED", "REJECTED"] as const).map((st) => {
+                  const count =
+                    st === "ALL"
+                      ? registrationRequests.length
+                      : registrationRequests.filter((r) => r.status === st).length
 
-                    const isSelected = requestFilterStatus === st
-                    return (
-                      <button
-                        key={st}
-                        type="button"
-                        onClick={() => setRequestFilterStatus(st)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all border ${
+                  const isSelected = requestFilterStatus === st
+                  return (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => setRequestFilterStatus(st)}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all border ${
+                        isSelected
+                          ? st === "PENDING"
+                            ? "bg-amber-500 text-white border-amber-500 shadow-sm"
+                            : st === "APPROVED"
+                            ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                            : st === "REJECTED"
+                            ? "bg-rose-600 text-white border-rose-600 shadow-sm"
+                            : "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-transparent shadow-sm"
+                          : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-700"
+                      }`}
+                    >
+                      <span>
+                        {st === "ALL"
+                          ? "All Requests"
+                          : st === "PENDING"
+                          ? "Pending Review"
+                          : st === "APPROVED"
+                          ? "Approved"
+                          : "Rejected"}
+                      </span>
+                      <span
+                        className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
                           isSelected
-                            ? st === "PENDING"
-                              ? "bg-amber-500 text-white border-amber-500 shadow-sm"
-                              : st === "APPROVED"
-                              ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
-                              : st === "REJECTED"
-                              ? "bg-rose-600 text-white border-rose-600 shadow-sm"
-                              : "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-transparent shadow-sm"
-                            : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-700"
+                            ? "bg-white/20 text-white"
+                            : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
                         }`}
                       >
-                        <span>
-                          {st === "ALL"
-                            ? "All Requests"
-                            : st === "PENDING"
-                            ? "Pending Review"
-                            : st === "APPROVED"
-                            ? "Approved"
-                            : "Rejected"}
-                        </span>
-                        <span
-                          className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                            isSelected
-                              ? "bg-white/20 text-white"
-                              : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
-                          }`}
-                        >
-                          {count}
-                        </span>
-                      </button>
-                    )
-                  })}
+                        {count}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+
+              {filteredRequests.length === 0 ? (
+                <div className="p-12 text-center border border-dashed border-zinc-200 dark:border-zinc-800 rounded-2xl bg-white dark:bg-zinc-900/40">
+                  <User className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-60" />
+                  <h3 className="font-semibold text-sm">No registration requests found</h3>
+                  <p className="text-xs text-muted-foreground max-w-sm mx-auto mt-1">
+                    {search
+                      ? "No customer applications match your search query."
+                      : "Share your onboarding link with retail buyers to receive self-registration applications with SMS OTP verification."}
+                  </p>
+                  <Button
+                    onClick={() => setIsShareLinkModalOpen(true)}
+                    variant="outline"
+                    size="sm"
+                    className="mt-4 text-xs gap-1.5 border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50"
+                  >
+                    <Share2 className="h-3.5 w-3.5" />
+                    Share Registration Link
+                  </Button>
                 </div>
+              ) : (
+                <div className="overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xs">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/80 text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                          <th className="py-3 px-4">Firm & Proprietor</th>
+                          <th className="py-3 px-4">Mobile & Contacts</th>
+                          <th className="py-3 px-4">City / Market</th>
+                          <th className="py-3 px-4">Submitted</th>
+                          <th className="py-3 px-4">Status</th>
+                          <th className="py-3 px-4 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+                        {filteredRequests.map((req) => {
+                          const isPending = req.status === "PENDING"
+                          const isApproved = req.status === "APPROVED"
+                          const isRejected = req.status === "REJECTED"
 
-                {/* Requests Cards List */}
-                {filteredRequests.length === 0 ? (
-                  <div className="p-12 text-center border border-dashed border-zinc-200 dark:border-zinc-800 rounded-2xl bg-white dark:bg-zinc-900/40">
-                    <User className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-60" />
-                    <h3 className="font-semibold text-sm">No registration requests found</h3>
-                    <p className="text-xs text-muted-foreground max-w-sm mx-auto mt-1">
-                      {search
-                        ? "No customer applications match your search query."
-                        : "Share your onboarding link with retail buyers to receive self-registration applications with SMS OTP verification."}
-                    </p>
-                    <Button
-                      onClick={() => setIsShareLinkModalOpen(true)}
-                      variant="outline"
-                      size="sm"
-                      className="mt-4 text-xs gap-1.5 border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50"
-                    >
-                      <Share2 className="h-3.5 w-3.5" />
-                      Share Registration Link
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-3.5">
-                    {filteredRequests.map((req) => {
-                      const isPending = req.status === "PENDING"
-                      const isApproved = req.status === "APPROVED"
-                      const isRejected = req.status === "REJECTED"
+                          return (
+                            <tr
+                              key={req.id}
+                              onClick={() => setSelectedRequestForDetails(req)}
+                              className="hover:bg-indigo-50/30 dark:hover:bg-indigo-950/20 cursor-pointer transition-colors group"
+                            >
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-700 font-bold text-xs dark:bg-indigo-500/20 dark:text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                                    {(req.firmName || req.name || "R")[0].toUpperCase()}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="font-bold text-sm text-zinc-900 dark:text-zinc-50 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate">
+                                      {req.firmName || req.name}
+                                    </p>
+                                    <p className="text-[11px] text-muted-foreground flex items-center gap-1 truncate">
+                                      <User className="h-3 w-3 shrink-0" />
+                                      <span>{req.name}</span>
+                                      <span className="font-mono text-[10px] text-zinc-400 font-normal">
+                                        • {req.id}
+                                      </span>
+                                    </p>
+                                  </div>
+                                </div>
+                              </td>
 
-                      return (
-                        <Card
-                          key={req.id}
-                          className={`p-4 sm:p-5 border transition-all ${
-                            isPending
-                              ? "border-amber-200/80 dark:border-amber-900/50 bg-amber-50/10 dark:bg-amber-950/10 hover:shadow-md"
-                              : isApproved
-                              ? "border-emerald-200/80 dark:border-emerald-900/50 bg-emerald-50/10 dark:bg-emerald-950/10"
-                              : "border-zinc-200 dark:border-zinc-800 opacity-80"
-                          }`}
-                        >
-                          <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                            {/* Left: Details */}
-                            <div className="space-y-3 flex-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                                  <Store className="h-4 w-4 text-indigo-600" />
-                                  <span>{req.firmName || req.name}</span>
-                                </h3>
-                                <Badge variant="outline" className="font-mono text-[10px] text-zinc-500">
-                                  {req.id}
-                                </Badge>
+                              <td className="py-3 px-4 whitespace-nowrap">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono font-semibold text-zinc-800 dark:text-zinc-200">
+                                    +91 {req.phone}
+                                  </span>
+                                  {req.phoneVerified && (
+                                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.2 rounded">
+                                      ✓ Verified
+                                    </span>
+                                  )}
+                                  <a
+                                    href={`https://wa.me/91${req.phone.replace(/\D/g, "").slice(-10)}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="p-1 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/50"
+                                    title="Direct WhatsApp Chat"
+                                  >
+                                    <MessageSquare className="h-3.5 w-3.5" />
+                                  </a>
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-4">
+                                <p className="font-medium text-zinc-800 dark:text-zinc-200">
+                                  {req.city || "Ahmedabad"}
+                                </p>
+                                <p className="text-[11px] text-muted-foreground truncate">
+                                  {req.marketArea ? req.marketArea : req.address}
+                                </p>
+                              </td>
+
+                              <td className="py-3 px-4 whitespace-nowrap text-[11px] text-muted-foreground">
+                                {formatDate(req.createdAt)}
+                              </td>
+
+                              <td className="py-3 px-4 whitespace-nowrap">
                                 {isPending && (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
                                     <Clock className="h-3 w-3" />
                                     Pending Review
                                   </span>
                                 )}
                                 {isApproved && (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
                                     <CheckCircle2 className="h-3 w-3" />
                                     Approved
+                                    {req.createdCustomerId && (
+                                      <span className="font-mono ml-0.5">#{req.createdCustomerId}</span>
+                                    )}
                                   </span>
                                 )}
                                 {isRejected && (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
                                     <XCircle className="h-3 w-3" />
                                     Rejected
                                   </span>
                                 )}
-                              </div>
+                              </td>
 
-                              {/* Attributes */}
-                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-y-2 gap-x-4 text-xs">
-                                <div>
-                                  <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-                                    <User className="h-3 w-3" /> Owner / Contact:
-                                  </span>
-                                  <p className="font-semibold text-zinc-800 dark:text-zinc-200">{req.name}</p>
-                                  <p className="font-mono text-zinc-600 dark:text-zinc-400 flex items-center gap-1 mt-0.5">
-                                    <Phone className="h-3 w-3 text-emerald-600" />
-                                    <span>{req.phone}</span>
-                                    {req.phoneVerified && (
-                                      <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-1 py-0.2 rounded">
-                                        ✓ Verified
-                                      </span>
-                                    )}
-                                  </p>
-                                </div>
-
-                                <div>
-                                  <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-                                    <MapPin className="h-3 w-3" /> Address & Location:
-                                  </span>
-                                  <p className="font-medium text-zinc-800 dark:text-zinc-200 truncate">
-                                    {req.address}
-                                  </p>
-                                  <p className="text-zinc-600 dark:text-zinc-400">
-                                    {req.city}{req.district ? `, ${req.district}` : ""}{req.state ? `, ${req.state}` : ""} {req.pincode ? `- ${req.pincode}` : ""}
-                                  </p>
-                                  {req.marketArea && (
-                                    <p className="text-[11px] text-indigo-600 dark:text-indigo-400 font-medium">
-                                      Market: {req.marketArea}
-                                    </p>
-                                  )}
-                                </div>
-
-                                <div>
-                                  <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-                                    <ShieldCheck className="h-3 w-3" /> Tax & Transporter:
-                                  </span>
-                                  <p className="font-mono text-zinc-700 dark:text-zinc-300">
-                                    GST: {req.gstin || "Unregistered"}
-                                  </p>
-                                  {req.panNumber && (
-                                    <p className="font-mono text-zinc-600 dark:text-zinc-400">
-                                      PAN: {req.panNumber}
-                                    </p>
-                                  )}
-                                  {req.preferredTransporterName && (
-                                    <p className="text-zinc-700 dark:text-zinc-300 font-medium flex items-center gap-1">
-                                      <Truck className="h-3 w-3 text-zinc-500" />
-                                      <span>{req.preferredTransporterName}</span>
-                                      {req.transportPreference && (
-                                        <span className="text-muted-foreground text-[10px]">({req.transportPreference})</span>
-                                      )}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Garment Categories */}
-                              {req.garmentTypes && (
-                                <div className="flex items-center gap-1.5 flex-wrap pt-1 text-[11px]">
-                                  <span className="text-muted-foreground">Garment Types:</span>
-                                  {req.garmentTypes.split(",").map((g, idx) => (
-                                    <span
-                                      key={idx}
-                                      className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-medium"
-                                    >
-                                      {g.trim()}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-
-                              {/* Bank & Notes */}
-                              {(req.bankName || req.notes) && (
-                                <div className="p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200/60 dark:border-zinc-800 text-xs space-y-1">
-                                  {req.bankName && (
-                                    <p className="text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
-                                      <Landmark className="h-3.5 w-3.5 text-zinc-400" />
-                                      <span className="font-medium">Bank:</span> {req.bankName}
-                                      {req.accountNumber && <span className="font-mono">• A/C: {req.accountNumber}</span>}
-                                      {req.ifscCode && <span className="font-mono">• IFSC: {req.ifscCode}</span>}
-                                    </p>
-                                  )}
-                                  {req.notes && (
-                                    <p className="text-muted-foreground text-[11px]">
-                                      <span className="font-semibold text-zinc-700 dark:text-zinc-300">Notes:</span> {req.notes}
-                                    </p>
-                                  )}
-                                </div>
-                              )}
-
-                              {/* KYC Photos */}
-                              {(req.shopPhotoUri || req.gstCertPhotoUri || req.panPhotoUri || req.aadharPhotoUri) && (
-                                <div className="pt-1 space-y-1.5">
-                                  <span className="text-[11px] font-semibold text-muted-foreground block">
-                                    Uploaded KYC Photos:
-                                  </span>
-                                  <div className="flex items-center gap-3 overflow-x-auto pb-1">
-                                    {req.shopPhotoUri && (
-                                      <div className="flex flex-col items-center gap-1">
-                                        <a href={req.shopPhotoUri} target="_blank" rel="noreferrer" className="h-14 w-14 rounded-lg border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-zinc-100 dark:bg-zinc-800 group relative block">
-                                          <img src={req.shopPhotoUri} alt="Shop Front" className="h-full w-full object-cover group-hover:scale-105 transition-transform" />
-                                        </a>
-                                        <span className="text-[10px] text-muted-foreground">Shop Front</span>
-                                      </div>
-                                    )}
-                                    {req.gstCertPhotoUri && (
-                                      <div className="flex flex-col items-center gap-1">
-                                        <a href={req.gstCertPhotoUri} target="_blank" rel="noreferrer" className="h-14 w-14 rounded-lg border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-zinc-100 dark:bg-zinc-800 group relative block">
-                                          <img src={req.gstCertPhotoUri} alt="GST / Card" className="h-full w-full object-cover group-hover:scale-105 transition-transform" />
-                                        </a>
-                                        <span className="text-[10px] text-muted-foreground">GST / Card</span>
-                                      </div>
-                                    )}
-                                    {req.panPhotoUri && (
-                                      <div className="flex flex-col items-center gap-1">
-                                        <a href={req.panPhotoUri} target="_blank" rel="noreferrer" className="h-14 w-14 rounded-lg border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-zinc-100 dark:bg-zinc-800 group relative block">
-                                          <img src={req.panPhotoUri} alt="PAN Photo" className="h-full w-full object-cover group-hover:scale-105 transition-transform" />
-                                        </a>
-                                        <span className="text-[10px] text-muted-foreground">PAN Card</span>
-                                      </div>
-                                    )}
-                                    {req.aadharPhotoUri && (
-                                      <div className="flex flex-col items-center gap-1">
-                                        <a href={req.aadharPhotoUri} target="_blank" rel="noreferrer" className="h-14 w-14 rounded-lg border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-zinc-100 dark:bg-zinc-800 group relative block">
-                                          <img src={req.aadharPhotoUri} alt="Aadhaar ID" className="h-full w-full object-cover group-hover:scale-105 transition-transform" />
-                                        </a>
-                                        <span className="text-[10px] text-muted-foreground">Aadhaar ID</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Submitted Date */}
-                              <div className="text-[10px] text-muted-foreground pt-1 border-t border-zinc-100 dark:border-zinc-800">
-                                <span>Submitted on: {formatDate(req.createdAt)}</span>
-                              </div>
-                            </div>
-
-                            {/* Right: Action Buttons */}
-                            <div className="flex flex-col items-end gap-2 pt-2 md:pt-0 border-t md:border-t-0 border-zinc-200 dark:border-zinc-800 flex-shrink-0 min-w-[200px]">
-                              {/* Always Available: 1-Tap Direct WhatsApp Chat */}
-                              <div className="flex items-center gap-1.5 w-full justify-end">
-                                <a
-                                  href={`https://wa.me/91${req.phone.replace(/\D/g, "").slice(-10)}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center justify-center gap-1.5 h-7 px-2.5 text-[11px] font-medium rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors shadow-2xs"
-                                  title="Chat on WhatsApp"
-                                >
-                                  <MessageSquare className="h-3 w-3 text-emerald-600" />
-                                  <span>WhatsApp Chat</span>
-                                </a>
-                              </div>
-
-                              {isPending && (
-                                <div className="flex flex-wrap items-center justify-end gap-1.5 w-full">
+                              <td className="py-3 px-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center justify-end gap-1.5">
                                   <Button
                                     size="sm"
-                                    onClick={() => handleOpenApprovalDialog(req)}
-                                    className="h-8 px-3 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shadow-sm"
-                                  >
-                                    <CheckCircle2 className="h-3.5 w-3.5" />
-                                    <span>Approve & Assign</span>
-                                  </Button>
-
-                                  <Button
                                     variant="outline"
-                                    size="sm"
-                                    onClick={() => handleOpenRejectDialog(req)}
-                                    className="h-8 px-2.5 text-xs text-rose-600 border-rose-200 hover:bg-rose-50 dark:hover:bg-rose-950/40 gap-1"
+                                    onClick={() => setSelectedRequestForDetails(req)}
+                                    className="h-7 px-2.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 gap-1 border-indigo-200 dark:border-indigo-800"
+                                    title="View Full Application in Side Panel"
                                   >
-                                    <XCircle className="h-3.5 w-3.5" />
-                                    <span>Reject</span>
+                                    <Eye className="h-3.5 w-3.5" />
+                                    <span>View Details</span>
                                   </Button>
+
+                                  {isPending && (
+                                    <>
+                                      <Button
+                                        size="sm"
+                                        onClick={() => handleOpenApprovalDialog(req)}
+                                        className="h-7 px-2.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white gap-1 shadow-xs"
+                                      >
+                                        <CheckCircle2 className="h-3 w-3" />
+                                        <span>Approve</span>
+                                      </Button>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => handleOpenRejectDialog(req)}
+                                        className="h-7 px-2 text-xs text-rose-600 border-rose-200 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                                      >
+                                        <XCircle className="h-3 w-3" />
+                                      </Button>
+                                    </>
+                                  )}
 
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => handleDeleteRequest(req.id)}
-                                    className="h-8 px-2 text-xs text-zinc-400 hover:text-red-600"
+                                    onClick={() => handleDeleteRequest(req.id, req.phone)}
+                                    className="h-7 w-7 p-0 text-zinc-400 hover:text-red-600"
                                     title="Delete Request"
                                   >
                                     <Trash2 className="h-3.5 w-3.5" />
                                   </Button>
                                 </div>
-                              )}
-
-                              {isApproved && (
-                                <div className="text-right space-y-1.5 w-full">
-                                  <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 flex items-center justify-end gap-1">
-                                    <CheckCircle2 className="h-3.5 w-3.5" /> Approved by {req.approvedBy || "Admin"}
-                                  </p>
-                                  {req.createdCustomerId && (
-                                    <p className="text-xs font-mono font-bold text-zinc-800 dark:text-zinc-200">
-                                      Account #CUST-{req.createdCustomerId}
-                                    </p>
-                                  )}
-                                  {req.assignedAgentName && (
-                                    <p className="text-[11px] text-muted-foreground">
-                                      Agent: <span className="font-medium text-zinc-800 dark:text-zinc-200">{req.assignedAgentName}</span>
-                                    </p>
-                                  )}
-                                  <p className="text-[11px] text-muted-foreground">
-                                    Term: {req.creditType || "Cash"} {req.creditDays ? `(${req.creditDays}d)` : ""}
-                                  </p>
-
-                                  <a
-                                    href={`https://wa.me/91${req.phone.replace(/\D/g, "").slice(-10)}?text=${encodeURIComponent(buildApprovalWelcomeMessage(req))}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="inline-flex items-center justify-center gap-1.5 w-full h-8 px-3 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-colors mt-1"
-                                  >
-                                    <MessageSquare className="h-3.5 w-3.5" />
-                                    <span>Send Welcome on WhatsApp</span>
-                                  </a>
-                                </div>
-                              )}
-
-                              {isRejected && (
-                                <div className="text-right space-y-1.5 w-full">
-                                  <p className="text-xs font-semibold text-rose-600 flex items-center justify-end gap-1">
-                                    <XCircle className="h-3.5 w-3.5" /> Declined
-                                  </p>
-                                  {req.rejectionReason && (
-                                    <p className="text-[11px] text-muted-foreground max-w-xs text-right">
-                                      Reason: {req.rejectionReason}
-                                    </p>
-                                  )}
-
-                                  <a
-                                    href={`https://wa.me/91${req.phone.replace(/\D/g, "").slice(-10)}?text=${encodeURIComponent(buildRejectionMessage(req))}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="inline-flex items-center justify-center gap-1.5 w-full h-8 px-2.5 text-xs font-medium rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 transition-colors mt-1"
-                                  >
-                                    <MessageSquare className="h-3.5 w-3.5" />
-                                    <span>Send Reason on WhatsApp</span>
-                                  </a>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </Card>
-                      )
-                    })}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ============================================================== */}
+          {/* SLIDE-OVER SIDE PANEL (RIGHT DRAWER) FOR FULL REQUEST DETAILS   */}
+          {/* ============================================================== */}
+          {activeDetailRequest && (
+            <div className="fixed inset-0 z-50 overflow-hidden animate-in fade-in duration-200">
+              {/* Backdrop */}
+              <div
+                className="absolute inset-0 bg-zinc-950/50 backdrop-blur-xs transition-opacity"
+                onClick={() => setSelectedRequestForDetails(null)}
+              />
+
+              <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
+                <div className="w-screen max-w-2xl bg-white dark:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col justify-between animate-in slide-in-from-right duration-300">
+                  {/* Drawer Header */}
+                  <div className="p-5 border-b border-zinc-100 dark:border-zinc-800 flex items-start justify-between gap-3 bg-zinc-50/50 dark:bg-zinc-900/50">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-50 flex items-center gap-2">
+                          <Store className="h-5 w-5 text-indigo-600 shrink-0" />
+                          <span>{activeDetailRequest.firmName || activeDetailRequest.name}</span>
+                        </h3>
+                        <Badge variant="outline" className="font-mono text-[10px] text-zinc-500">
+                          {activeDetailRequest.id}
+                        </Badge>
+                        {activeDetailRequest.status === "PENDING" && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                            <Clock className="h-3 w-3" />
+                            Pending Review
+                          </span>
+                        )}
+                        {activeDetailRequest.status === "APPROVED" && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Approved
+                          </span>
+                        )}
+                        {activeDetailRequest.status === "REJECTED" && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
+                            <XCircle className="h-3 w-3" />
+                            Rejected
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Submitted on {formatDate(activeDetailRequest.createdAt)} via Himat Textile Web Registration
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRequestForDetails(null)}
+                      className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  {/* Drawer Scrollable Body */}
+                  <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6 text-xs">
+                    {/* Section 1: Proprietor & Direct Contacts */}
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 border-b border-zinc-100 dark:border-zinc-800 pb-1.5">
+                        <User className="h-3.5 w-3.5 text-indigo-600" />
+                        <span>Proprietor & Direct Contacts</span>
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800 space-y-1">
+                          <span className="text-[11px] text-muted-foreground block">Proprietor / Owner Name</span>
+                          <span className="font-semibold text-sm text-zinc-900 dark:text-zinc-100">
+                            {activeDetailRequest.name}
+                          </span>
+                        </div>
+
+                        <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800 space-y-1">
+                          <span className="text-[11px] text-muted-foreground block">Primary Mobile (SMS Verified)</span>
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono font-bold text-sm text-zinc-900 dark:text-zinc-100">
+                              +91 {activeDetailRequest.phone}
+                            </span>
+                            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded">
+                              ✓ Verified
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 pt-1.5">
+                            <a
+                              href={`tel:+91${activeDetailRequest.phone.replace(/\D/g, "").slice(-10)}`}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-200 dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200 text-[11px] font-medium hover:bg-zinc-300"
+                            >
+                              <Phone className="h-3 w-3" /> Call
+                            </a>
+                            <a
+                              href={`https://wa.me/91${activeDetailRequest.phone.replace(/\D/g, "").slice(-10)}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-[11px] font-medium hover:bg-emerald-700"
+                            >
+                              <MessageSquare className="h-3 w-3" /> WhatsApp
+                            </a>
+                          </div>
+                        </div>
+
+                        {activeDetailRequest.phone2 && (
+                          <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800 space-y-1">
+                            <span className="text-[11px] text-muted-foreground block">Alternate WhatsApp Number</span>
+                            <span className="font-mono font-medium text-sm text-zinc-900 dark:text-zinc-100">
+                              +91 {activeDetailRequest.phone2}
+                            </span>
+                          </div>
+                        )}
+
+                        {activeDetailRequest.email && (
+                          <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800 space-y-1">
+                            <span className="text-[11px] text-muted-foreground block">Email Address</span>
+                            <a
+                              href={`mailto:${activeDetailRequest.email}`}
+                              className="font-medium text-indigo-600 hover:underline break-all"
+                            >
+                              {activeDetailRequest.email}
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Section 2: Shop Location & Address */}
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 border-b border-zinc-100 dark:border-zinc-800 pb-1.5">
+                        <MapPin className="h-3.5 w-3.5 text-indigo-600" />
+                        <span>Shop Address & Location Details</span>
+                      </h4>
+                      <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800 space-y-2">
+                        <div>
+                          <span className="text-[11px] text-muted-foreground block">Complete Shop Address</span>
+                          <p className="font-medium text-zinc-900 dark:text-zinc-100 mt-0.5">
+                            {activeDetailRequest.address || activeDetailRequest.shopAddress}
+                          </p>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-zinc-200/40 dark:border-zinc-700/40 text-[11px]">
+                          <div>
+                            <span className="text-muted-foreground block">City</span>
+                            <span className="font-semibold text-zinc-800 dark:text-zinc-200">{activeDetailRequest.city || "Ahmedabad"}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block">Market Area</span>
+                            <span className="font-semibold text-zinc-800 dark:text-zinc-200">{activeDetailRequest.marketArea || "N/A"}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block">District / State</span>
+                            <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                              {activeDetailRequest.district ? `${activeDetailRequest.district}, ` : ""}{activeDetailRequest.state || "Gujarat"}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block">Pincode</span>
+                            <span className="font-semibold font-mono text-zinc-800 dark:text-zinc-200">{activeDetailRequest.pincode || "N/A"}</span>
+                          </div>
+                        </div>
+
+                        {activeDetailRequest.shopMapLink && (
+                          <div className="pt-2">
+                            <a
+                              href={activeDetailRequest.shopMapLink}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 transition-colors font-semibold text-xs"
+                            >
+                              <Navigation className="h-3.5 w-3.5 text-indigo-600" />
+                              <span>Open Shop in Google Maps</span>
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Section 3: Garment Categories Preferences */}
+                    {activeDetailRequest.garmentTypes && (
+                      <div className="space-y-2">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 border-b border-zinc-100 dark:border-zinc-800 pb-1.5">
+                          <Tag className="h-3.5 w-3.5 text-indigo-600" />
+                          <span>Dealing Garment Categories</span>
+                        </h4>
+                        <div className="flex flex-wrap gap-1.5">
+                          {activeDetailRequest.garmentTypes.split(",").map((cat, idx) => (
+                            <span
+                              key={idx}
+                              className="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-800 dark:text-indigo-300 border border-indigo-200/70 dark:border-indigo-800 font-medium text-xs"
+                            >
+                              {cat.trim()}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Section 4: Tax & Business Registration */}
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 border-b border-zinc-100 dark:border-zinc-800 pb-1.5">
+                        <ShieldCheck className="h-3.5 w-3.5 text-indigo-600" />
+                        <span>Tax & Identification</span>
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800 space-y-1">
+                          <span className="text-[11px] text-muted-foreground block">GSTIN Number</span>
+                          {activeDetailRequest.gstin ? (
+                            <span className="font-mono font-bold text-sm text-zinc-900 dark:text-zinc-100">
+                              {activeDetailRequest.gstin}
+                            </span>
+                          ) : (
+                            <span className="italic text-zinc-400">Unregistered / Composition</span>
+                          )}
+                        </div>
+
+                        <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800 space-y-1">
+                          <span className="text-[11px] text-muted-foreground block">PAN Number</span>
+                          {activeDetailRequest.panNumber ? (
+                            <span className="font-mono font-bold text-sm text-zinc-900 dark:text-zinc-100">
+                              {activeDetailRequest.panNumber}
+                            </span>
+                          ) : (
+                            <span className="italic text-zinc-400">Not provided</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Section 5: Logistics & Bank Details */}
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 border-b border-zinc-100 dark:border-zinc-800 pb-1.5">
+                        <Truck className="h-3.5 w-3.5 text-indigo-600" />
+                        <span>Logistics & Bank Settlement</span>
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800 space-y-1">
+                          <span className="text-[11px] text-muted-foreground block">Preferred Transporter</span>
+                          <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                            {activeDetailRequest.preferredTransporterName || "Not specified"}
+                          </span>
+                          {activeDetailRequest.transportPreference && (
+                            <p className="text-[11px] text-zinc-500">Station: {activeDetailRequest.transportPreference}</p>
+                          )}
+                        </div>
+
+                        <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800 space-y-1">
+                          <span className="text-[11px] text-muted-foreground block">Bank Settlement</span>
+                          <p className="font-semibold text-zinc-800 dark:text-zinc-200">
+                            {activeDetailRequest.bankName || "Not specified"}
+                          </p>
+                          {activeDetailRequest.accountNumber && (
+                            <p className="font-mono text-[11px] text-zinc-500">A/C: {activeDetailRequest.accountNumber}</p>
+                          )}
+                          {activeDetailRequest.ifscCode && (
+                            <p className="font-mono text-[11px] text-zinc-500">IFSC: {activeDetailRequest.ifscCode}</p>
+                          )}
+                        </div>
+
+                        {activeDetailRequest.notes && (
+                          <div className="sm:col-span-2 p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800 space-y-1">
+                            <span className="text-[11px] text-muted-foreground block">Customer Delivery / Billing Notes</span>
+                            <p className="text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap">{activeDetailRequest.notes}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Section 6: Uploaded KYC Documents Gallery */}
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 border-b border-zinc-100 dark:border-zinc-800 pb-1.5">
+                        <Camera className="h-3.5 w-3.5 text-indigo-600" />
+                        <span>KYC & Verification Document Gallery</span>
+                      </h4>
+                      {!(activeDetailRequest.shopPhotoUri || activeDetailRequest.gstCertPhotoUri || activeDetailRequest.panPhotoUri || activeDetailRequest.aadharPhotoUri) ? (
+                        <p className="text-muted-foreground text-xs italic p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl">
+                          No KYC documents or photos were attached during online self-registration.
+                        </p>
+                      ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          {activeDetailRequest.shopPhotoUri && (
+                            <div className="space-y-1 text-center">
+                              <div
+                                onClick={() => setLightbox({ open: true, url: activeDetailRequest.shopPhotoUri!, title: `${activeDetailRequest.firmName} - Shop Front Photo` })}
+                                className="group relative aspect-square rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-zinc-100 dark:bg-zinc-800 cursor-pointer shadow-xs hover:ring-2 hover:ring-indigo-500 transition-all"
+                              >
+                                <img src={activeDetailRequest.shopPhotoUri} alt="Shop Front" className="h-full w-full object-cover group-hover:scale-105 transition-transform" />
+                                <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-xs font-semibold">
+                                  <Eye className="h-4 w-4 mr-1" /> View
+                                </div>
+                              </div>
+                              <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 block truncate">Shop Front</span>
+                            </div>
+                          )}
+
+                          {activeDetailRequest.gstCertPhotoUri && (
+                            <div className="space-y-1 text-center">
+                              <div
+                                onClick={() => setLightbox({ open: true, url: activeDetailRequest.gstCertPhotoUri!, title: `${activeDetailRequest.firmName} - Visiting Card / GST Certificate` })}
+                                className="group relative aspect-square rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-zinc-100 dark:bg-zinc-800 cursor-pointer shadow-xs hover:ring-2 hover:ring-indigo-500 transition-all"
+                              >
+                                <img src={activeDetailRequest.gstCertPhotoUri} alt="GST / Visiting Card" className="h-full w-full object-cover group-hover:scale-105 transition-transform" />
+                                <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-xs font-semibold">
+                                  <Eye className="h-4 w-4 mr-1" /> View
+                                </div>
+                              </div>
+                              <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 block truncate">GST / Card</span>
+                            </div>
+                          )}
+
+                          {activeDetailRequest.panPhotoUri && (
+                            <div className="space-y-1 text-center">
+                              <div
+                                onClick={() => setLightbox({ open: true, url: activeDetailRequest.panPhotoUri!, title: `${activeDetailRequest.firmName} - PAN Card Photo` })}
+                                className="group relative aspect-square rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-zinc-100 dark:bg-zinc-800 cursor-pointer shadow-xs hover:ring-2 hover:ring-indigo-500 transition-all"
+                              >
+                                <img src={activeDetailRequest.panPhotoUri} alt="PAN Card" className="h-full w-full object-cover group-hover:scale-105 transition-transform" />
+                                <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-xs font-semibold">
+                                  <Eye className="h-4 w-4 mr-1" /> View
+                                </div>
+                              </div>
+                              <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 block truncate">PAN Card</span>
+                            </div>
+                          )}
+
+                          {activeDetailRequest.aadharPhotoUri && (
+                            <div className="space-y-1 text-center">
+                              <div
+                                onClick={() => setLightbox({ open: true, url: activeDetailRequest.aadharPhotoUri!, title: `${activeDetailRequest.firmName} - Aadhaar Card Photo` })}
+                                className="group relative aspect-square rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-zinc-100 dark:bg-zinc-800 cursor-pointer shadow-xs hover:ring-2 hover:ring-indigo-500 transition-all"
+                              >
+                                <img src={activeDetailRequest.aadharPhotoUri} alt="Aadhaar Card" className="h-full w-full object-cover group-hover:scale-105 transition-transform" />
+                                <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-xs font-semibold">
+                                  <Eye className="h-4 w-4 mr-1" /> View
+                                </div>
+                              </div>
+                              <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 block truncate">Aadhaar Card</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Section 7: Audit / Approval Information */}
+                    {activeDetailRequest.status === "APPROVED" && (
+                      <div className="p-4 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 space-y-2">
+                        <h4 className="text-xs font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                          <span>Commercial Account Approved</span>
+                        </h4>
+                        <div className="grid grid-cols-2 gap-2 text-[11px] text-emerald-900 dark:text-emerald-200">
+                          <div>
+                            <span className="text-emerald-700/70 dark:text-emerald-400/70 block">Customer ID</span>
+                            <span className="font-mono font-bold">#CUST-{activeDetailRequest.createdCustomerId}</span>
+                          </div>
+                          <div>
+                            <span className="text-emerald-700/70 dark:text-emerald-400/70 block">Assigned Agent</span>
+                            <span className="font-semibold">{activeDetailRequest.assignedAgentName || "Unassigned"}</span>
+                          </div>
+                          <div>
+                            <span className="text-emerald-700/70 dark:text-emerald-400/70 block">Payment Terms</span>
+                            <span className="font-semibold">
+                              {activeDetailRequest.creditType || "Cash"} {activeDetailRequest.creditDays ? `(${activeDetailRequest.creditDays} days)` : ""}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-emerald-700/70 dark:text-emerald-400/70 block">Religion</span>
+                            <span className="font-semibold">{activeDetailRequest.religion || "None"}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {activeDetailRequest.status === "REJECTED" && (
+                      <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 space-y-1.5">
+                        <h4 className="text-xs font-bold text-rose-800 dark:text-rose-300 flex items-center gap-1.5">
+                          <XCircle className="h-4 w-4 text-rose-600" />
+                          <span>Application Declined</span>
+                        </h4>
+                        <p className="text-xs text-rose-700 dark:text-rose-300">
+                          Reason: {activeDetailRequest.rejectionReason || "Declined by Admin"}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Drawer Sticky Footer Actions */}
+                  <div className="p-4 sm:p-5 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/90 flex flex-wrap items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={`https://wa.me/91${activeDetailRequest.phone.replace(/\D/g, "").slice(-10)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-xs transition-colors"
+                      >
+                        <MessageSquare className="h-3.5 w-3.5" />
+                        <span>WhatsApp</span>
+                      </a>
+
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          handleDeleteRequest(activeDetailRequest.id, activeDetailRequest.phone)
+                          setSelectedRequestForDetails(null)
+                        }}
+                        className="h-8 px-2.5 text-xs text-zinc-400 hover:text-red-600"
+                        title="Delete this request permanently"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 mr-1" />
+                        Delete
+                      </Button>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {activeDetailRequest.status === "PENDING" && (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleOpenRejectDialog(activeDetailRequest)}
+                            className="h-8 px-3 text-xs text-rose-600 border-rose-200 hover:bg-rose-50 dark:hover:bg-rose-950/40 font-semibold"
+                          >
+                            <XCircle className="h-3.5 w-3.5 mr-1" />
+                            Reject
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            onClick={() => handleOpenApprovalDialog(activeDetailRequest)}
+                            className="h-8 px-4 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shadow-sm"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            <span>Approve & Assign</span>
+                          </Button>
+                        </>
+                      )}
+
+                      {activeDetailRequest.status === "APPROVED" && activeDetailRequest.createdCustomerId && (
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            setSelectedRequestForDetails(null)
+                            setViewMode("customers")
+                            setSelectedCustomerId(activeDetailRequest.createdCustomerId!)
+                          }}
+                          className="h-8 px-3 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white gap-1"
+                        >
+                          <Store className="h-3.5 w-3.5 mr-1" />
+                          View Customer Profile
+                        </Button>
+                      )}
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelectedRequestForDetails(null)}
+                        className="h-8 px-3 text-xs"
+                      >
+                        Close
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </div>
-            )}
+            </div>
+          )}
           </>
         )}
 
@@ -1937,7 +2314,7 @@ export function CustomersView() {
               <input
                 type="text"
                 readOnly
-                value={`${window.location.origin}/#/register-customer`}
+                value={getPublicRegistrationUrl()}
                 className="flex-1 px-3 py-2 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-zinc-900 font-mono text-xs text-zinc-800 dark:text-zinc-200"
               />
               <Button
@@ -2166,6 +2543,41 @@ export function CustomersView() {
                   />
                 </div>
               </div>
+
+              {/* Religion (CRM Demographic) */}
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center justify-between">
+                  <label className="font-semibold text-zinc-800 dark:text-zinc-200">
+                    Religion (CRM Demographic)
+                  </label>
+                  <span className="text-[10px] text-muted-foreground font-normal">Optional</span>
+                </div>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g. Hindu, Jain, Muslim, Sikh..."
+                    value={approvalReligion}
+                    onChange={(e) => setApprovalReligion(e.target.value)}
+                    className="flex-1 h-8 px-2.5 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                  />
+                  <div className="flex items-center gap-1 shrink-0">
+                    {["Hindu", "Jain", "Muslim", "Sikh"].map((rel) => (
+                      <button
+                        key={rel}
+                        type="button"
+                        onClick={() => setApprovalReligion(rel)}
+                        className={`px-2 py-1 rounded-md text-[11px] font-semibold transition-colors border ${
+                          approvalReligion === rel
+                            ? "bg-indigo-600 text-white border-indigo-600 shadow-2xs"
+                            : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                        }`}
+                      >
+                        {rel}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Actions */}
@@ -2318,6 +2730,14 @@ export function CustomersView() {
         title={reportModal.title}
         htmlContent={reportModal.html}
         whatsAppText={reportModal.whatsAppText}
+      />
+
+      {/* Lightbox for KYC Photos */}
+      <ImageLightboxModal
+        open={lightbox.open}
+        onClose={() => setLightbox((prev) => ({ ...prev, open: false }))}
+        imageUrl={lightbox.url}
+        title={lightbox.title}
       />
     </div>
   )

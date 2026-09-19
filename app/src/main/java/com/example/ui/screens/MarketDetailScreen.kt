@@ -6,9 +6,17 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +31,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -54,6 +64,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,7 +72,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -204,6 +219,43 @@ fun MarketDetailScreen(
         }
     }
 
+    val listState = rememberLazyListState()
+    var isProfileExpanded by remember { mutableStateOf(true) }
+
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            private var accumulatedDelta = 0f
+
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source == NestedScrollSource.UserInput) {
+                    val delta = available.y
+                    if (delta < -15f) {
+                        if (accumulatedDelta > 0) accumulatedDelta = 0f
+                        accumulatedDelta += delta
+                        if (accumulatedDelta < -25f) {
+                            isProfileExpanded = false
+                        }
+                    } else if (delta > 15f) {
+                        if (accumulatedDelta < 0) accumulatedDelta = 0f
+                        accumulatedDelta += delta
+                        if (accumulatedDelta > 20f) {
+                            isProfileExpanded = true
+                        }
+                    }
+                }
+                return Offset.Zero
+            }
+        }
+    }
+
+    LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, searchQuery) {
+        if (searchQuery.isNotBlank()) {
+            // Keep search bar visible
+        } else if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset <= 10) {
+            isProfileExpanded = true
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -237,281 +289,292 @@ fun MarketDetailScreen(
             )
         }
     ) { paddingValues ->
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xFFF6F8FB))
+                .nestedScroll(nestedScrollConnection)
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(horizontal = 16.dp)
         ) {
-            // Cardless Hero Profile Header
-            item {
+            // 1. Collapsible Profile Details (above Search Bar)
+            AnimatedVisibility(
+                visible = isProfileExpanded && searchQuery.isBlank(),
+                enter = expandVertically(tween(240, easing = FastOutSlowInEasing)) + fadeIn(tween(200)),
+                exit = shrinkVertically(tween(220, easing = FastOutSlowInEasing)) + fadeOut(tween(180))
+            ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 2.dp, bottom = 4.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .padding(bottom = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = Color(0xFFFAF5FF),
-                        border = BorderStroke(2.dp, Color(0xFFE9D5FF)),
-                        modifier = Modifier.size(66.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.LocationCity,
-                                contentDescription = null,
-                                tint = Color(0xFF9333EA),
-                                modifier = Modifier.size(32.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Text(
-                        text = market.marketName,
-                        fontSize = 19.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF0F172A),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-
-                    Spacer(modifier = Modifier.height(2.dp))
-                    val areaText = listOfNotNull(market.area.takeIf { it.isNotBlank() }, market.city.takeIf { it.isNotBlank() }).joinToString(", ")
-                    Text(
-                        text = areaText,
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFF64748B)
-                    )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    // Cardless Hero Profile Header
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 2.dp, bottom = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Surface(
+                            shape = CircleShape,
                             color = Color(0xFFFAF5FF),
-                            shape = RoundedCornerShape(4.dp),
-                            border = BorderStroke(0.5.dp, Color(0xFFE9D5FF))
+                            border = BorderStroke(2.dp, Color(0xFFE9D5FF)),
+                            modifier = Modifier.size(66.dp)
                         ) {
-                            Text(
-                                text = "🏷️ ${market.marketType}",
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF7E22CE),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-
-                        if (market.pincode.isNotBlank()) {
-                            Surface(
-                                color = Color(0xFFF1F5F9),
-                                shape = RoundedCornerShape(4.dp),
-                                border = BorderStroke(0.5.dp, Color(0xFFCBD5E1))
-                            ) {
-                                Text(
-                                    text = "PIN: ${market.pincode}",
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF334155),
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.LocationCity,
+                                    contentDescription = null,
+                                    tint = Color(0xFF9333EA),
+                                    modifier = Modifier.size(32.dp)
                                 )
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Text(
+                            text = market.marketName,
+                            fontSize = 19.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0F172A),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+
+                        Spacer(modifier = Modifier.height(2.dp))
+                        val areaText = listOfNotNull(market.area.takeIf { it.isNotBlank() }, market.city.takeIf { it.isNotBlank() }).joinToString(", ")
+                        Text(
+                            text = areaText,
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF64748B)
+                        )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                color = Color(0xFFFAF5FF),
+                                shape = RoundedCornerShape(4.dp),
+                                border = BorderStroke(0.5.dp, Color(0xFFE9D5FF))
+                            ) {
+                                Text(
+                                    text = "🏷️ ${market.marketType}",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF7E22CE),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+
+                            if (market.pincode.isNotBlank()) {
+                                Surface(
+                                    color = Color(0xFFF1F5F9),
+                                    shape = RoundedCornerShape(4.dp),
+                                    border = BorderStroke(0.5.dp, Color(0xFFCBD5E1))
+                                ) {
+                                    Text(
+                                        text = "PIN: ${market.pincode}",
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFF334155),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Action Pills: Map Direction, Edit, Copy
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val fullAddress = listOfNotNull(market.marketName, market.landmark.takeIf { it.isNotBlank() }, market.area.takeIf { it.isNotBlank() }, market.city).joinToString(", ")
+                            Surface(
+                                shape = CircleShape,
+                                color = Color(0xFFEFF6FF),
+                                border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        val geoUri = Uri.parse("geo:0,0?q=" + Uri.encode(fullAddress))
+                                        val mapIntent = Intent(Intent.ACTION_VIEW, geoUri)
+                                        context.startActivity(mapIntent)
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(Icons.Default.Place, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(13.dp))
+                                    Text("Market Map", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1D4ED8))
+                                }
+                            }
+
+                            Surface(
+                                shape = CircleShape,
+                                color = Color(0xFFFAF5FF),
+                                border = BorderStroke(1.dp, Color(0xFFE9D5FF)),
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable { onEdit() }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(Icons.Default.Edit, contentDescription = null, tint = Color(0xFF9333EA), modifier = Modifier.size(13.dp))
+                                    Text("Edit Hub", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF7E22CE))
+                                }
+                            }
+
+                            Surface(
+                                shape = CircleShape,
+                                color = Color(0xFFF8FAFC),
+                                border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        val text = "Market: ${market.marketName}\nType: ${market.marketType}\nArea: ${market.area}\nCity: ${market.city}\nPIN: ${market.pincode}"
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                        clipboard.setPrimaryClip(ClipData.newPlainText("Market Details", text))
+                                        Toast.makeText(context, "Market info copied", Toast.LENGTH_SHORT).show()
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Color(0xFF475569), modifier = Modifier.size(13.dp))
+                                    Text("Copy Info", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
+                                }
+                            }
+                        }
                     }
 
-                    // Action Pills: Map Direction, Edit, Copy
-                    Spacer(modifier = Modifier.height(10.dp))
+                    // Stats Row: Buyers, Suppliers, Orders, Pieces volume
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        val fullAddress = listOfNotNull(market.marketName, market.landmark.takeIf { it.isNotBlank() }, market.area.takeIf { it.isNotBlank() }, market.city).joinToString(", ")
-                        Surface(
-                            shape = CircleShape,
-                            color = Color(0xFFEFF6FF),
-                            border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .clickable {
-                                    val geoUri = Uri.parse("geo:0,0?q=" + Uri.encode(fullAddress))
-                                    val mapIntent = Intent(Intent.ACTION_VIEW, geoUri)
-                                    context.startActivity(mapIntent)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "${marketCustomers.size}",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF2563EB)
+                            )
+                            Text("Buyers", fontSize = 11.sp, color = Color(0xFF64748B))
+                        }
+
+                        Box(modifier = Modifier.height(24.dp).width(1.dp).background(Color(0xFFE2E8F0)))
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "${marketSuppliers.size}",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF059669)
+                            )
+                            Text("Suppliers", fontSize = 11.sp, color = Color(0xFF64748B))
+                        }
+
+                        Box(modifier = Modifier.height(24.dp).width(1.dp).background(Color(0xFFE2E8F0)))
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "${marketOrders.size}",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF9333EA)
+                            )
+                            Text("Orders", fontSize = 11.sp, color = Color(0xFF64748B))
+                        }
+
+                        Box(modifier = Modifier.height(24.dp).width(1.dp).background(Color(0xFFE2E8F0)))
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "$totalPiecesVolume",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF0F172A)
+                            )
+                            Text("Pieces", fontSize = 11.sp, color = Color(0xFF64748B))
+                        }
+                    }
+
+                    // Market Details Card
+                    Surface(
+                        color = Color.White,
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = "MARKET LOCATION & DETAILS",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF475569),
+                                letterSpacing = 0.5.sp
+                            )
+                            HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 0.5.dp)
+
+                            if (market.area.isNotBlank()) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Area / Locality:", fontSize = 12.sp, color = Color(0xFF64748B))
+                                    Text(market.area, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color(0xFF0F172A))
                                 }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(Icons.Default.Place, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(13.dp))
-                                Text("Market Map", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1D4ED8))
                             }
-                        }
 
-                        Surface(
-                            shape = CircleShape,
-                            color = Color(0xFFFAF5FF),
-                            border = BorderStroke(1.dp, Color(0xFFE9D5FF)),
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .clickable { onEdit() }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(Icons.Default.Edit, contentDescription = null, tint = Color(0xFF9333EA), modifier = Modifier.size(13.dp))
-                                Text("Edit Hub", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF7E22CE))
-                            }
-                        }
-
-                        Surface(
-                            shape = CircleShape,
-                            color = Color(0xFFF8FAFC),
-                            border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .clickable {
-                                    val text = "Market: ${market.marketName}\nType: ${market.marketType}\nArea: ${market.area}\nCity: ${market.city}\nPIN: ${market.pincode}"
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    clipboard.setPrimaryClip(ClipData.newPlainText("Market Details", text))
-                                    Toast.makeText(context, "Market info copied", Toast.LENGTH_SHORT).show()
+                            if (market.landmark.isNotBlank()) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Landmark:", fontSize = 12.sp, color = Color(0xFF64748B))
+                                    Text(market.landmark, fontSize = 12.sp, color = Color(0xFF0F172A))
                                 }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Color(0xFF475569), modifier = Modifier.size(13.dp))
-                                Text("Copy Info", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
+                            }
+
+                            if (market.city.isNotBlank()) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("City Hub:", fontSize = 12.sp, color = Color(0xFF64748B))
+                                    Text(market.city, fontSize = 12.sp, color = Color(0xFF0F172A))
+                                }
+                            }
+
+                            if (market.description.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text("About Market:", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                Text(market.description, fontSize = 11.5.sp, color = Color(0xFF334155))
                             }
                         }
                     }
                 }
             }
 
-            // Stats Row: Buyers, Suppliers, Orders, Pieces volume
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "${marketCustomers.size}",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF2563EB)
-                        )
-                        Text("Buyers", fontSize = 11.sp, color = Color(0xFF64748B))
-                    }
-
-                    Box(modifier = Modifier.height(24.dp).width(1.dp).background(Color(0xFFE2E8F0)))
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "${marketSuppliers.size}",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF059669)
-                        )
-                        Text("Suppliers", fontSize = 11.sp, color = Color(0xFF64748B))
-                    }
-
-                    Box(modifier = Modifier.height(24.dp).width(1.dp).background(Color(0xFFE2E8F0)))
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "${marketOrders.size}",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF9333EA)
-                        )
-                        Text("Orders", fontSize = 11.sp, color = Color(0xFF64748B))
-                    }
-
-                    Box(modifier = Modifier.height(24.dp).width(1.dp).background(Color(0xFFE2E8F0)))
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "$totalPiecesVolume",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF0F172A)
-                        )
-                        Text("Pieces", fontSize = 11.sp, color = Color(0xFF64748B))
-                    }
-                }
-            }
-
-            // Market Details Card
-            item {
-                Surface(
-                    color = Color.White,
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = "MARKET LOCATION & DETAILS",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF475569),
-                            letterSpacing = 0.5.sp
-                        )
-                        HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 0.5.dp)
-
-                        if (market.area.isNotBlank()) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Area / Locality:", fontSize = 12.sp, color = Color(0xFF64748B))
-                                Text(market.area, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color(0xFF0F172A))
-                            }
-                        }
-
-                        if (market.landmark.isNotBlank()) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Landmark:", fontSize = 12.sp, color = Color(0xFF64748B))
-                                Text(market.landmark, fontSize = 12.sp, color = Color(0xFF0F172A))
-                            }
-                        }
-
-                        if (market.city.isNotBlank()) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("City Hub:", fontSize = 12.sp, color = Color(0xFF64748B))
-                                Text(market.city, fontSize = 12.sp, color = Color(0xFF0F172A))
-                            }
-                        }
-
-                        if (market.description.isNotBlank()) {
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text("About Market:", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
-                            Text(market.description, fontSize = 11.5.sp, color = Color(0xFF334155))
-                        }
-                    }
-                }
-            }
-
-            // Search Bar
-            item {
+            // 2. Fixed/Pinned Search Bar
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+            ) {
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(50.dp),
+                        .height(48.dp),
                     placeholder = {
                         Text(
                             text = when (selectedTab) {
@@ -546,145 +609,138 @@ fun MarketDetailScreen(
                 )
             }
 
-            // 4 Tabs: CUSTOMERS, SUPPLIERS, ORDERS, AGENTS
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    val isCust = selectedTab == "CUSTOMERS"
-                    Surface(
-                        shape = CircleShape,
-                        color = if (isCust) Color(0xFF2563EB) else Color.White,
-                        border = BorderStroke(1.dp, if (isCust) Color(0xFF2563EB) else Color(0xFFCBD5E1)),
+            // 3. Scrollable List Content
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // 4 Tabs: CUSTOMERS, SUPPLIERS, ORDERS, AGENTS (Horizontally Scrollable)
+                item {
+                    Row(
                         modifier = Modifier
-                            .weight(1f)
-                            .clip(CircleShape)
-                            .clickable { selectedTab = "CUSTOMERS" }
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
+                        val isCust = selectedTab == "CUSTOMERS"
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isCust) Color(0xFF2563EB) else Color.White,
+                            border = BorderStroke(1.dp, if (isCust) Color(0xFF2563EB) else Color(0xFFCBD5E1)),
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable { selectedTab = "CUSTOMERS" }
                         ) {
-                            Icon(
-                                Icons.Default.People,
-                                contentDescription = null,
-                                tint = if (isCust) Color.White else Color(0xFF2563EB),
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = "Buyers (${filteredCustomers.size})",
-                                fontSize = 10.5.sp,
-                                fontWeight = if (isCust) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isCust) Color.White else Color(0xFF334155),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.People,
+                                    contentDescription = null,
+                                    tint = if (isCust) Color.White else Color(0xFF2563EB),
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Text(
+                                    text = "Buyers (${filteredCustomers.size})",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (isCust) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isCust) Color.White else Color(0xFF334155)
+                                )
+                            }
                         }
-                    }
 
-                    val isSupp = selectedTab == "SUPPLIERS"
-                    Surface(
-                        shape = CircleShape,
-                        color = if (isSupp) Color(0xFF059669) else Color.White,
-                        border = BorderStroke(1.dp, if (isSupp) Color(0xFF059669) else Color(0xFFCBD5E1)),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(CircleShape)
-                            .clickable { selectedTab = "SUPPLIERS" }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
+                        val isSupp = selectedTab == "SUPPLIERS"
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isSupp) Color(0xFF059669) else Color.White,
+                            border = BorderStroke(1.dp, if (isSupp) Color(0xFF059669) else Color(0xFFCBD5E1)),
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable { selectedTab = "SUPPLIERS" }
                         ) {
-                            Icon(
-                                Icons.Default.Store,
-                                contentDescription = null,
-                                tint = if (isSupp) Color.White else Color(0xFF059669),
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = "Mills (${filteredSuppliers.size})",
-                                fontSize = 10.5.sp,
-                                fontWeight = if (isSupp) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSupp) Color.White else Color(0xFF334155),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Store,
+                                    contentDescription = null,
+                                    tint = if (isSupp) Color.White else Color(0xFF059669),
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Text(
+                                    text = "Mills (${filteredSuppliers.size})",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (isSupp) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSupp) Color.White else Color(0xFF334155)
+                                )
+                            }
                         }
-                    }
 
-                    val isOrder = selectedTab == "ORDERS"
-                    Surface(
-                        shape = CircleShape,
-                        color = if (isOrder) Color(0xFF9333EA) else Color.White,
-                        border = BorderStroke(1.dp, if (isOrder) Color(0xFF9333EA) else Color(0xFFCBD5E1)),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(CircleShape)
-                            .clickable { selectedTab = "ORDERS" }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
+                        val isOrder = selectedTab == "ORDERS"
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isOrder) Color(0xFF9333EA) else Color.White,
+                            border = BorderStroke(1.dp, if (isOrder) Color(0xFF9333EA) else Color(0xFFCBD5E1)),
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable { selectedTab = "ORDERS" }
                         ) {
-                            Icon(
-                                Icons.Default.Receipt,
-                                contentDescription = null,
-                                tint = if (isOrder) Color.White else Color(0xFF9333EA),
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = "Orders (${filteredOrders.size})",
-                                fontSize = 10.5.sp,
-                                fontWeight = if (isOrder) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isOrder) Color.White else Color(0xFF334155),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Receipt,
+                                    contentDescription = null,
+                                    tint = if (isOrder) Color.White else Color(0xFF9333EA),
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Text(
+                                    text = "Orders (${filteredOrders.size})",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (isOrder) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isOrder) Color.White else Color(0xFF334155)
+                                )
+                            }
                         }
-                    }
 
-                    val isAgent = selectedTab == "AGENTS"
-                    Surface(
-                        shape = CircleShape,
-                        color = if (isAgent) Color(0xFF0F766E) else Color.White,
-                        border = BorderStroke(1.dp, if (isAgent) Color(0xFF0F766E) else Color(0xFFCBD5E1)),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(CircleShape)
-                            .clickable { selectedTab = "AGENTS" }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
+                        val isAgent = selectedTab == "AGENTS"
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isAgent) Color(0xFF0F766E) else Color.White,
+                            border = BorderStroke(1.dp, if (isAgent) Color(0xFF0F766E) else Color(0xFFCBD5E1)),
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable { selectedTab = "AGENTS" }
                         ) {
-                            Icon(
-                                Icons.Default.Badge,
-                                contentDescription = null,
-                                tint = if (isAgent) Color.White else Color(0xFF0F766E),
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = "Agents (${filteredAgents.size})",
-                                fontSize = 10.5.sp,
-                                fontWeight = if (isAgent) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isAgent) Color.White else Color(0xFF334155),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Badge,
+                                    contentDescription = null,
+                                    tint = if (isAgent) Color.White else Color(0xFF0F766E),
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Text(
+                                    text = "Agents (${filteredAgents.size})",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (isAgent) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isAgent) Color.White else Color(0xFF334155)
+                                )
+                            }
                         }
                     }
                 }
-            }
 
             // TAB CONTENT
             when (selectedTab) {
@@ -1030,4 +1086,5 @@ fun MarketDetailScreen(
             }
         }
     }
+}
 }

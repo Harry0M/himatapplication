@@ -1,7 +1,11 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -407,11 +411,15 @@ fun DashboardScreen(
                 items(visits.take(5)) { visit ->
                     val visitEntries = entries.filter { it.visitId == visit.id }
                     val tripPcs = visitEntries.sumOf { it.pieces }
+                    val cust = customers.find { it.id == visit.customerId || it.firmName.equals(visit.customerName, true) || it.name.equals(visit.customerName, true) }
+                    val photoUrl = cust?.let { it.purchaserPhotoUri.ifBlank { it.shopPhotoUri } }?.takeIf { it.isNotBlank() }
+                        ?: visitEntries.firstOrNull { !it.orderFormPhotoUri.isNullOrBlank() }?.orderFormPhotoUri
 
                     VisitCardItem(
                         visit = visit,
                         entriesCount = visitEntries.size,
                         totalPcs = tripPcs,
+                        photoUrl = photoUrl,
                         onClick = { onOpenVisit(visit) }
                     )
                 }
@@ -425,6 +433,7 @@ fun VisitCardItem(
     visit: VisitEntity,
     entriesCount: Int,
     totalPcs: Int,
+    photoUrl: String? = null,
     onClick: () -> Unit
 ) {
     Card(
@@ -438,9 +447,40 @@ fun VisitCardItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
+                .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Associated photo thumbnail or initial badge
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = Color(0xFFEFF6FF),
+                border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                modifier = Modifier
+                    .size(46.dp)
+                    .clip(RoundedCornerShape(10.dp))
+            ) {
+                if (!photoUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = photoUrl,
+                        contentDescription = visit.customerName,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Box(contentAlignment = Alignment.Center) {
+                        val initials = visit.customerName.take(2).uppercase()
+                        Text(
+                            text = if (initials.isNotBlank()) initials else "MV",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = Color(0xFF1D4ED8)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.width(10.dp))
+
             Column(modifier = Modifier.weight(1f)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -458,7 +498,7 @@ fun VisitCardItem(
                     StatusBadge(status = visit.status)
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(3.dp))
 
                 Text(
                     text = "${visit.visitCode} • ${visit.date} • Agent: ${visit.employeeName}",
@@ -466,7 +506,7 @@ fun VisitCardItem(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(3.dp))
 
                 Text(
                     text = "$entriesCount stops • $totalPcs Pcs",

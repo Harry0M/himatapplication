@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.PendingActions
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SearchOff
@@ -57,6 +58,7 @@ import androidx.compose.material.icons.filled.Store
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.TrendingUp
+import com.example.ui.dialogs.CustomerRequestsDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -138,7 +140,10 @@ fun HomeScreen(
     val suppliers by viewModel.allSuppliers.collectAsStateWithLifecycle()
     val employees by viewModel.allEmployees.collectAsStateWithLifecycle()
     val packGroups by viewModel.allPackGroups.collectAsStateWithLifecycle()
+    val allLeads by viewModel.allLeads.collectAsStateWithLifecycle()
+    val pendingRequestsCount by viewModel.pendingRegistrationRequestsCount.collectAsStateWithLifecycle()
 
+    var showCustomerRequestsDialog by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var searchCategory by remember { mutableStateOf("All") } // "All", "Trips", "Suppliers"
 
@@ -283,6 +288,30 @@ fun HomeScreen(
                     onClick = { onNavigate(AppScreen.SUPPLIER_MASTER) }
                 )
             )
+            add(
+                HomeTileItem(
+                    id = "leads",
+                    title = "Leads & Prospects",
+                    subtitle = "${allLeads.size} market contacts",
+                    statusBadge = if (allLeads.isNotEmpty()) "${allLeads.size} Leads" else null,
+                    icon = Icons.Default.People,
+                    accentColor = Color(0xFF0D9488), // Teal
+                    onClick = { onNavigate(AppScreen.LEADS) }
+                )
+            )
+            if (isSuperAdmin) {
+                add(
+                    HomeTileItem(
+                        id = "customer_requests",
+                        title = "User Requests",
+                        subtitle = if (pendingRequestsCount > 0) "$pendingRequestsCount pending verification" else "All verified",
+                        statusBadge = if (pendingRequestsCount > 0) "$pendingRequestsCount Pending" else null,
+                        icon = Icons.Default.PersonAdd,
+                        accentColor = Color(0xFFD97706), // Amber
+                        onClick = { showCustomerRequestsDialog = true }
+                    )
+                )
+            }
             if (isSuperAdmin) {
                 add(
                     HomeTileItem(
@@ -959,6 +988,13 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
+    if (showCustomerRequestsDialog) {
+        CustomerRequestsDialog(
+            viewModel = viewModel,
+            onDismiss = { showCustomerRequestsDialog = false }
+        )
     }
 }
 

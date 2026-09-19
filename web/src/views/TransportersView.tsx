@@ -242,7 +242,7 @@ export function TransportersView() {
         </div>
       </div>
 
-      {/* Grid of Transporters */}
+      {/* Transporters Master List Table */}
       {filteredTransporters.length === 0 ? (
         <Card className="flex flex-col items-center justify-center p-12 text-center border-dashed">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 mb-3">
@@ -258,103 +258,128 @@ export function TransportersView() {
           </Button>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredTransporters.map((trans) => (
-            <Card key={trans.id} className="group relative overflow-hidden border border-zinc-200/80 p-4 transition-all hover:shadow-md dark:border-zinc-800">
-              <div className="flex items-start justify-between">
-                <div
-                  className="flex items-center gap-3 cursor-pointer flex-1"
-                  onClick={() => setSelectedTransporterId(trans.id)}
-                >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-700 font-bold text-base dark:bg-blue-500/20 dark:text-blue-400">
-                    <Truck className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-zinc-900 dark:text-zinc-50 line-clamp-1 hover:text-blue-600 transition-colors">
-                      {trans.transporterName}
-                    </h4>
-                    <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
-                      {trans.city || "Ahmedabad Hub"}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
-                  <Button
-                    variant="ghost"
-                    size="sm"
+        <div className="overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xs">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/80 text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                <tr>
+                  <th className="py-3 px-4">Transporter & Hub</th>
+                  <th className="py-3 px-4">Contact Person</th>
+                  <th className="py-3 px-4">Phone / Mobile</th>
+                  <th className="py-3 px-4">Routes / Destinations</th>
+                  <th className="py-3 px-4">Office & Godown</th>
+                  <th className="py-3 px-4">GSTIN</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+                {filteredTransporters.map((trans) => (
+                  <tr
+                    key={trans.id}
                     onClick={() => setSelectedTransporterId(trans.id)}
-                    className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900"
-                    title="View Dedicated Details & Orders"
+                    className="hover:bg-blue-50/40 dark:hover:bg-blue-950/20 cursor-pointer transition-colors group"
                   >
-                    <Eye className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => openEditModal(trans)}
-                    className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900"
-                  >
-                    <Edit2 className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDelete(trans.id)}
-                    className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-
-              <div
-                className="mt-3 space-y-2 border-t border-zinc-100 pt-3 dark:border-zinc-800 text-xs cursor-pointer"
-                onClick={() => setSelectedTransporterId(trans.id)}
-              >
-                {trans.contactPerson && (
-                  <div className="text-zinc-700 dark:text-zinc-300 font-medium">
-                    Contact: {trans.contactPerson}
-                  </div>
-                )}
-
-                <div className="flex items-center gap-2 text-zinc-600 dark:text-zinc-400">
-                  <Phone className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                  <span>{trans.phone}</span>
-                  {trans.phone2 && <span className="text-zinc-400">• {trans.phone2}</span>}
-                </div>
-
-                {trans.officeAddress && (
-                  <div className="flex items-start gap-1.5 text-zinc-600 dark:text-zinc-400">
-                    <Building className="h-3.5 w-3.5 text-zinc-400 shrink-0 mt-0.5" />
-                    <span className="line-clamp-1">Office: {trans.officeAddress}</span>
-                  </div>
-                )}
-
-                {trans.godownAddress && (
-                  <div className="flex items-start gap-1.5 text-zinc-600 dark:text-zinc-400">
-                    <MapPin className="h-3.5 w-3.5 text-zinc-400 shrink-0 mt-0.5" />
-                    <span className="line-clamp-1">Godown: {trans.godownAddress}</span>
-                  </div>
-                )}
-
-                {trans.destinationsCovered && (
-                  <div className="flex items-start gap-1.5 text-zinc-600 dark:text-zinc-400">
-                    <Navigation className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
-                    <span className="line-clamp-1 font-medium text-blue-700 dark:text-blue-400">
-                      Routes: {trans.destinationsCovered}
-                    </span>
-                  </div>
-                )}
-
-                {trans.gstin && (
-                  <div className="text-[11px] font-mono text-zinc-500">
-                    GSTIN: {trans.gstin}
-                  </div>
-                )}
-              </div>
-            </Card>
-          ))}
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-blue-700 font-bold text-sm dark:bg-blue-500/20 dark:text-blue-400 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                          <Truck className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-bold text-zinc-900 dark:text-zinc-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                            {trans.transporterName}
+                          </div>
+                          <div className="text-[11px] text-zinc-400">
+                            {trans.city || "Ahmedabad Hub"}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="font-medium text-zinc-700 dark:text-zinc-300">
+                        {trans.contactPerson || "—"}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-1.5 font-medium text-zinc-800 dark:text-zinc-200">
+                          <Phone className="h-3 w-3 text-zinc-400 shrink-0" />
+                          <span>{trans.phone}</span>
+                        </div>
+                        {trans.phone2 && (
+                          <div className="text-[11px] text-zinc-400 pl-4.5">
+                            {trans.phone2}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-3 px-4">
+                      {trans.destinationsCovered ? (
+                        <div className="flex items-start gap-1 text-blue-700 dark:text-blue-400 font-medium">
+                          <Navigation className="h-3 w-3 shrink-0 mt-0.5" />
+                          <span className="line-clamp-2 max-w-xs">{trans.destinationsCovered}</span>
+                        </div>
+                      ) : (
+                        <span className="text-zinc-400">—</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="space-y-0.5 max-w-xs text-[11px] text-zinc-500">
+                        {trans.officeAddress && (
+                          <div className="truncate" title={trans.officeAddress}>
+                            <span className="font-semibold text-zinc-600 dark:text-zinc-400">Off:</span> {trans.officeAddress}
+                          </div>
+                        )}
+                        {trans.godownAddress && (
+                          <div className="truncate text-zinc-400" title={trans.godownAddress}>
+                            <span className="font-semibold text-zinc-500">Godown:</span> {trans.godownAddress}
+                          </div>
+                        )}
+                        {!trans.officeAddress && !trans.godownAddress && <span>—</span>}
+                      </div>
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      {trans.gstin ? (
+                        <span className="font-mono text-[11px] text-zinc-500">{trans.gstin}</span>
+                      ) : (
+                        <span className="text-zinc-400">—</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-right whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSelectedTransporterId(trans.id)}
+                          className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900"
+                          title="View Dedicated Details & Orders"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openEditModal(trans)}
+                          className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900"
+                          title="Edit Transporter"
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(trans.id)}
+                          className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
+                          title="Delete Transporter"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

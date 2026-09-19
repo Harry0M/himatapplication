@@ -214,7 +214,8 @@ data class EmployeeEntity(
     val deletedByEmail: String = "",
     val deletedByRole: String = "",
     val deletionStatus: String = "",
-    val deletionReason: String = ""
+    val deletionReason: String = "",
+    val photoUri: String = ""
 ) {
     val email2: String get() = alternateEmail
 }
@@ -417,4 +418,133 @@ typealias TransactionLog = TransactionLogEntity
 typealias Brand = BrandEntity
 typealias Transporter = TransporterEntity
 typealias Market = MarketEntity
+
+@IgnoreExtraProperties
+@Entity(tableName = "leads")
+data class LeadEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val leadId: String = "",
+    val type: String = "customer", // "customer" or "supplier"
+    val name: String = "",
+    val firmName: String = "",
+    val supplierType: String = "", // "Manufacturer" or "Wholesaler" if type == "supplier"
+    val phone: String = "",
+    val phone2: String = "",
+    val meetingPlace: String = "", // Where met (market, shop, hotel, etc.)
+    val city: String = "Ahmedabad",
+    val state: String = "Gujarat",
+    val notes: String = "",
+    val photosJson: String = "[]",
+    val status: String = "Thinking", // "Thinking", "Follow-up", "New", "Converted", "Dropped"
+    val nextFollowUpDate: String = "",
+    val createdByUid: String = "",
+    val createdByName: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
+    val convertedAt: Long? = null,
+    val convertedTargetId: Long? = null,
+    val isDeleted: Boolean = false
+) {
+    val photoList: List<String>
+        get() {
+            if (photosJson.isBlank() || photosJson == "[]") return emptyList()
+            return try {
+                photosJson.removeSurrounding("[", "]")
+                    .split(",")
+                    .map { it.trim().removeSurrounding("\"").removeSurrounding("'") }
+                    .filter { it.isNotBlank() }
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+}
+
+@IgnoreExtraProperties
+data class CustomerRegistrationRequestEntity(
+    val id: String = "",
+    val firmName: String = "",
+    val name: String = "",
+    val phone: String = "",
+    val phone2: String = "",
+    val email: String = "",
+    val address: String = "",
+    val shopAddress: String = "",
+    val marketArea: String = "",
+    val city: String = "Ahmedabad",
+    val district: String = "",
+    val state: String = "Gujarat",
+    val pincode: String = "",
+    val shopMapLink: String = "",
+    val garmentTypes: String = "",
+    val gstin: String = "",
+    val panNumber: String = "",
+    val preferredTransporterName: String = "",
+    val transportPreference: String = "",
+    val bankName: String = "",
+    val accountNumber: String = "",
+    val ifscCode: String = "",
+    val shopPhotoUri: String = "",
+    val gstCertPhotoUri: String = "",
+    val panPhotoUri: String = "",
+    val aadharPhotoUri: String = "",
+    val notes: String = "",
+    val status: String = "PENDING", // PENDING, APPROVED, REJECTED
+    val phoneVerified: Boolean = true,
+    val createdAt: Long = System.currentTimeMillis(),
+    val approvedAt: Long? = null,
+    val approvedBy: String = "",
+    val assignedAgentId: Long? = null,
+    val assignedAgentName: String = "",
+    val creditType: String = "Cash",
+    val creditDays: Int = 30,
+    val creditLimit: Double = 0.0,
+    val religion: String = "",
+    val createdCustomerId: Long? = null,
+    val rejectionReason: String = ""
+)
+
+@IgnoreExtraProperties
+data class SupplierRegistrationRequestEntity(
+    val id: String = "",
+    val firmName: String = "",
+    val name: String = "",
+    val contactPerson: String = "",
+    val type: String = "Manufacturer", // "Manufacturer" or "Wholesaler"
+    val brand: String = "",
+    val phone: String = "",
+    val phone2: String = "",
+    val email: String = "",
+    val address: String = "",
+    val officeAddress: String = "",
+    val marketArea: String = "",
+    val city: String = "Ahmedabad",
+    val district: String = "",
+    val state: String = "Gujarat",
+    val pincode: String = "",
+    val mapLink: String = "",
+    val productsMade: String = "",
+    val categories: String = "",
+    val priceRange: String = "",
+    val gstin: String = "",
+    val panNumber: String = "",
+    val bankName: String = "",
+    val accountNumber: String = "",
+    val ifscCode: String = "",
+    val visitingCardPhotoUri: String = "",
+    val shopPhotoUri: String = "",
+    val gstCertPhotoUri: String = "",
+    val panPhotoUri: String = "",
+    val notes: String = "",
+    val status: String = "PENDING", // PENDING, APPROVED, REJECTED
+    val phoneVerified: Boolean = true,
+    val createdAt: Long = System.currentTimeMillis(),
+    val approvedAt: Long? = null,
+    val approvedBy: String = "",
+    val createdSupplierId: Long? = null,
+    val rejectionReason: String = ""
+)
+
+typealias Lead = LeadEntity
+typealias CustomerRegistrationRequest = CustomerRegistrationRequestEntity
+typealias SupplierRegistrationRequest = SupplierRegistrationRequestEntity
+
 

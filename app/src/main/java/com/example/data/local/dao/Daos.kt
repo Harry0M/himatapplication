@@ -10,6 +10,7 @@ import com.example.data.local.entity.BrandEntity
 import com.example.data.local.entity.CustomerEntity
 import com.example.data.local.entity.EmployeeEntity
 import com.example.data.local.entity.GarmentItemEntity
+import com.example.data.local.entity.LeadEntity
 import com.example.data.local.entity.MarketEntity
 import com.example.data.local.entity.PackGroupEntity
 import com.example.data.local.entity.ProductEntity
@@ -504,5 +505,39 @@ interface MarketDao {
     @Query("DELETE FROM markets WHERE id = :id")
     suspend fun deleteMarketById(id: Long)
 }
+
+@Dao
+interface LeadDao {
+    @Query("SELECT * FROM leads WHERE isDeleted = 0 ORDER BY createdAt DESC")
+    fun getAllLeads(): Flow<List<LeadEntity>>
+
+    @Query("SELECT * FROM leads WHERE isDeleted = 0 AND type = :type ORDER BY createdAt DESC")
+    fun getLeadsByType(type: String): Flow<List<LeadEntity>>
+
+    @Query("SELECT * FROM leads WHERE id = :id LIMIT 1")
+    suspend fun getLeadById(id: Long): LeadEntity?
+
+    @Query("SELECT * FROM leads WHERE leadId = :leadId LIMIT 1")
+    suspend fun getLeadByLeadId(leadId: String): LeadEntity?
+
+    @Query("SELECT COUNT(*) FROM leads WHERE isDeleted = 0")
+    suspend fun getLeadsCount(): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertLead(lead: LeadEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(leads: List<LeadEntity>)
+
+    @Update
+    suspend fun updateLead(lead: LeadEntity)
+
+    @Delete
+    suspend fun deleteLead(lead: LeadEntity)
+
+    @Query("DELETE FROM leads WHERE id = :id")
+    suspend fun deleteLeadById(id: Long)
+}
+
 
 

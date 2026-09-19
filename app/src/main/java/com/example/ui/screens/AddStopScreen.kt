@@ -58,6 +58,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import com.example.ui.components.DeliveryDaysSelector
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -662,7 +663,10 @@ fun AddStopScreen(
                     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(if (isCompact) 10.dp else 12.dp)) {
+                    Column(
+                        modifier = Modifier.padding(if (isCompact) 10.dp else 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Text(
                             text = "Delivery & Logistics",
                             fontWeight = FontWeight.Bold,
@@ -670,47 +674,29 @@ fun AddStopScreen(
                             color = NavyPrimary
                         )
 
-                        Spacer(modifier = Modifier.height(6.dp))
+                        // Day-based Delivery Date Selector
+                        DeliveryDaysSelector(
+                            expectedDeliveryDate = expectedDeliveryDate,
+                            onDeliveryDateChange = { expectedDeliveryDate = it }
+                        )
 
-                        Row(
+                        OutlinedTextField(
+                            value = transporter,
+                            onValueChange = { transporter = it },
+                            label = { Text("Transporter / LR", fontSize = 11.sp) },
+                            placeholder = { Text("e.g. VRL, Jaipur Golden", fontSize = 11.5.sp) },
+                            textStyle = TextStyle(fontSize = 12.5.sp),
+                            leadingIcon = {
+                                Icon(Icons.Default.LocalShipping, contentDescription = null, tint = NavyPrimary, modifier = Modifier.size(14.dp))
+                            },
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 8.dp)
-                        ) {
-                            OutlinedTextField(
-                                value = expectedDeliveryDate,
-                                onValueChange = { expectedDeliveryDate = it },
-                                label = { Text("Exp Delivery", fontSize = 11.sp) },
-                                placeholder = { Text("YYYY-MM-DD", fontSize = 11.5.sp) },
-                                textStyle = TextStyle(fontSize = 12.5.sp),
-                                leadingIcon = {
-                                    Icon(Icons.Default.CalendarToday, contentDescription = null, tint = NavyPrimary, modifier = Modifier.size(14.dp))
-                                },
-                                modifier = Modifier.weight(1f),
-                                singleLine = true,
-                                shape = RoundedCornerShape(10.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = NavyPrimary,
-                                    unfocusedBorderColor = Color(0xFFE2E8F0)
-                                )
+                            singleLine = true,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = NavyPrimary,
+                                unfocusedBorderColor = Color(0xFFE2E8F0)
                             )
-                            OutlinedTextField(
-                                value = transporter,
-                                onValueChange = { transporter = it },
-                                label = { Text("Transporter / LR", fontSize = 11.sp) },
-                                placeholder = { Text("e.g. VRL, Jaipur", fontSize = 11.5.sp) },
-                                textStyle = TextStyle(fontSize = 12.5.sp),
-                                leadingIcon = {
-                                    Icon(Icons.Default.LocalShipping, contentDescription = null, tint = NavyPrimary, modifier = Modifier.size(14.dp))
-                                },
-                                modifier = Modifier.weight(1.2f),
-                                singleLine = true,
-                                shape = RoundedCornerShape(10.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = NavyPrimary,
-                                    unfocusedBorderColor = Color(0xFFE2E8F0)
-                                )
-                            )
-                        }
+                        )
                     }
                 }
 

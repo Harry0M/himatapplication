@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react"
-import { ref, onValue, set, remove, update } from "firebase/database"
+import { ref, onValue, set, remove, update, get } from "firebase/database"
 import { rtdb } from "../lib/firebase"
 import {
   Visit,
@@ -14,7 +14,9 @@ import {
   Transporter,
   Market,
   SoftDeletedItem,
-  CustomerRegistrationRequest
+  CustomerRegistrationRequest,
+  SupplierRegistrationRequest,
+  Lead
 } from "../types"
 
 // Helper to robustly extract arrays from Firebase snapshots (handles sparse arrays and keyed objects)
@@ -26,7 +28,12 @@ function parseRtdbList<T extends { id?: any }>(val: any): T[] {
         if (!item) return null
         if (typeof item === "object") {
           const rawItem = item as any
-          const id = rawItem.id !== undefined && rawItem.id !== null ? Number(rawItem.id) : idx
+          let id = rawItem.id
+          if (id === undefined || id === null || (typeof id === "number" && isNaN(id)) || String(id) === "NaN") {
+            id = idx
+          } else if (typeof id === "string" && !isNaN(Number(id)) && /^\d+$/.test(id.trim())) {
+            id = Number(id)
+          }
           const isDeleted = Boolean(rawItem.isDeleted ?? rawItem.deleted ?? false)
           const isActive = Boolean(rawItem.isActive ?? rawItem.active ?? true)
           const isBlocked = Boolean(rawItem.isBlocked ?? rawItem.blocked ?? false)
@@ -49,12 +56,12 @@ function parseRtdbList<T extends { id?: any }>(val: any): T[] {
         if (typeof item === "object") {
           const numKey = Number(key)
           const rawItem = item as any
-          const id =
-            rawItem.id !== undefined && rawItem.id !== null
-              ? Number(rawItem.id)
-              : !isNaN(numKey)
-              ? numKey
-              : key
+          let id = rawItem.id
+          if (id === undefined || id === null || (typeof id === "number" && isNaN(id)) || String(id) === "NaN") {
+            id = !isNaN(numKey) && /^\d+$/.test(key) ? numKey : key
+          } else if (typeof id === "string" && !isNaN(Number(id)) && /^\d+$/.test(id.trim())) {
+            id = Number(id)
+          }
           const isDeleted = Boolean(rawItem.isDeleted ?? rawItem.deleted ?? false)
           const isActive = Boolean(rawItem.isActive ?? rawItem.active ?? true)
           const isBlocked = Boolean(rawItem.isBlocked ?? rawItem.blocked ?? false)
@@ -203,10 +210,37 @@ interface DataContextType {
       creditType?: "Cash" | "Credit"
       creditDays?: number
       creditLimit?: number
+      religion?: string
+      fallbackRequest?: CustomerRegistrationRequest
     }
   ) => Promise<number>
-  rejectRegistrationRequest: (requestId: string, reason?: string) => Promise<void>
-  deleteRegistrationRequest: (requestId: string) => Promise<void>
+  rejectRegistrationRequest: (requestId: string, reason?: string, fallbackPhone?: string) => Promise<void>
+  deleteRegistrationRequest: (requestId: string, fallbackPhone?: string) => Promise<void>
+
+  // Supplier Self-Registration Requests (User Requests)
+  supplierRegistrationRequests: SupplierRegistrationRequest[]
+  pendingSupplierRegistrationRequestsCount: number
+  submitSupplierRegistrationRequest: (
+    request: Omit<SupplierRegistrationRequest, "id" | "createdAt" | "status" | "phoneVerified"> & { verificationUid?: string }
+  ) => Promise<string>
+  approveSupplierRegistrationRequest: (
+    requestId: string,
+    options?: {
+      brand?: string
+      marketName?: string
+      fallbackRequest?: SupplierRegistrationRequest
+    }
+  ) => Promise<number>
+  rejectSupplierRegistrationRequest: (requestId: string, reason?: string, fallbackPhone?: string) => Promise<void>
+  deleteSupplierRegistrationRequest: (requestId: string, fallbackPhone?: string) => Promise<void>
+
+  // Leads (Prospects for Customers and Suppliers)
+  leads: Lead[]
+  customerLeads: Lead[]
+  supplierLeads: Lead[]
+  saveLead: (lead: Partial<Lead> & { firmName: string; phone: string; type: "customer" | "supplier" }) => Promise<string | number>
+  deleteLead: (leadId: string | number) => Promise<void>
+  convertLeadToMaster: (lead: Lead, targetType: "customer" | "supplier") => Promise<void>
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined)
@@ -224,6 +258,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [packGroups, setPackGroups] = useState<PackGroup[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [rawRegistrationRequests, setRawRegistrationRequests] = useState<CustomerRegistrationRequest[]>([])
+  const [rawSupplierRegistrationRequests, setRawSupplierRegistrationRequests] = useState<SupplierRegistrationRequest[]>([])
+  const [rawLeads, setRawLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState<boolean>(true)
 
   // Global employee filter state
@@ -232,7 +268,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Real-time synchronization
   useEffect(() => {
     let activeListeners = 0
-    const totalListeners = 12
+    const totalListeners = 14
 
     const checkLoading = () => {
       activeListeners++
@@ -373,6 +409,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       checkLoading()
     })
 
+    // 13. Leads (Customer & Supplier Prospects)
+    const leadsRef = ref(rtdb, "leads")
+    const unsubLeads = onValue(leadsRef, (snapshot) => {
+      if (snapshot.exists()) {
+        setRawLeads(parseRtdbList<Lead>(snapshot.val()))
+      } else {
+        setRawLeads([])
+      }
+      checkLoading()
+    })
+
+    // 14. Supplier Registration Requests
+    const supRegRequestsRef = ref(rtdb, "supplier_registration_requests")
+    const unsubSupRegRequests = onValue(supRegRequestsRef, (snapshot) => {
+      if (snapshot.exists()) {
+        setRawSupplierRegistrationRequests(parseRtdbList<SupplierRegistrationRequest>(snapshot.val()))
+      } else {
+        setRawSupplierRegistrationRequests([])
+      }
+      checkLoading()
+    })
+
     return () => {
       unsubVisits()
       unsubEntries()
@@ -386,6 +444,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       unsubTransporters()
       unsubMarkets()
       unsubRegRequests()
+      unsubSupRegRequests()
+      unsubLeads()
     }
   }, [])
 
@@ -510,6 +570,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const pendingRegistrationRequestsCount = React.useMemo(() => {
     return registrationRequests.filter((r) => r.status === "PENDING").length
   }, [registrationRequests])
+
+  // Supplier registration requests (User Requests)
+  const supplierRegistrationRequests = React.useMemo(() => {
+    return [...rawSupplierRegistrationRequests].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+  }, [rawSupplierRegistrationRequests])
+
+  const pendingSupplierRegistrationRequestsCount = React.useMemo(() => {
+    return supplierRegistrationRequests.filter((r) => r.status === "PENDING").length
+  }, [supplierRegistrationRequests])
+
+  // Leads (Prospects for Customers & Suppliers)
+  const leads = React.useMemo(() => {
+    return rawLeads
+      .filter((l) => !l.isDeleted)
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+  }, [rawLeads])
+
+  const customerLeads = React.useMemo(() => {
+    return leads.filter((l) => l.type === "customer")
+  }, [leads])
+
+  const supplierLeads = React.useMemo(() => {
+    return leads.filter((l) => l.type === "supplier")
+  }, [leads])
 
   // Synthesize suppliers: ensure any supplier referenced in entries is never missing
   const suppliers = React.useMemo(() => {
@@ -1133,14 +1217,69 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       creditType?: "Cash" | "Credit"
       creditDays?: number
       creditLimit?: number
+      religion?: string
+      fallbackRequest?: CustomerRegistrationRequest
     }
   ) => {
-    const req = registrationRequests.find((r) => r.id === requestId)
+    let targetId = requestId
+    let req = registrationRequests.find(
+      (r) =>
+        r &&
+        String(r.id) !== "NaN" &&
+        (String(r.id) === String(requestId) || r.id === requestId)
+    )
+
+    // Fallback 1: options.fallbackRequest
+    if (!req && options.fallbackRequest) {
+      req = options.fallbackRequest
+      if (req.id && String(req.id) !== "NaN") {
+        targetId = String(req.id)
+      }
+    }
+
+    // Fallback 2: Direct lookup by requestId in RTDB
+    if ((!req || !targetId || String(targetId) === "NaN") && requestId && String(requestId) !== "NaN") {
+      try {
+        const snap = await get(ref(rtdb, `customer_registration_requests/${requestId}`))
+        if (snap.exists()) {
+          const val = snap.val()
+          req = { ...val, id: val.id || requestId }
+          targetId = requestId
+        }
+      } catch (e) {
+        console.warn("Could not fetch request directly by ID:", e)
+      }
+    }
+
+    // Fallback 3: Search across all RTDB customer_registration_requests node
+    if (!targetId || String(targetId) === "NaN" || !req) {
+      try {
+        const allSnap = await get(ref(rtdb, "customer_registration_requests"))
+        if (allSnap.exists()) {
+          const allVal = allSnap.val() || {}
+          for (const [k, v] of Object.entries<any>(allVal)) {
+            if (!v) continue
+            const idMatch = String(k) === String(requestId) || String(v.id) === String(requestId)
+            const phoneMatch = req?.phone && (v.phone === req.phone || v.phone?.slice(-10) === req.phone?.slice(-10))
+            if (idMatch || phoneMatch) {
+              req = { ...v, id: k }
+              targetId = k
+              break
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Could not scan registration requests in RTDB:", e)
+      }
+    }
+
     if (!req) throw new Error("Registration request not found")
 
     // Find next numeric customer ID
     const maxId = customers.reduce((max, c) => Math.max(max, Number(c.id) || 0), 0)
     const newCustId = maxId + 1
+
+    const assignedReligion = (options.religion !== undefined ? options.religion.trim() : (req.religion?.trim() || ""))
 
     const newCustomer: Customer = {
       id: newCustId,
@@ -1163,6 +1302,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       gstin: req.gstin?.trim() || "",
       gstNumber: req.gstin?.trim() || "",
       panNumber: req.panNumber?.trim() || "",
+      religion: assignedReligion,
       preferredTransporterName: req.preferredTransporterName?.trim() || "",
       transportPreference: req.transportPreference?.trim() || "",
       shopPhotoUri: req.shopPhotoUri || "",
@@ -1186,24 +1326,45 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await saveCustomer(newCustomer)
 
     // Mark registration request as APPROVED
-    const reqRef = ref(rtdb, `customer_registration_requests/${requestId}`)
-    await update(reqRef, sanitizePayload({
-      status: "APPROVED",
-      approvedAt: Date.now(),
-      approvedBy: "Admin",
-      assignedAgentId: options.assignedAgentId,
-      assignedAgentName: options.assignedAgentName,
-      creditType: options.creditType || "Cash",
-      creditDays: Number(options.creditDays) || 0,
-      creditLimit: Number(options.creditLimit) || 0,
-      createdCustomerId: newCustId,
-    }))
+    const finalReqKey = targetId && String(targetId) !== "NaN" ? targetId : req.id
+    if (finalReqKey && String(finalReqKey) !== "NaN") {
+      const reqRef = ref(rtdb, `customer_registration_requests/${finalReqKey}`)
+      await update(reqRef, sanitizePayload({
+        status: "APPROVED",
+        approvedAt: Date.now(),
+        approvedBy: "Admin",
+        assignedAgentId: options.assignedAgentId,
+        assignedAgentName: options.assignedAgentName,
+        creditType: options.creditType || "Cash",
+        creditDays: Number(options.creditDays) || 0,
+        creditLimit: Number(options.creditLimit) || 0,
+        religion: assignedReligion,
+        createdCustomerId: newCustId,
+      }))
+    }
 
     return newCustId
   }
 
-  const rejectRegistrationRequest = async (requestId: string, reason?: string) => {
-    const reqRef = ref(rtdb, `customer_registration_requests/${requestId}`)
+  const rejectRegistrationRequest = async (requestId: string, reason?: string, fallbackPhone?: string) => {
+    let targetId = requestId
+    if (!targetId || String(targetId) === "NaN") {
+      try {
+        const allSnap = await get(ref(rtdb, "customer_registration_requests"))
+        if (allSnap.exists()) {
+          const allVal = allSnap.val() || {}
+          for (const [k, v] of Object.entries<any>(allVal)) {
+            if (String(k) === String(requestId) || (fallbackPhone && (v?.phone === fallbackPhone || v?.phone?.slice(-10) === fallbackPhone.slice(-10)))) {
+              targetId = k
+              break
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Could not resolve reject request ID:", e)
+      }
+    }
+    const reqRef = ref(rtdb, `customer_registration_requests/${targetId}`)
     await update(reqRef, sanitizePayload({
       status: "REJECTED",
       rejectedAt: Date.now(),
@@ -1212,9 +1373,296 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }))
   }
 
-  const deleteRegistrationRequest = async (requestId: string) => {
-    const reqRef = ref(rtdb, `customer_registration_requests/${requestId}`)
+  const deleteRegistrationRequest = async (requestId: string, fallbackPhone?: string) => {
+    let targetId = requestId
+    if (!targetId || String(targetId) === "NaN") {
+      try {
+        const allSnap = await get(ref(rtdb, "customer_registration_requests"))
+        if (allSnap.exists()) {
+          const allVal = allSnap.val() || {}
+          for (const [k, v] of Object.entries<any>(allVal)) {
+            if (String(k) === String(requestId) || (fallbackPhone && (v?.phone === fallbackPhone || v?.phone?.slice(-10) === fallbackPhone.slice(-10)))) {
+              targetId = k
+              break
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Could not resolve delete request ID:", e)
+      }
+    }
+    const reqRef = ref(rtdb, `customer_registration_requests/${targetId}`)
     await remove(reqRef)
+  }
+
+  // Supplier Self-Registration Request Methods
+  const submitSupplierRegistrationRequest = async (
+    request: Omit<SupplierRegistrationRequest, "id" | "createdAt" | "status" | "phoneVerified"> & { verificationUid?: string }
+  ): Promise<string> => {
+    const id = `sup_req_${Date.now()}_${Math.floor(Math.random() * 1000)}`
+    const reqRef = ref(rtdb, `supplier_registration_requests/${id}`)
+    const payload: SupplierRegistrationRequest = {
+      ...request,
+      id,
+      status: "PENDING",
+      phoneVerified: true,
+      createdAt: Date.now(),
+    }
+    await set(reqRef, sanitizePayload(payload))
+    return id
+  }
+
+  const approveSupplierRegistrationRequest = async (
+    requestId: string,
+    options?: {
+      brand?: string
+      marketName?: string
+      fallbackRequest?: SupplierRegistrationRequest
+    }
+  ) => {
+    let targetId = requestId
+    let req = supplierRegistrationRequests.find(
+      (r) =>
+        r &&
+        String(r.id) !== "NaN" &&
+        (String(r.id) === String(requestId) || r.id === requestId)
+    )
+
+    if (!req && options?.fallbackRequest) {
+      req = options.fallbackRequest
+      if (req.id && String(req.id) !== "NaN") {
+        targetId = String(req.id)
+      }
+    }
+
+    if ((!req || !targetId || String(targetId) === "NaN") && requestId && String(requestId) !== "NaN") {
+      try {
+        const snap = await get(ref(rtdb, `supplier_registration_requests/${requestId}`))
+        if (snap.exists()) {
+          const val = snap.val()
+          req = { ...val, id: val.id || requestId }
+          targetId = requestId
+        }
+      } catch (e) {
+        console.warn("Could not fetch supplier request directly by ID:", e)
+      }
+    }
+
+    if (!targetId || String(targetId) === "NaN" || !req) {
+      try {
+        const allSnap = await get(ref(rtdb, "supplier_registration_requests"))
+        if (allSnap.exists()) {
+          const allVal = allSnap.val() || {}
+          for (const [k, v] of Object.entries<any>(allVal)) {
+            if (!v) continue
+            const idMatch = String(k) === String(requestId) || String(v.id) === String(requestId)
+            const phoneMatch = req?.phone && (v.phone === req.phone || v.phone?.slice(-10) === req.phone?.slice(-10))
+            if (idMatch || phoneMatch) {
+              req = { ...v, id: k }
+              targetId = k
+              break
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Could not scan supplier registration requests in RTDB:", e)
+      }
+    }
+
+    if (!req) throw new Error("Supplier registration request not found")
+
+    // Next numeric supplier ID
+    const maxId = suppliers.reduce((max, s) => Math.max(max, Number(s.id) || 0), 0)
+    const newSupId = maxId + 1
+
+    const finalFirmName = req.firmName?.trim() || req.name.trim()
+    const finalContactPerson = req.contactPerson?.trim() || req.name.trim()
+
+    const newSupplier: Supplier = {
+      id: newSupId,
+      supplierId: `SUP-${newSupId}`,
+      name: finalFirmName,
+      firmName: finalFirmName,
+      type: req.type || "Manufacturer",
+      brand: options?.brand?.trim() || req.brand?.trim() || "",
+      contactPerson: finalContactPerson,
+      phone: req.phone.trim(),
+      phone2: req.phone2?.trim() || "",
+      phones: [req.phone.trim(), req.phone2?.trim()].filter(Boolean) as string[],
+      email: req.email?.trim() || "",
+      address: req.address?.trim() || "",
+      officeAddress: req.officeAddress?.trim() || "",
+      marketArea: options?.marketName?.trim() || req.marketArea?.trim() || "",
+      marketName: options?.marketName?.trim() || req.marketArea?.trim() || "",
+      city: req.city?.trim() || "Ahmedabad",
+      state: req.state?.trim() || "Gujarat",
+      productsMade: req.productsMade?.trim() || "",
+      categories: req.categories?.trim() || req.productsMade?.trim() || "",
+      garmentTypes: req.categories?.trim() || req.productsMade?.trim() || "",
+      priceRange: req.priceRange?.trim() || "",
+      gstin: req.gstin?.trim() || "",
+      gstNumber: req.gstin?.trim() || "",
+      panNumber: req.panNumber?.trim() || "",
+      visitingCardPhotoUri: req.visitingCardPhotoUri || "",
+      shopPhotoUri: req.shopPhotoUri || "",
+      notes: [
+        req.bankName ? `Bank: ${req.bankName} | A/C: ${req.accountNumber || ""} | IFSC: ${req.ifscCode || ""}` : "",
+        req.notes ? `Supplier Note: ${req.notes}` : "",
+        `Registered via Web Form on ${new Date(req.createdAt).toLocaleDateString()}`
+      ].filter(Boolean).join("\n"),
+      createdAt: Date.now(),
+    }
+
+    await saveSupplier(newSupplier)
+
+    const finalReqKey = targetId && String(targetId) !== "NaN" ? targetId : req.id
+    if (finalReqKey && String(finalReqKey) !== "NaN") {
+      const reqRef = ref(rtdb, `supplier_registration_requests/${finalReqKey}`)
+      await update(reqRef, sanitizePayload({
+        status: "APPROVED",
+        approvedAt: Date.now(),
+        approvedBy: "Admin",
+        createdSupplierId: newSupId,
+      }))
+    }
+
+    return newSupId
+  }
+
+  const rejectSupplierRegistrationRequest = async (requestId: string, reason?: string, fallbackPhone?: string) => {
+    let targetId = requestId
+    if (!targetId || String(targetId) === "NaN") {
+      try {
+        const allSnap = await get(ref(rtdb, "supplier_registration_requests"))
+        if (allSnap.exists()) {
+          const allVal = allSnap.val() || {}
+          for (const [k, v] of Object.entries<any>(allVal)) {
+            if (String(k) === String(requestId) || (fallbackPhone && (v?.phone === fallbackPhone || v?.phone?.slice(-10) === fallbackPhone.slice(-10)))) {
+              targetId = k
+              break
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Could not resolve reject supplier request ID:", e)
+      }
+    }
+    const reqRef = ref(rtdb, `supplier_registration_requests/${targetId}`)
+    await update(reqRef, sanitizePayload({
+      status: "REJECTED",
+      rejectedAt: Date.now(),
+      rejectedBy: "Admin",
+      rejectionReason: reason || "Declined by Admin",
+    }))
+  }
+
+  const deleteSupplierRegistrationRequest = async (requestId: string, fallbackPhone?: string) => {
+    let targetId = requestId
+    if (!targetId || String(targetId) === "NaN") {
+      try {
+        const allSnap = await get(ref(rtdb, "supplier_registration_requests"))
+        if (allSnap.exists()) {
+          const allVal = allSnap.val() || {}
+          for (const [k, v] of Object.entries<any>(allVal)) {
+            if (String(k) === String(requestId) || (fallbackPhone && (v?.phone === fallbackPhone || v?.phone?.slice(-10) === fallbackPhone.slice(-10)))) {
+              targetId = k
+              break
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Could not resolve delete supplier request ID:", e)
+      }
+    }
+    const reqRef = ref(rtdb, `supplier_registration_requests/${targetId}`)
+    await remove(reqRef)
+  }
+
+  // Leads (Customer & Supplier Prospects)
+  const saveLead = async (lead: Partial<Lead> & { firmName: string; phone: string; type: "customer" | "supplier" }): Promise<string | number> => {
+    const leadId: string | number = lead.id !== undefined && lead.id !== null && String(lead.id) !== "NaN" ? lead.id : `lead_${Date.now()}`
+    const payload: Lead = {
+      id: leadId,
+      leadId: lead.leadId || `LEAD-${Date.now().toString().slice(-4)}`,
+      type: lead.type || "customer",
+      name: lead.name?.trim() || "",
+      firmName: lead.firmName.trim(),
+      supplierType: lead.supplierType,
+      phone: lead.phone.trim(),
+      phone2: lead.phone2?.trim() || "",
+      meetingPlace: lead.meetingPlace?.trim() || "",
+      city: lead.city?.trim() || "Ahmedabad",
+      state: lead.state?.trim() || "Gujarat",
+      notes: lead.notes?.trim() || "",
+      photos: lead.photos || [],
+      status: lead.status || "Thinking",
+      nextFollowUpDate: lead.nextFollowUpDate || "",
+      createdAt: lead.createdAt || Date.now(),
+      createdByUid: lead.createdByUid || "",
+      createdByName: lead.createdByName || "Admin",
+      isDeleted: false,
+    }
+    await set(ref(rtdb, `leads/${leadId}`), sanitizePayload(payload))
+    return leadId
+  }
+
+  const deleteLead = async (leadId: string | number) => {
+    const targetRef = ref(rtdb, `leads/${leadId}`)
+    await update(targetRef, { isDeleted: true, deletedAt: Date.now() })
+  }
+
+  const convertLeadToMaster = async (lead: Lead, targetType: "customer" | "supplier") => {
+    if (targetType === "customer") {
+      const maxId = customers.reduce((max, c) => Math.max(max, Number(c.id) || 0), 0)
+      const newCustId = maxId + 1
+      const newCust: Customer = {
+        id: newCustId,
+        customerId: `CUST-${newCustId}`,
+        name: lead.name?.trim() || lead.firmName.trim(),
+        firmName: lead.firmName.trim(),
+        phone: lead.phone.trim(),
+        phone2: lead.phone2?.trim() || "",
+        address: lead.meetingPlace?.trim() || lead.city || "Ahmedabad",
+        city: lead.city || "Ahmedabad",
+        state: lead.state || "Gujarat",
+        notes: `Converted from Lead on ${new Date().toLocaleDateString()}.\nMet at: ${lead.meetingPlace || ""}\n${lead.notes || ""}`,
+        customerType: "Credit",
+        creditDays: 30,
+        creditLimit: 0,
+        shopPhotoUri: lead.photos && lead.photos.length > 0 ? lead.photos[0] : "",
+        createdAt: Date.now(),
+      }
+      await saveCustomer(newCust)
+      await update(ref(rtdb, `leads/${lead.id}`), {
+        status: "Converted",
+        convertedAt: Date.now(),
+        convertedTargetId: newCustId,
+      })
+    } else {
+      const maxId = suppliers.reduce((max, s) => Math.max(max, Number(s.id) || 0), 0)
+      const newSupId = maxId + 1
+      const newSup: Supplier = {
+        id: newSupId,
+        supplierId: `SUP-${newSupId}`,
+        name: lead.name?.trim() || lead.firmName.trim(),
+        firmName: lead.firmName.trim(),
+        type: lead.supplierType || "Manufacturer",
+        phone: lead.phone.trim(),
+        contactPerson: lead.name?.trim() || "In-charge",
+        address: lead.meetingPlace?.trim() || lead.city || "Ahmedabad",
+        city: lead.city || "Ahmedabad",
+        marketArea: lead.meetingPlace || "Ahmedabad Market",
+        notes: `Converted from Lead on ${new Date().toLocaleDateString()}.\nMet at: ${lead.meetingPlace || ""}\n${lead.notes || ""}`,
+        shopPhotoUri: lead.photos && lead.photos.length > 0 ? lead.photos[0] : "",
+        createdAt: Date.now(),
+      }
+      await saveSupplier(newSup)
+      await update(ref(rtdb, `leads/${lead.id}`), {
+        status: "Converted",
+        convertedAt: Date.now(),
+        convertedTargetId: newSupId,
+      })
+    }
   }
 
   return (
@@ -1277,6 +1725,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         approveRegistrationRequest,
         rejectRegistrationRequest,
         deleteRegistrationRequest,
+        supplierRegistrationRequests,
+        pendingSupplierRegistrationRequestsCount,
+        submitSupplierRegistrationRequest,
+        approveSupplierRegistrationRequest,
+        rejectSupplierRegistrationRequest,
+        deleteSupplierRegistrationRequest,
+        leads,
+        customerLeads,
+        supplierLeads,
+        saveLead,
+        deleteLead,
+        convertLeadToMaster,
       }}
     >
       {children}

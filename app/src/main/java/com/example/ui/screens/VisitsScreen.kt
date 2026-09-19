@@ -79,6 +79,7 @@ fun VisitsScreen(
 
     val visits by viewModel.visibleVisits.collectAsStateWithLifecycle()
     val entries by viewModel.visibleEntries.collectAsStateWithLifecycle()
+    val customers by viewModel.visibleCustomers.collectAsStateWithLifecycle()
 
     val listState = rememberLazyListState()
     var isHeaderVisible by remember { mutableStateOf(true) }
@@ -386,10 +387,15 @@ fun VisitsScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(filteredVisits) { visit ->
+                        val cust = customers.find { it.id == visit.customerId || it.firmName.equals(visit.customerName, true) || it.name.equals(visit.customerName, true) }
+                        val photoUrl = cust?.let { it.purchaserPhotoUri.ifBlank { it.shopPhotoUri } }?.takeIf { it.isNotBlank() }
+                            ?: entries.firstOrNull { it.visitId == visit.id && !it.orderFormPhotoUri.isNullOrBlank() }?.orderFormPhotoUri
+
                         VisitCardItem(
                             visit = visit,
                             entriesCount = entries.count { it.visitId == visit.id },
                             totalPcs = entries.filter { it.visitId == visit.id }.sumOf { it.pieces },
+                            photoUrl = photoUrl,
                             onClick = { onOpenVisit(visit) }
                         )
                     }

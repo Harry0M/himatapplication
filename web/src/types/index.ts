@@ -367,7 +367,77 @@ export interface CustomerRegistrationRequest {
   creditType?: "Cash" | "Credit"
   creditDays?: number
   creditLimit?: number
+  religion?: string
   createdCustomerId?: number
   rejectionReason?: string
 }
+
+export interface SupplierRegistrationRequest {
+  id: string
+  firmName: string
+  name: string // Mill / Firm Name or Owner Name
+  contactPerson: string
+  type: "Manufacturer" | "Wholesaler"
+  brand?: string
+  phone: string // Primary Phone / Mobile
+  phone2?: string // Secondary Phone / WhatsApp
+  email?: string
+  address: string // Factory / Mill Address
+  officeAddress?: string // Market Office / Shop Address
+  marketArea?: string
+  city: string
+  district?: string
+  state: string
+  pincode?: string
+  mapLink?: string
+  productsMade?: string // e.g. Fabrics, Garments manufactured
+  categories?: string // Garment or Fabric categories
+  priceRange?: string
+  gstin?: string
+  panNumber?: string
+  bankName?: string
+  accountNumber?: string
+  ifscCode?: string
+  visitingCardPhotoUri?: string
+  shopPhotoUri?: string // Mill / Front Photo
+  gstCertPhotoUri?: string
+  panPhotoUri?: string
+  notes?: string
+  status: "PENDING" | "APPROVED" | "REJECTED"
+  phoneVerified: boolean
+  verificationUid?: string
+  createdAt: number
+  approvedAt?: number
+  approvedBy?: string
+  createdSupplierId?: number
+  rejectionReason?: string
+}
+
+export type LeadType = "customer" | "supplier"
+export type LeadStatus = "New" | "Thinking" | "Follow-up" | "Converted" | "Dropped"
+
+export interface Lead {
+  id: string | number
+  leadId?: string
+  type: LeadType // "customer" or "supplier"
+  name: string // Contact Person Name
+  firmName: string // Shop / Mill Name
+  supplierType?: "Manufacturer" | "Wholesaler" // relevant if type === 'supplier'
+  phone: string
+  phone2?: string
+  meetingPlace?: string // Place where we met him (Market, Shop, Hotel, etc.)
+  city?: string
+  state?: string
+  notes?: string
+  photos?: string[]
+  status?: LeadStatus
+  nextFollowUpDate?: string
+  createdByUid?: string
+  createdByName?: string
+  createdAt?: number
+  convertedAt?: number
+  convertedTargetId?: number | string
+  isDeleted?: boolean
+}
+
 

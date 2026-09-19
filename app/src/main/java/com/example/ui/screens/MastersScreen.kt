@@ -47,9 +47,14 @@ import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.LocationCity
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
+import com.example.ui.dialogs.CustomerRequestsDialog
+import com.example.ui.dialogs.SupplierRegistrationDialog
+import com.example.ui.dialogs.SupplierRequestsDialog
+import com.example.ui.dialogs.WhatsAppInviteDialog
 import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Store
@@ -162,6 +167,12 @@ fun MastersScreen(
     val markets by viewModel.visibleMarkets.collectAsStateWithLifecycle()
     val products by viewModel.visibleProducts.collectAsStateWithLifecycle()
     val employees by viewModel.allEmployees.collectAsStateWithLifecycle()
+    val pendingRequestsCount by viewModel.pendingRegistrationRequestsCount.collectAsStateWithLifecycle()
+    val pendingSupplierRequestsCount by viewModel.pendingSupplierRegistrationRequestsCount.collectAsStateWithLifecycle()
+    var showRequestsDialog by remember { mutableStateOf(false) }
+    var showSupplierRequestsDialog by remember { mutableStateOf(false) }
+    var showSupplierRegistrationDialog by remember { mutableStateOf(false) }
+    var inviteShareType by remember { mutableStateOf<MasterTab?>(null) }
 
     // Active Category Selection: null means on the Masters Hub Directory
     var selectedCategory by remember { mutableStateOf<MasterTab?>(initialTab) }
@@ -578,26 +589,71 @@ fun MastersScreen(
                                     )
                                 }
 
-                                Spacer(modifier = Modifier.width(6.dp))
-
-                                // WhatsApp Customer Registration Link Share Button
-                                if (activeTab == MasterTab.CUSTOMERS) {
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = Color(0xFF25D366),
-                                        modifier = Modifier
-                                            .size(34.dp)
-                                            .clip(CircleShape)
-                                            .clickable {
-                                                ShareUtil.shareCustomerRegistrationLink(context)
+                                // Circular Customer Registration Requests Button with Red-dot indicator (Admin only)
+                                if (activeTab == MasterTab.CUSTOMERS && isSuperAdmin) {
+                                    Box(modifier = Modifier.padding(end = 6.dp)) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = if (pendingRequestsCount > 0) Color(0xFFFEF3C7) else Color.White,
+                                            border = BorderStroke(1.dp, if (pendingRequestsCount > 0) Color(0xFFF59E0B) else Color(0xFFE2E8F0)),
+                                            modifier = Modifier
+                                                .size(34.dp)
+                                                .clip(CircleShape)
+                                                .clickable { showRequestsDialog = true }
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    imageVector = Icons.Default.PersonAdd,
+                                                    contentDescription = "Registration Requests",
+                                                    tint = if (pendingRequestsCount > 0) Color(0xFFB45309) else NavyPrimary,
+                                                    modifier = Modifier.size(17.dp)
+                                                )
                                             }
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Icon(
-                                                imageVector = Icons.Default.Share,
-                                                contentDescription = "Share Registration Link via WhatsApp",
-                                                tint = Color.White,
-                                                modifier = Modifier.size(17.dp)
+                                        }
+
+                                        // Red-dot notification indicator
+                                        if (pendingRequestsCount > 0) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(9.dp)
+                                                    .align(Alignment.TopEnd)
+                                                    .clip(CircleShape)
+                                                    .background(Color(0xFFDC2626))
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Circular Supplier Registration Requests Button (Supplier Master)
+                                if (activeTab == MasterTab.SUPPLIERS && isSuperAdmin) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = if (pendingSupplierRequestsCount > 0) Color(0xFFFEF3C7) else Color(0xFFECFDF5),
+                                            border = BorderStroke(1.dp, if (pendingSupplierRequestsCount > 0) Color(0xFFF59E0B) else Color(0xFFA7F3D0)),
+                                            modifier = Modifier
+                                                .size(34.dp)
+                                                .clip(CircleShape)
+                                                .clickable { showSupplierRequestsDialog = true }
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    imageVector = Icons.Default.PersonAdd,
+                                                    contentDescription = "Supplier Registration Requests",
+                                                    tint = if (pendingSupplierRequestsCount > 0) Color(0xFFB45309) else Color(0xFF059669),
+                                                    modifier = Modifier.size(17.dp)
+                                                )
+                                            }
+                                        }
+
+                                        // Red-dot notification indicator
+                                        if (pendingSupplierRequestsCount > 0) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(9.dp)
+                                                    .align(Alignment.TopEnd)
+                                                    .clip(CircleShape)
+                                                    .background(Color(0xFFDC2626))
                                             )
                                         }
                                     }
@@ -652,30 +708,6 @@ fun MastersScreen(
                                             tint = if (isSearchVisible || searchQuery.isNotBlank()) Color.White else NavyPrimary,
                                             modifier = Modifier.size(16.dp)
                                         )
-                                    }
-                                }
-
-                                // Quick Top Add Button
-                                if (activeTab != MasterTab.EMPLOYEES || isSuperAdmin) {
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = NavyPrimary,
-                                        modifier = Modifier
-                                            .size(34.dp)
-                                            .clip(CircleShape)
-                                            .clickable {
-                                                viewModel.openAddMaster(activeTab)
-                                            }
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Icon(
-                                                Icons.Default.Add,
-                                                contentDescription = "Add New Record",
-                                                tint = GoldAccent,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        }
                                     }
                                 }
                             }
@@ -823,7 +855,7 @@ fun MastersScreen(
                                                 .fillMaxWidth()
                                                 .clip(RoundedCornerShape(12.dp))
                                                 .clickable {
-                                                    ShareUtil.shareCustomerRegistrationLink(context)
+                                                    inviteShareType = MasterTab.CUSTOMERS
                                                 }
                                         ) {
                                             Row(
@@ -915,6 +947,63 @@ fun MastersScreen(
                                     contentPadding = PaddingValues(bottom = 88.dp),
                                     verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
+                                    item(key = "whatsapp_supplier_reg_banner") {
+                                        Card(
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
+                                            border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .clickable {
+                                                    inviteShareType = MasterTab.SUPPLIERS
+                                                }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Surface(
+                                                    shape = CircleShape,
+                                                    color = Color(0xFF25D366),
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Box(contentAlignment = Alignment.Center) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Share,
+                                                            contentDescription = "Share Supplier Registration Link",
+                                                            tint = Color.White,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    }
+                                                }
+                                                Spacer(modifier = Modifier.width(10.dp))
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = "Share Registration Link via WhatsApp",
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 12.sp,
+                                                        color = Color(0xFF166534)
+                                                    )
+                                                    Text(
+                                                        text = "Send web portal link to new textile mills & fabric suppliers",
+                                                        fontSize = 10.sp,
+                                                        color = Color(0xFF15803D)
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = "Share ➜",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 11.sp,
+                                                    color = Color(0xFF166534)
+                                                )
+                                            }
+                                        }
+                                    }
+
                                     items(filtered, key = { it.id }) { supplier ->
                                         SupplierCard(
                                             supplier = supplier,
@@ -1172,6 +1261,58 @@ fun MastersScreen(
                 MasterDetailDialog(
                     item = item,
                     onDismiss = { detailViewItem = null }
+                )
+            }
+
+            if (showRequestsDialog) {
+                CustomerRequestsDialog(
+                    viewModel = viewModel,
+                    onDismiss = { showRequestsDialog = false }
+                )
+            }
+
+            if (showSupplierRequestsDialog) {
+                SupplierRequestsDialog(
+                    viewModel = viewModel,
+                    onDismiss = { showSupplierRequestsDialog = false },
+                    onOpenDirectForm = {
+                        showSupplierRequestsDialog = false
+                        showSupplierRegistrationDialog = true
+                    }
+                )
+            }
+
+            if (showSupplierRegistrationDialog) {
+                SupplierRegistrationDialog(
+                    viewModel = viewModel,
+                    onDismiss = { showSupplierRegistrationDialog = false }
+                )
+            }
+
+            inviteShareType?.let { type ->
+                WhatsAppInviteDialog(
+                    title = if (type == MasterTab.CUSTOMERS) "Invite Customer via WhatsApp" else "Invite Supplier / Mill via WhatsApp",
+                    subtitle = if (type == MasterTab.CUSTOMERS) 
+                        "Send registration link to new retail buyers with SMS OTP verification"
+                    else 
+                        "Send registration link to prospective textile mills & fabric suppliers",
+                    onSendToPhone = { phone ->
+                        if (type == MasterTab.CUSTOMERS) {
+                            ShareUtil.shareCustomerRegistrationLink(context, phone)
+                        } else {
+                            ShareUtil.shareSupplierRegistrationLink(context, phone)
+                        }
+                        inviteShareType = null
+                    },
+                    onSendGeneral = {
+                        if (type == MasterTab.CUSTOMERS) {
+                            ShareUtil.shareCustomerRegistrationLink(context, null)
+                        } else {
+                            ShareUtil.shareSupplierRegistrationLink(context, null)
+                        }
+                        inviteShareType = null
+                    },
+                    onDismiss = { inviteShareType = null }
                 )
             }
         }

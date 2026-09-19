@@ -22,7 +22,15 @@ import {
   FileText,
   FileDown,
   Compass,
-  CreditCard
+  CreditCard,
+  Eye,
+  Share2,
+  MessageSquare,
+  CheckCircle2,
+  Clock,
+  XCircle,
+  Copy,
+  Factory
 } from "lucide-react"
 import { useData } from "../context/DataContext"
 import { Card } from "../components/ui/Card"
@@ -32,7 +40,7 @@ import { Dialog } from "../components/ui/Dialog"
 import { Input } from "../components/ui/Input"
 import { ReferrerSelectModal } from "../components/ui/ReferrerSelectModal"
 import { Tabs } from "../components/ui/Tabs"
-import { Supplier, SupplierAddress, Visit } from "../types"
+import { Supplier, SupplierAddress, Visit, SupplierRegistrationRequest } from "../types"
 import { GARMENT_CATEGORIES } from "../lib/constants"
 import { ReportViewerModal } from "../components/ui/ReportViewerModal"
 import {
@@ -41,6 +49,7 @@ import {
 } from "../lib/pdfReports"
 import { generateSuppliersTallyXml, downloadXmlFile } from "../lib/tallyExport"
 import { FileUpload } from "../components/ui/FileUpload"
+import { ImageLightboxModal } from "../components/ui/ImageLightboxModal"
 import { SupplierDetailView } from "./SupplierDetailView"
 
 export function SuppliersView() {
@@ -56,7 +65,58 @@ export function SuppliersView() {
     deleteSupplier,
     saveMarket,
     saveBrand,
+    supplierRegistrationRequests,
+    pendingSupplierRegistrationRequestsCount,
+    approveSupplierRegistrationRequest,
+    rejectSupplierRegistrationRequest,
+    deleteSupplierRegistrationRequest,
   } = useData()
+
+  // Navigation mode: 'suppliers' vs 'requests'
+  const [viewMode, setViewMode] = useState<"suppliers" | "requests">("suppliers")
+  const [isShareLinkModalOpen, setIsShareLinkModalOpen] = useState<boolean>(false)
+  const [copiedLink, setCopiedLink] = useState<boolean>(false)
+  const [directSharePhone, setDirectSharePhone] = useState<string>("")
+
+  // Registration Requests Management State
+  const [requestFilterStatus, setRequestFilterStatus] = useState<"ALL" | "PENDING" | "APPROVED" | "REJECTED">("PENDING")
+  const [selectedRequestForDetails, setSelectedRequestForDetails] = useState<SupplierRegistrationRequest | null>(null)
+  const [selectedRequestForApproval, setSelectedRequestForApproval] = useState<SupplierRegistrationRequest | null>(null)
+  const [approvalBrand, setApprovalBrand] = useState<string>("")
+  const [approvalMarket, setApprovalMarket] = useState<string>("")
+  const [isApproving, setIsApproving] = useState<boolean>(false)
+  const [rejectModal, setRejectModal] = useState<{
+    open: boolean
+    request: SupplierRegistrationRequest | null
+    reason: string
+  }>({
+    open: false,
+    request: null,
+    reason: "",
+  })
+  const [isRejecting, setIsRejecting] = useState<boolean>(false)
+  const [lightbox, setLightbox] = useState<{ open: boolean; url: string; title: string }>({
+    open: false,
+    url: "",
+    title: "",
+  })
+
+  // Synced detail request
+  const activeDetailRequest = selectedRequestForDetails
+    ? supplierRegistrationRequests.find((r) => String(r.id) === String(selectedRequestForDetails.id)) || selectedRequestForDetails
+    : null
+
+  const getPublicSupplierRegistrationUrl = () => {
+    if (typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")) {
+      return "https://himatsms.web.app/#supplier-register"
+    }
+    return `${window.location.origin}/#supplier-register`
+  }
+
+  const buildSupplierInviteMessage = () => {
+    const regUrl = getPublicSupplierRegistrationUrl()
+    return `नमस्कार!\nहिम्मत टेक्सटाइल (Himat Textile) के साथ फैब्रिक मिल / सप्लायर के रूप में जुड़ने के लिए कृपया नीचे दिए गए लिंक पर अपनी मिल व व्यावसायिक जानकारी भरें:\n\n${regUrl}\n\nधन्यवाद!\nहिम्मत टेक्सटाइल, अहमदाबाद`
+  }
 
   const [search, setSearch] = useState<string>("")
   const [showSearch, setShowSearch] = useState<boolean>(false)
@@ -537,6 +597,85 @@ export function SuppliersView() {
     return matchesQuery && matchesType
   })
 
+  // Filtered Supplier Registration Requests
+  const filteredSupplierRequests = supplierRegistrationRequests.filter((r) => {
+    if (!r) return false
+    const matchesStatus =
+      requestFilterStatus === "ALL" ||
+      r.status?.toUpperCase() === requestFilterStatus
+
+    const matchesSearch =
+      !q ||
+      r.firmName?.toLowerCase().includes(q) ||
+      r.name?.toLowerCase().includes(q) ||
+      r.contactPerson?.toLowerCase().includes(q) ||
+      r.phone?.includes(q) ||
+      r.marketArea?.toLowerCase().includes(q) ||
+      r.city?.toLowerCase().includes(q) ||
+      r.productsMade?.toLowerCase().includes(q) ||
+      r.gstin?.toLowerCase().includes(q)
+
+    return matchesStatus && matchesSearch
+  })
+
+  // Action Handlers for Supplier Registration Requests
+  const handleOpenApprovalDialog = (req: SupplierRegistrationRequest) => {
+    setSelectedRequestForApproval(req)
+    setApprovalBrand(req.brand || "")
+    setApprovalMarket(req.marketArea || "")
+  }
+
+  const handleConfirmApproval = async () => {
+    if (!selectedRequestForApproval) return
+    setIsApproving(true)
+    try {
+      await approveSupplierRegistrationRequest(selectedRequestForApproval.id, {
+        brand: approvalBrand.trim(),
+        marketName: approvalMarket.trim(),
+        fallbackRequest: selectedRequestForApproval,
+      })
+      setSelectedRequestForApproval(null)
+      setSelectedRequestForDetails(null)
+    } catch (err: any) {
+      console.error("Supplier approval error:", err)
+      alert(err.message || "Failed to approve supplier registration request")
+    } finally {
+      setIsApproving(false)
+    }
+  }
+
+  const handleOpenRejectDialog = (req: SupplierRegistrationRequest) => {
+    setRejectModal({ open: true, request: req, reason: "" })
+  }
+
+  const handleConfirmReject = async () => {
+    if (!rejectModal.request) return
+    setIsRejecting(true)
+    try {
+      await rejectSupplierRegistrationRequest(rejectModal.request.id, rejectModal.reason, rejectModal.request.phone)
+      setRejectModal({ open: false, request: null, reason: "" })
+      setSelectedRequestForDetails(null)
+    } catch (err: any) {
+      console.error("Supplier reject error:", err)
+      alert(err.message || "Failed to reject supplier registration request")
+    } finally {
+      setIsRejecting(false)
+    }
+  }
+
+  const handleDeleteRequest = async (requestId: string, fallbackPhone?: string) => {
+    if (!confirm("Are you sure you want to permanently delete this supplier registration request?")) return
+    try {
+      await deleteSupplierRegistrationRequest(requestId, fallbackPhone)
+      if (selectedRequestForDetails?.id === requestId) {
+        setSelectedRequestForDetails(null)
+      }
+    } catch (err: any) {
+      console.error("Delete request error:", err)
+      alert(err.message || "Failed to delete supplier registration request")
+    }
+  }
+
   return (
     <div className="space-y-6">
       {selectedSupplierId !== null ? (
@@ -589,6 +728,17 @@ export function SuppliersView() {
               </Button>
 
               <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsShareLinkModalOpen(true)}
+                className="h-8 px-3 text-xs gap-1.5 border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/40 font-semibold"
+                title="Share supplier registration link with mills & manufacturers"
+              >
+                <Share2 className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                <span>Invite Supplier</span>
+              </Button>
+
+              <Button
                 size="sm"
                 onClick={handleOpenAdd}
                 className="h-8 px-3 text-xs font-semibold shadow-sm bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 gap-1"
@@ -599,11 +749,47 @@ export function SuppliersView() {
             </div>
           </div>
 
-          {/* Search Input Bar */}
-          {showSearch && (
-            <Card className="p-3 bg-zinc-50/70 dark:bg-zinc-900/70 border-zinc-200/80">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          {/* Navigation Tabs: Active Suppliers vs Registration Requests */}
+          <div className="flex items-center gap-2 border-b border-zinc-200 dark:border-zinc-800">
+            <button
+              type="button"
+              onClick={() => setViewMode("suppliers")}
+              className={`flex items-center gap-2 py-2.5 px-3 border-b-2 font-medium text-xs transition-all ${
+                viewMode === "suppliers"
+                  ? "border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-100 font-bold"
+                  : "border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+              }`}
+            >
+              <Factory className="h-4 w-4" />
+              <span>Active Suppliers ({suppliers.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setViewMode("requests")}
+              className={`flex items-center gap-2 py-2.5 px-3 border-b-2 font-medium text-xs transition-all ${
+                viewMode === "requests"
+                  ? "border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-100 font-bold"
+                  : "border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+              }`}
+            >
+              <Building2 className="h-4 w-4" />
+              <span>Registration Requests ({supplierRegistrationRequests.length})</span>
+              {pendingSupplierRegistrationRequestsCount > 0 && (
+                <span className="flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white shadow-xs animate-pulse">
+                  {pendingSupplierRegistrationRequestsCount}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {viewMode === "suppliers" ? (
+            <>
+              {/* Search Input Bar */}
+              {showSearch && (
+                <Card className="p-3 bg-zinc-50/70 dark:bg-zinc-900/70 border-zinc-200/80">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
@@ -646,139 +832,718 @@ export function SuppliersView() {
             ))}
           </div>
 
-          {/* Suppliers Card Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredSuppliers.length === 0 ? (
-              <div className="col-span-full p-12 text-center border border-dashed rounded-2xl">
-                <Building2 className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-60" />
-                <h3 className="font-semibold text-sm">No suppliers found</h3>
-                <p className="text-xs text-muted-foreground max-w-sm mx-auto mt-1">
-                  {search ? "No mills match your filter criteria." : "Start registering fabric suppliers & mills."}
-                </p>
-                <Button onClick={handleOpenAdd} variant="outline" size="sm" className="mt-4 text-xs gap-1.5">
-                  <Plus className="h-3.5 w-3.5" />
-                  Add First Supplier
+          {/* Suppliers Master List Table */}
+          {filteredSuppliers.length === 0 ? (
+            <div className="p-12 text-center border border-dashed rounded-2xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800">
+              <Building2 className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-60" />
+              <h3 className="font-semibold text-sm">No suppliers found</h3>
+              <p className="text-xs text-muted-foreground max-w-sm mx-auto mt-1">
+                {search ? "No mills match your filter criteria." : "Start registering fabric suppliers & mills."}
+              </p>
+              <Button onClick={handleOpenAdd} variant="outline" size="sm" className="mt-4 text-xs gap-1.5">
+                <Plus className="h-3.5 w-3.5" />
+                Add First Supplier
+              </Button>
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xs">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/80 text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                    <tr>
+                      <th className="py-3 px-4">Supplier / Mill</th>
+                      <th className="py-3 px-4">Type</th>
+                      <th className="py-3 px-4">Contact Person</th>
+                      <th className="py-3 px-4">Market & Location</th>
+                      <th className="py-3 px-4">Brand / Range</th>
+                      <th className="py-3 px-4">Phone & GST</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+                    {filteredSuppliers.map((sup) => (
+                      <tr
+                        key={sup.id}
+                        onClick={() => setSelectedSupplierId(sup.id)}
+                        className="hover:bg-amber-50/40 dark:hover:bg-amber-950/20 cursor-pointer transition-colors group"
+                      >
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2.5">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-700 font-bold text-sm dark:bg-amber-500/20 dark:text-amber-400 group-hover:bg-amber-600 group-hover:text-white transition-colors">
+                              {(sup.firmName || sup.name || "S")[0].toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="font-bold text-zinc-900 dark:text-zinc-100 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+                                {sup.firmName || sup.name}
+                              </div>
+                              {sup.supplierId && (
+                                <div className="font-mono text-[10px] text-zinc-400 font-semibold">
+                                  {sup.supplierId}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <Badge variant="outline" className="text-[10px] uppercase font-bold text-amber-700 border-amber-200 dark:border-amber-800 dark:text-amber-300">
+                            {sup.type || "Supplier"}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300 font-medium">
+                            <User className="h-3 w-3 text-zinc-400 shrink-0" />
+                            <span>{sup.contactPerson || "—"}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-1.5 font-medium text-amber-800 dark:text-amber-400">
+                              <Compass className="h-3 w-3 text-amber-600 shrink-0" />
+                              <span className="truncate">{sup.marketName || sup.marketArea || "Ahmedabad Market"}</span>
+                            </div>
+                            {sup.city && (
+                              <div className="text-[11px] text-zinc-400 flex items-center gap-1">
+                                <MapPin className="h-2.5 w-2.5 text-zinc-400" />
+                                <span>{sup.city}{sup.state ? `, ${sup.state}` : ""}</span>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="space-y-0.5">
+                            {sup.brand ? (
+                              <div className="flex items-center gap-1 text-zinc-700 dark:text-zinc-300 font-semibold text-[11px]">
+                                <Tag className="h-3 w-3 text-zinc-400 shrink-0" />
+                                <span>{sup.brand}</span>
+                              </div>
+                            ) : (
+                              <span className="text-zinc-400">—</span>
+                            )}
+                            {sup.priceRange && (
+                              <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                                Range: {sup.priceRange}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <div className="space-y-0.5">
+                            {sup.phone ? (
+                              <div className="flex items-center gap-1.5 font-medium text-zinc-800 dark:text-zinc-200">
+                                <Phone className="h-3 w-3 text-zinc-400 shrink-0" />
+                                <span>{sup.phone}</span>
+                              </div>
+                            ) : null}
+                            {sup.gstin ? (
+                              <div className="font-mono text-[10px] text-zinc-400">
+                                {sup.gstin}
+                              </div>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleOpenSupplierInvoice(sup)}
+                              className="h-7 text-xs px-2 text-amber-700 dark:text-amber-400 font-medium"
+                              title="Generate Purchase Order Copy"
+                            >
+                              <Printer className="h-3 w-3 mr-1" />
+                              PO Copy
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setSelectedSupplierId(sup.id)}
+                              className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900"
+                              title="View Full Profile"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleOpenEdit(sup)}
+                              className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900"
+                              title="Edit Supplier"
+                            >
+                              <Edit2 className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleDelete(sup.id)}
+                              className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
+                              title="Delete Supplier"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+            /* ============================================================== */
+            /* VIEW MODE: REGISTRATION REQUESTS                               */
+            /* ============================================================== */
+            <div className="space-y-4">
+              {/* Filter Tabs for Requests */}
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex gap-2 border-b border-zinc-200 dark:border-zinc-800 pb-2 overflow-x-auto text-xs">
+                  {[
+                    { id: "ALL", label: `All Requests (${supplierRegistrationRequests.length})` },
+                    { id: "PENDING", label: `Pending Review (${pendingSupplierRegistrationRequestsCount})` },
+                    { id: "APPROVED", label: `Approved (${supplierRegistrationRequests.filter((r) => r.status === "APPROVED").length})` },
+                    { id: "REJECTED", label: `Rejected (${supplierRegistrationRequests.filter((r) => r.status === "REJECTED").length})` },
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setRequestFilterStatus(tab.id as any)}
+                      className={`px-3 py-1.5 rounded-lg font-medium whitespace-nowrap transition-colors ${
+                        requestFilterStatus === tab.id
+                          ? "bg-amber-600 text-white shadow-sm font-bold"
+                          : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsShareLinkModalOpen(true)}
+                  className="h-8 px-3 text-xs gap-1.5 border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-50"
+                >
+                  <Share2 className="h-3.5 w-3.5 text-amber-600" />
+                  <span>Copy / Share Invite Link</span>
                 </Button>
               </div>
-            ) : (
-              filteredSuppliers.map((sup) => (
-                <Card
-                  key={sup.id}
-                  className="group relative flex flex-col justify-between p-4 border border-zinc-200/80 dark:border-zinc-800 hover:shadow-md transition-all"
-                >
-                  <div
-                    className="cursor-pointer"
-                    onClick={() => setSelectedSupplierId(sup.id)}
+
+              {/* Table of Requests */}
+              {filteredSupplierRequests.length === 0 ? (
+                <div className="p-12 text-center border border-dashed rounded-2xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800">
+                  <Building2 className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-60" />
+                  <h3 className="font-semibold text-sm">No supplier requests found</h3>
+                  <p className="text-xs text-muted-foreground max-w-sm mx-auto mt-1">
+                    Share your public invite link with prospective textile mills & suppliers.
+                  </p>
+                  <Button
+                    onClick={() => setIsShareLinkModalOpen(true)}
+                    variant="outline"
+                    size="sm"
+                    className="mt-4 text-xs gap-1.5 border-amber-500/40 text-amber-700"
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-700 font-bold text-sm dark:bg-amber-500/20 dark:text-amber-400 group-hover:bg-amber-600 group-hover:text-white transition-colors">
-                          {(sup.firmName || sup.name || "S")[0].toUpperCase()}
-                        </div>
-                        <div className="min-w-0">
-                          <h4 className="font-bold text-sm text-zinc-900 dark:text-zinc-50 truncate group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
-                            {sup.firmName || sup.name}
-                          </h4>
-                          <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 truncate">
-                            <User className="h-3 w-3 shrink-0" />
-                            <span>{sup.contactPerson || "In-charge"}</span>
-                            {sup.supplierId && (
-                              <span className="font-mono text-[10px] text-zinc-400 font-semibold">
-                                • {sup.supplierId}
-                              </span>
-                            )}
-                          </p>
-                        </div>
-                      </div>
+                    <Share2 className="h-3.5 w-3.5 text-amber-600" />
+                    Share Registration Link
+                  </Button>
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xs">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/80 text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                        <tr>
+                          <th className="py-3 px-4">Mill / Firm & Contact</th>
+                          <th className="py-3 px-4">Classification</th>
+                          <th className="py-3 px-4">Phone & WhatsApp</th>
+                          <th className="py-3 px-4">Market & Location</th>
+                          <th className="py-3 px-4">Fabrics / Products</th>
+                          <th className="py-3 px-4">Status</th>
+                          <th className="py-3 px-4 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+                        {filteredSupplierRequests.map((req) => {
+                          const isPending = req.status === "PENDING"
+                          const isApproved = req.status === "APPROVED"
+                          const isRejected = req.status === "REJECTED"
 
-                      <Badge variant="outline" className="text-[10px] uppercase font-bold shrink-0">
-                        {sup.type || "Supplier"}
-                      </Badge>
+                          return (
+                            <tr
+                              key={req.id}
+                              onClick={() => setSelectedRequestForDetails(req)}
+                              className="hover:bg-amber-50/40 dark:hover:bg-amber-950/20 cursor-pointer transition-colors group"
+                            >
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-700 font-bold text-sm dark:bg-amber-500/20 dark:text-amber-400 group-hover:bg-amber-600 group-hover:text-white transition-colors">
+                                    {(req.firmName || req.name || "S")[0].toUpperCase()}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="font-bold text-sm text-zinc-900 dark:text-zinc-50 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors truncate">
+                                      {req.firmName || req.name}
+                                    </p>
+                                    <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 truncate">
+                                      <User className="h-3 w-3 shrink-0" />
+                                      <span>{req.contactPerson || req.name || "Proprietor"}</span>
+                                      <span className="font-mono text-[10px] text-zinc-400 font-semibold">
+                                        • {req.id}
+                                      </span>
+                                    </p>
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-4 whitespace-nowrap">
+                                <Badge variant="outline" className="text-[10px] uppercase font-bold text-amber-700 border-amber-200 dark:border-amber-800">
+                                  {req.type || "Manufacturer"}
+                                </Badge>
+                              </td>
+
+                              <td className="py-3 px-4 whitespace-nowrap">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono font-semibold text-zinc-800 dark:text-zinc-200">
+                                    {req.phone}
+                                  </span>
+                                  {req.phone && (
+                                    <a
+                                      href={`https://wa.me/91${req.phone.replace(/\D/g, "").slice(-10)}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="p-1 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/50"
+                                      title="Direct WhatsApp Chat"
+                                    >
+                                      <MessageSquare className="h-3.5 w-3.5" />
+                                    </a>
+                                  )}
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-4">
+                                <p className="font-medium text-zinc-800 dark:text-zinc-200">
+                                  {req.marketArea || req.city || "Ahmedabad"}
+                                </p>
+                                <p className="text-[11px] text-muted-foreground truncate">
+                                  {req.city ? `${req.city}, ${req.state || "Gujarat"}` : req.address}
+                                </p>
+                              </td>
+
+                              <td className="py-3 px-4">
+                                <p className="text-xs text-zinc-700 dark:text-zinc-300 truncate max-w-[200px]">
+                                  {req.productsMade || req.categories || "—"}
+                                </p>
+                                {req.priceRange && (
+                                  <span className="text-[10px] text-emerald-600 font-medium">
+                                    Range: {req.priceRange}
+                                  </span>
+                                )}
+                              </td>
+
+                              <td className="py-3 px-4 whitespace-nowrap">
+                                {isPending && (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                                    <Clock className="h-3 w-3" />
+                                    Pending Review
+                                  </span>
+                                )}
+                                {isApproved && (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                                    <CheckCircle2 className="h-3 w-3" />
+                                    Approved
+                                    {req.createdSupplierId && (
+                                      <span className="font-mono ml-0.5">#{req.createdSupplierId}</span>
+                                    )}
+                                  </span>
+                                )}
+                                {isRejected && (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
+                                    <XCircle className="h-3 w-3" />
+                                    Rejected
+                                  </span>
+                                )}
+                              </td>
+
+                              <td className="py-3 px-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setSelectedRequestForDetails(req)}
+                                    className="h-7 px-2.5 text-xs font-semibold text-amber-700 dark:text-amber-400 hover:bg-amber-50 gap-1 border-amber-200"
+                                    title="View Full Application in Side Panel"
+                                  >
+                                    <Eye className="h-3.5 w-3.5" />
+                                    <span>View Details</span>
+                                  </Button>
+
+                                  {isPending && (
+                                    <>
+                                      <Button
+                                        size="sm"
+                                        onClick={() => handleOpenApprovalDialog(req)}
+                                        className="h-7 px-2.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white gap-1 shadow-xs"
+                                      >
+                                        <CheckCircle2 className="h-3 w-3" />
+                                        <span>Approve</span>
+                                      </Button>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => handleOpenRejectDialog(req)}
+                                        className="h-7 px-2 text-xs text-rose-600 border-rose-200 hover:bg-rose-50"
+                                      >
+                                        <XCircle className="h-3 w-3" />
+                                      </Button>
+                                    </>
+                                  )}
+
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteRequest(req.id, req.phone)}
+                                    className="h-7 w-7 p-0 text-zinc-400 hover:text-red-600"
+                                    title="Delete Request"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* SLIDE-OVER DRAWER FOR REQUEST DETAILS */}
+          {activeDetailRequest && (
+            <div className="fixed inset-0 z-50 overflow-hidden animate-in fade-in duration-200">
+              <div
+                className="absolute inset-0 bg-zinc-950/50 backdrop-blur-xs transition-opacity"
+                onClick={() => setSelectedRequestForDetails(null)}
+              />
+
+              <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
+                <div className="w-screen max-w-2xl bg-white dark:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col justify-between animate-in slide-in-from-right duration-300">
+                  {/* Drawer Header */}
+                  <div className="p-5 border-b border-zinc-100 dark:border-zinc-800 flex items-start justify-between gap-3 bg-zinc-50/50 dark:bg-zinc-900/50">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-50 flex items-center gap-2">
+                          <Factory className="h-5 w-5 text-amber-600 shrink-0" />
+                          <span>{activeDetailRequest.firmName || activeDetailRequest.name}</span>
+                        </h3>
+                        <Badge variant="outline" className="font-mono text-[10px] text-zinc-500">
+                          {activeDetailRequest.id}
+                        </Badge>
+                        {activeDetailRequest.status === "PENDING" && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                            <Clock className="h-3 w-3" />
+                            Pending Review
+                          </span>
+                        )}
+                        {activeDetailRequest.status === "APPROVED" && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Approved
+                          </span>
+                        )}
+                        {activeDetailRequest.status === "REJECTED" && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
+                            <XCircle className="h-3 w-3" />
+                            Rejected
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground flex items-center gap-2">
+                        <span>Submitted on {new Date(activeDetailRequest.createdAt).toLocaleDateString()}</span>
+                        <span>•</span>
+                        <span>{activeDetailRequest.type || "Manufacturer"}</span>
+                      </p>
                     </div>
 
-                    <div className="mt-3.5 space-y-1.5 text-xs text-zinc-600 dark:text-zinc-300">
-                      <div className="flex items-center gap-1.5">
-                        <Compass className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                        <span className="truncate font-medium text-amber-800 dark:text-amber-400">
-                          {sup.marketName || sup.marketArea || "Ahmedabad Market"}
-                        </span>
+                    <button
+                      onClick={() => setSelectedRequestForDetails(null)}
+                      className="p-2 rounded-xl text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  {/* Drawer Content */}
+                  <div className="flex-1 overflow-y-auto p-6 space-y-6 text-xs">
+                    {/* Quick Contact & Map Actions */}
+                    <div className="flex flex-wrap gap-2">
+                      {activeDetailRequest.phone && (
+                        <a
+                          href={`tel:${activeDetailRequest.phone}`}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-bold hover:bg-indigo-100 transition-colors"
+                        >
+                          <Phone className="h-3.5 w-3.5" />
+                          <span>Call: {activeDetailRequest.phone}</span>
+                        </a>
+                      )}
+                      {activeDetailRequest.phone && (
+                        <a
+                          href={`https://wa.me/91${activeDetailRequest.phone.replace(/\D/g, "").slice(-10)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-bold hover:bg-emerald-100 transition-colors"
+                        >
+                          <MessageSquare className="h-3.5 w-3.5" />
+                          <span>WhatsApp</span>
+                        </a>
+                      )}
+                      {activeDetailRequest.mapLink && (
+                        <a
+                          href={activeDetailRequest.mapLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-bold hover:bg-zinc-200 transition-colors"
+                        >
+                          <MapPin className="h-3.5 w-3.5" />
+                          <span>Google Maps</span>
+                        </a>
+                      )}
+                    </div>
+
+                    {/* Section 1: Business Profile */}
+                    <div className="space-y-3 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/40 dark:bg-zinc-900/40">
+                      <h4 className="font-bold text-xs uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
+                        <Building2 className="h-3.5 w-3.5" />
+                        <span>Business & Proprietor Profile</span>
+                      </h4>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <span className="text-zinc-400 block text-[11px]">Mill / Firm Name</span>
+                          <span className="font-bold text-zinc-900 dark:text-zinc-100 text-xs">
+                            {activeDetailRequest.firmName || activeDetailRequest.name}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-400 block text-[11px]">Contact Person / Owner</span>
+                          <span className="font-semibold text-zinc-800 dark:text-zinc-200 text-xs">
+                            {activeDetailRequest.contactPerson || activeDetailRequest.name}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-400 block text-[11px]">Classification</span>
+                          <span className="font-semibold text-amber-600 dark:text-amber-400 text-xs">
+                            {activeDetailRequest.type}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-400 block text-[11px]">Brand Name</span>
+                          <span className="font-medium text-zinc-800 dark:text-zinc-200 text-xs">
+                            {activeDetailRequest.brand || "—"}
+                          </span>
+                        </div>
+                        {activeDetailRequest.email && (
+                          <div className="col-span-2">
+                            <span className="text-zinc-400 block text-[11px]">Email</span>
+                            <span className="font-medium text-zinc-800 dark:text-zinc-200 text-xs">
+                              {activeDetailRequest.email}
+                            </span>
+                          </div>
+                        )}
                       </div>
+                    </div>
 
-                      {sup.brand && (
-                        <div className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300 font-semibold">
-                          <Tag className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                          <span>Brand: {sup.brand}</span>
+                    {/* Section 2: Location & Addresses */}
+                    <div className="space-y-3 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/40 dark:bg-zinc-900/40">
+                      <h4 className="font-bold text-xs uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
+                        <MapPin className="h-3.5 w-3.5" />
+                        <span>Location & Market Hub</span>
+                      </h4>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="col-span-2">
+                          <span className="text-zinc-400 block text-[11px]">Market Area / Cluster</span>
+                          <span className="font-bold text-amber-800 dark:text-amber-300 text-xs">
+                            {activeDetailRequest.marketArea || "Ahmedabad Market"}
+                          </span>
                         </div>
-                      )}
+                        <div className="col-span-2">
+                          <span className="text-zinc-400 block text-[11px]">Mill / Factory Address</span>
+                          <span className="font-medium text-zinc-800 dark:text-zinc-200 text-xs">
+                            {activeDetailRequest.address || "—"}
+                          </span>
+                        </div>
+                        {activeDetailRequest.officeAddress && (
+                          <div className="col-span-2">
+                            <span className="text-zinc-400 block text-[11px]">Market Office Address</span>
+                            <span className="font-medium text-zinc-800 dark:text-zinc-200 text-xs">
+                              {activeDetailRequest.officeAddress}
+                            </span>
+                          </div>
+                        )}
+                        <div>
+                          <span className="text-zinc-400 block text-[11px]">City, State</span>
+                          <span className="font-medium text-zinc-800 dark:text-zinc-200 text-xs">
+                            {activeDetailRequest.city}, {activeDetailRequest.state || "Gujarat"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-400 block text-[11px]">Pincode</span>
+                          <span className="font-medium text-zinc-800 dark:text-zinc-200 text-xs font-mono">
+                            {activeDetailRequest.pincode || "—"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
 
-                      {sup.phone && (
-                        <div className="flex items-center gap-1.5 font-medium text-zinc-800 dark:text-zinc-200">
-                          <Phone className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                          <span>{sup.phone}</span>
+                    {/* Section 3: Fabrics & Commercials */}
+                    <div className="space-y-3 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/40 dark:bg-zinc-900/40">
+                      <h4 className="font-bold text-xs uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
+                        <Tag className="h-3.5 w-3.5" />
+                        <span>Fabrics, Products & Commercials</span>
+                      </h4>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="col-span-2">
+                          <span className="text-zinc-400 block text-[11px]">Fabrics / Products Made</span>
+                          <span className="font-semibold text-zinc-900 dark:text-zinc-100 text-xs">
+                            {activeDetailRequest.productsMade || activeDetailRequest.categories || "—"}
+                          </span>
                         </div>
-                      )}
+                        <div>
+                          <span className="text-zinc-400 block text-[11px]">Price Range</span>
+                          <span className="font-semibold text-emerald-600 text-xs">
+                            {activeDetailRequest.priceRange || "—"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-400 block text-[11px]">GSTIN</span>
+                          <span className="font-mono text-zinc-800 dark:text-zinc-200 text-xs font-semibold">
+                            {activeDetailRequest.gstin || "—"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-400 block text-[11px]">PAN Number</span>
+                          <span className="font-mono text-zinc-800 dark:text-zinc-200 text-xs font-semibold">
+                            {activeDetailRequest.panNumber || "—"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-400 block text-[11px]">Bank Name</span>
+                          <span className="font-medium text-zinc-800 dark:text-zinc-200 text-xs">
+                            {activeDetailRequest.bankName || "—"}
+                          </span>
+                        </div>
+                        {activeDetailRequest.notes && (
+                          <div className="col-span-2">
+                            <span className="text-zinc-400 block text-[11px]">Notes / Capabilities</span>
+                            <span className="text-zinc-700 dark:text-zinc-300 text-xs italic">
+                              "{activeDetailRequest.notes}"
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
 
-                      {sup.priceRange && (
-                        <div className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 pt-0.5">
-                          Price Range: {sup.priceRange}
-                        </div>
-                      )}
+                    {/* Section 4: Verification Photos & Lightbox */}
+                    <div className="space-y-3 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/40 dark:bg-zinc-900/40">
+                      <h4 className="font-bold text-xs uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                        <span>KYC & Verification Photos</span>
+                      </h4>
+                      <div className="grid grid-cols-2 gap-3">
+                        {activeDetailRequest.visitingCardPhotoUri && (
+                          <div
+                            onClick={() => setLightbox({ open: true, url: activeDetailRequest.visitingCardPhotoUri!, title: "Visiting Card" })}
+                            className="cursor-pointer group relative rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-white dark:bg-zinc-800 p-2 text-center"
+                          >
+                            <img
+                              src={activeDetailRequest.visitingCardPhotoUri}
+                              alt="Visiting Card"
+                              className="h-24 w-full object-cover rounded-lg group-hover:scale-105 transition-transform"
+                            />
+                            <span className="text-[10px] font-semibold text-zinc-600 dark:text-zinc-400 mt-1 block">
+                              Visiting Card
+                            </span>
+                          </div>
+                        )}
 
-                      {sup.gstin && (
-                        <div className="text-[11px] font-mono text-zinc-400">
-                          GST: {sup.gstin}
-                        </div>
-                      )}
+                        {activeDetailRequest.shopPhotoUri && (
+                          <div
+                            onClick={() => setLightbox({ open: true, url: activeDetailRequest.shopPhotoUri!, title: "Mill / Factory Front" })}
+                            className="cursor-pointer group relative rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-white dark:bg-zinc-800 p-2 text-center"
+                          >
+                            <img
+                              src={activeDetailRequest.shopPhotoUri}
+                              alt="Mill Front"
+                              className="h-24 w-full object-cover rounded-lg group-hover:scale-105 transition-transform"
+                            />
+                            <span className="text-[10px] font-semibold text-zinc-600 dark:text-zinc-400 mt-1 block">
+                              Mill Front Photo
+                            </span>
+                          </div>
+                        )}
+
+                        {activeDetailRequest.gstCertPhotoUri && (
+                          <div
+                            onClick={() => setLightbox({ open: true, url: activeDetailRequest.gstCertPhotoUri!, title: "GST Certificate" })}
+                            className="cursor-pointer group relative rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-white dark:bg-zinc-800 p-2 text-center"
+                          >
+                            <img
+                              src={activeDetailRequest.gstCertPhotoUri}
+                              alt="GST Cert"
+                              className="h-24 w-full object-cover rounded-lg group-hover:scale-105 transition-transform"
+                            />
+                            <span className="text-[10px] font-semibold text-zinc-600 dark:text-zinc-400 mt-1 block">
+                              GST Certificate
+                            </span>
+                          </div>
+                        )}
+
+                        {activeDetailRequest.panPhotoUri && (
+                          <div
+                            onClick={() => setLightbox({ open: true, url: activeDetailRequest.panPhotoUri!, title: "PAN Card" })}
+                            className="cursor-pointer group relative rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-white dark:bg-zinc-800 p-2 text-center"
+                          >
+                            <img
+                              src={activeDetailRequest.panPhotoUri}
+                              alt="PAN Card"
+                              className="h-24 w-full object-cover rounded-lg group-hover:scale-105 transition-transform"
+                            />
+                            <span className="text-[10px] font-semibold text-zinc-600 dark:text-zinc-400 mt-1 block">
+                              PAN Card
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  {/* Actions */}
-                  <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between gap-1.5">
+                  {/* Drawer Footer Actions */}
+                  <div className="p-4 border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/80 flex items-center justify-between gap-3">
                     <Button
-                      size="sm"
                       variant="outline"
-                      onClick={() => handleOpenSupplierInvoice(sup)}
-                      className="h-7 text-xs px-2 text-amber-700 dark:text-amber-400 font-medium"
-                      title="Generate Purchase Order Copy"
+                      size="sm"
+                      onClick={() => handleOpenRejectDialog(activeDetailRequest)}
+                      className="text-xs text-rose-600 border-rose-200 hover:bg-rose-50"
                     >
-                      <Printer className="h-3 w-3 mr-1" />
-                      PO Copy
+                      <XCircle className="h-3.5 w-3.5 mr-1" />
+                      <span>Decline</span>
                     </Button>
 
                     <Button
                       size="sm"
-                      variant="outline"
-                      onClick={() => setSelectedSupplierId(sup.id)}
-                      className="flex-1 h-7 text-xs font-medium"
+                      onClick={() => handleOpenApprovalDialog(activeDetailRequest)}
+                      className="text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shadow-sm px-4"
                     >
-                      <Info className="h-3 w-3 mr-1" />
-                      Full Profile
-                    </Button>
-
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleOpenEdit(sup)}
-                      className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900"
-                      title="Edit Supplier"
-                    >
-                      <Edit2 className="h-3.5 w-3.5" />
-                    </Button>
-
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleDelete(sup.id)}
-                      className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
-                      title="Delete Supplier"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span>Approve & Onboard Supplier</span>
                     </Button>
                   </div>
-                </Card>
-              ))
-            )}
-          </div>
+                </div>
+              </div>
+            </div>
+          )}
         </>
       )}
 
@@ -917,9 +1682,8 @@ export function SuppliersView() {
                     onChange={(e) => setType(e.target.value)}
                     className="mt-1 w-full h-8 rounded-md border border-zinc-300 bg-white px-2.5 text-xs text-zinc-900 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
                   >
-                    <option value="Manufacturer">Manufacturer (Mill)</option>
                     <option value="Wholesaler">Wholesaler</option>
-                    <option value="Trader">Trader / Stockist</option>
+                    <option value="Manufacturer">Manufacturer</option>
                   </select>
                 </div>
 
@@ -1406,6 +2170,181 @@ export function SuppliersView() {
         title={reportModal.title}
         htmlContent={reportModal.html}
         whatsAppText={reportModal.whatsAppText}
+      />
+
+      {/* Supplier Request Approval Modal */}
+      <Dialog
+        open={Boolean(selectedRequestForApproval)}
+        onOpenChange={(open) => !open && setSelectedRequestForApproval(null)}
+        title="Approve & Onboard Supplier"
+        description="Confirm brand mapping and textile market hub for this new supplier."
+      >
+        {selectedRequestForApproval && (
+          <div className="space-y-4 pt-1 text-xs">
+            <div className="p-3 rounded-xl bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800">
+              <p className="font-bold text-sm text-zinc-900 dark:text-zinc-50">
+                {selectedRequestForApproval.firmName || selectedRequestForApproval.name}
+              </p>
+              <p className="text-zinc-600 dark:text-zinc-400 mt-0.5">
+                Contact: {selectedRequestForApproval.contactPerson} ({selectedRequestForApproval.phone}) • {selectedRequestForApproval.type}
+              </p>
+            </div>
+
+            <div>
+              <label className="font-semibold block mb-1">Textile Brand Name</label>
+              <Input
+                value={approvalBrand}
+                onChange={(e) => setApprovalBrand(e.target.value)}
+                placeholder="e.g. Radhey Silk, RT Cotton"
+                className="h-8 text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="font-semibold block mb-1">Market Hub / Area</label>
+              <Input
+                value={approvalMarket}
+                onChange={(e) => setApprovalMarket(e.target.value)}
+                placeholder="e.g. Maskati Market, New Cloth Market"
+                className="h-8 text-xs"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-zinc-100 dark:border-zinc-800">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedRequestForApproval(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleConfirmApproval}
+                disabled={isApproving}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+              >
+                {isApproving ? "Approving..." : "Confirm & Onboard"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Dialog>
+
+      {/* Reject Modal */}
+      <Dialog
+        open={rejectModal.open}
+        onOpenChange={(open) => !open && setRejectModal({ open: false, request: null, reason: "" })}
+        title="Decline Supplier Request"
+        description="Provide an optional reason for declining this supplier application."
+      >
+        <div className="space-y-3 pt-1 text-xs">
+          <div>
+            <label className="font-semibold block mb-1">Reason for Rejection</label>
+            <textarea
+              rows={3}
+              value={rejectModal.reason}
+              onChange={(e) => setRejectModal((prev) => ({ ...prev, reason: e.target.value }))}
+              placeholder="e.g. Incomplete KYC documents, invalid phone number, outside supply scope..."
+              className="w-full p-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs focus:outline-none focus:ring-2 focus:ring-rose-500"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setRejectModal({ open: false, request: null, reason: "" })}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleConfirmReject}
+              disabled={isRejecting}
+              className="bg-rose-600 hover:bg-rose-700 text-white font-bold"
+            >
+              {isRejecting ? "Declining..." : "Decline Request"}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Share Link Modal */}
+      <Dialog
+        open={isShareLinkModalOpen}
+        onOpenChange={setIsShareLinkModalOpen}
+        title="Invite Supplier / Fabric Mill"
+        description="Share the public registration link with prospective textile mills, fabric manufacturers, and wholesalers."
+      >
+        <div className="space-y-4 pt-1 text-xs">
+          <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 space-y-2">
+            <label className="font-bold text-zinc-700 dark:text-zinc-300 block">
+              Public Registration Link:
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                readOnly
+                value={getPublicSupplierRegistrationUrl()}
+                className="flex-1 h-8 px-2.5 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 font-mono text-[11px] text-zinc-800 dark:text-zinc-200 select-all"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  navigator.clipboard.writeText(getPublicSupplierRegistrationUrl())
+                  setCopiedLink(true)
+                  setTimeout(() => setCopiedLink(false), 2000)
+                }}
+                className="h-8 px-3 text-xs gap-1 font-semibold"
+              >
+                {copiedLink ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                <span>{copiedLink ? "Copied!" : "Copy"}</span>
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="font-bold text-zinc-700 dark:text-zinc-300 block">
+              Direct WhatsApp Invitation:
+            </label>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <span className="absolute left-2.5 top-2 text-[11px] text-zinc-400 font-bold">+91</span>
+                <input
+                  type="tel"
+                  maxLength={10}
+                  value={directSharePhone}
+                  onChange={(e) => setDirectSharePhone(e.target.value.replace(/\D/g, ""))}
+                  placeholder="Enter 10-digit mobile number"
+                  className="w-full h-8 pl-9 pr-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs"
+                />
+              </div>
+              <a
+                href={`https://wa.me/${directSharePhone ? `91${directSharePhone}` : ""}?text=${encodeURIComponent(buildSupplierInviteMessage())}`}
+                target="_blank"
+                rel="noreferrer"
+                className={`inline-flex items-center gap-1.5 px-3 h-8 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition-all ${
+                  !directSharePhone ? "opacity-50 pointer-events-none" : ""
+                }`}
+              >
+                <MessageSquare className="h-3.5 w-3.5" />
+                <span>Send WhatsApp</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Image Lightbox Modal */}
+      <ImageLightboxModal
+        open={lightbox.open}
+        onClose={() => setLightbox({ open: false, url: "", title: "" })}
+        imageUrl={lightbox.url}
+        title={lightbox.title}
       />
     </div>
   )

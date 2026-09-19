@@ -1,5 +1,8 @@
 package com.example.data.remote
 
+import com.example.data.local.entity.CustomerRegistrationRequestEntity
+import com.example.data.local.entity.SupplierRegistrationRequestEntity
+import com.example.data.local.entity.LeadEntity
 import com.example.data.local.entity.BrandEntity
 import com.example.data.local.entity.CustomerEntity
 import com.example.data.local.entity.EmployeeEntity
@@ -463,6 +466,94 @@ class FirebaseRtdbService(
         }
     }
 
+    suspend fun syncLead(lead: LeadEntity) = withContext(Dispatchers.IO) {
+        try {
+            val key = lead.leadId.ifBlank { "lead_${System.currentTimeMillis()}" }
+            val data = mapOf(
+                "id" to key,
+                "leadId" to key,
+                "type" to lead.type,
+                "name" to lead.name,
+                "firmName" to lead.firmName,
+                "supplierType" to lead.supplierType,
+                "phone" to lead.phone,
+                "phone2" to lead.phone2,
+                "meetingPlace" to lead.meetingPlace,
+                "city" to lead.city,
+                "state" to lead.state,
+                "notes" to lead.notes,
+                "photos" to lead.photoList,
+                "status" to lead.status,
+                "nextFollowUpDate" to lead.nextFollowUpDate,
+                "createdByUid" to lead.createdByUid,
+                "createdByName" to lead.createdByName,
+                "createdAt" to lead.createdAt,
+                "convertedAt" to lead.convertedAt,
+                "convertedTargetId" to lead.convertedTargetId,
+                "isDeleted" to lead.isDeleted
+            )
+            rootRef.child("leads").child(key).setValue(data)
+        } catch (e: Exception) {
+            // Ignore
+        }
+    }
+
+    suspend fun deleteLead(leadId: String) = withContext(Dispatchers.IO) {
+        try {
+            rootRef.child("leads").child(leadId).removeValue()
+        } catch (e: Exception) {
+            // Ignore
+        }
+    }
+
+    suspend fun approveRegistrationRequest(
+        requestId: String,
+        newCustomerId: Long,
+        religion: String,
+        creditType: String = "Cash",
+        creditDays: Int = 30,
+        creditLimit: Double = 0.0,
+        assignedAgentId: Long? = null,
+        assignedAgentName: String = "",
+        approvedBy: String = "Admin"
+    ) = withContext(Dispatchers.IO) {
+        try {
+            val updates = mutableMapOf<String, Any?>(
+                "status" to "APPROVED",
+                "approvedAt" to System.currentTimeMillis(),
+                "approvedBy" to approvedBy,
+                "createdCustomerId" to newCustomerId,
+                "religion" to religion,
+                "creditType" to creditType,
+                "creditDays" to creditDays,
+                "creditLimit" to creditLimit
+            )
+            if (assignedAgentId != null) {
+                updates["assignedAgentId"] = assignedAgentId
+                updates["assignedAgentName"] = assignedAgentName
+            }
+            rootRef.child("customer_registration_requests").child(requestId).updateChildren(updates)
+        } catch (e: Exception) {
+            // Ignore
+        }
+    }
+
+    suspend fun rejectRegistrationRequest(
+        requestId: String,
+        reason: String = ""
+    ) = withContext(Dispatchers.IO) {
+        try {
+            val updates = mapOf<String, Any?>(
+                "status" to "REJECTED",
+                "rejectedAt" to System.currentTimeMillis(),
+                "rejectionReason" to reason
+            )
+            rootRef.child("customer_registration_requests").child(requestId).updateChildren(updates)
+        } catch (e: Exception) {
+            // Ignore
+        }
+    }
+
 
     // Downstream Deserialization Helper
     private inline fun <reified T> DataSnapshot.extractList(): List<T> {
@@ -814,6 +905,290 @@ class FirebaseRtdbService(
         }
         rootRef.child("markets").addValueEventListener(listener)
         return listener
+    }
+
+    private fun DataSnapshot.toLead(): LeadEntity? {
+        val key = key ?: return null
+        val leadId = child("id").getValue(String::class.java)?.takeIf { it.isNotBlank() }
+            ?: child("leadId").getValue(String::class.java)?.takeIf { it.isNotBlank() }
+            ?: key
+
+        val photosList = mutableListOf<String>()
+        val photosChild = child("photos")
+        if (photosChild.exists()) {
+            for (p in photosChild.children) {
+                val url = p.getValue(String::class.java) ?: p.value?.toString()
+                if (!url.isNullOrBlank()) photosList.add(url)
+            }
+        }
+        val photosJsonStr = if (photosList.isEmpty()) {
+            child("photosJson").getValue(String::class.java) ?: "[]"
+        } else {
+            "[" + photosList.joinToString(",") { "\"$it\"" } + "]"
+        }
+
+        return LeadEntity(
+            leadId = leadId,
+            type = child("type").getValue(String::class.java) ?: "customer",
+            name = child("name").getValue(String::class.java) ?: "",
+            firmName = child("firmName").getValue(String::class.java) ?: "",
+            supplierType = child("supplierType").getValue(String::class.java) ?: "",
+            phone = child("phone").getValue(String::class.java) ?: "",
+            phone2 = child("phone2").getValue(String::class.java) ?: "",
+            meetingPlace = child("meetingPlace").getValue(String::class.java) ?: "",
+            city = child("city").getValue(String::class.java) ?: "Ahmedabad",
+            state = child("state").getValue(String::class.java) ?: "Gujarat",
+            notes = child("notes").getValue(String::class.java) ?: "",
+            photosJson = photosJsonStr,
+            status = child("status").getValue(String::class.java) ?: "Thinking",
+            nextFollowUpDate = child("nextFollowUpDate").getValue(String::class.java) ?: "",
+            createdByUid = child("createdByUid").getValue(String::class.java) ?: "",
+            createdByName = child("createdByName").getValue(String::class.java) ?: "",
+            createdAt = child("createdAt").getValue(Long::class.java) ?: System.currentTimeMillis(),
+            convertedAt = child("convertedAt").getValue(Long::class.java),
+            convertedTargetId = child("convertedTargetId").getValue(Long::class.java),
+            isDeleted = child("isDeleted").getValue(Boolean::class.java) ?: false
+        )
+    }
+
+    private fun DataSnapshot.toRegistrationRequest(): CustomerRegistrationRequestEntity? {
+        val key = key ?: return null
+        val reqId = child("id").getValue(String::class.java)?.takeIf { it.isNotBlank() } ?: key
+        return CustomerRegistrationRequestEntity(
+            id = reqId,
+            firmName = child("firmName").getValue(String::class.java) ?: "",
+            name = child("name").getValue(String::class.java) ?: "",
+            phone = child("phone").getValue(String::class.java) ?: "",
+            phone2 = child("phone2").getValue(String::class.java) ?: "",
+            email = child("email").getValue(String::class.java) ?: "",
+            address = child("address").getValue(String::class.java) ?: "",
+            shopAddress = child("shopAddress").getValue(String::class.java) ?: "",
+            marketArea = child("marketArea").getValue(String::class.java) ?: "",
+            city = child("city").getValue(String::class.java) ?: "Ahmedabad",
+            district = child("district").getValue(String::class.java) ?: "",
+            state = child("state").getValue(String::class.java) ?: "Gujarat",
+            pincode = child("pincode").getValue(String::class.java) ?: "",
+            shopMapLink = child("shopMapLink").getValue(String::class.java) ?: "",
+            garmentTypes = child("garmentTypes").getValue(String::class.java) ?: "",
+            gstin = child("gstin").getValue(String::class.java) ?: "",
+            panNumber = child("panNumber").getValue(String::class.java) ?: "",
+            preferredTransporterName = child("preferredTransporterName").getValue(String::class.java) ?: "",
+            transportPreference = child("transportPreference").getValue(String::class.java) ?: "",
+            bankName = child("bankName").getValue(String::class.java) ?: "",
+            accountNumber = child("accountNumber").getValue(String::class.java) ?: "",
+            ifscCode = child("ifscCode").getValue(String::class.java) ?: "",
+            shopPhotoUri = child("shopPhotoUri").getValue(String::class.java) ?: "",
+            gstCertPhotoUri = child("gstCertPhotoUri").getValue(String::class.java) ?: "",
+            panPhotoUri = child("panPhotoUri").getValue(String::class.java) ?: "",
+            aadharPhotoUri = child("aadharPhotoUri").getValue(String::class.java) ?: "",
+            notes = child("notes").getValue(String::class.java) ?: "",
+            status = child("status").getValue(String::class.java) ?: "PENDING",
+            phoneVerified = child("phoneVerified").getValue(Boolean::class.java) ?: true,
+            createdAt = child("createdAt").getValue(Long::class.java) ?: System.currentTimeMillis(),
+            approvedAt = child("approvedAt").getValue(Long::class.java),
+            approvedBy = child("approvedBy").getValue(String::class.java) ?: "",
+            assignedAgentId = child("assignedAgentId").getValue(Long::class.java),
+            assignedAgentName = child("assignedAgentName").getValue(String::class.java) ?: "",
+            creditType = child("creditType").getValue(String::class.java) ?: "Cash",
+            creditDays = child("creditDays").getValue(Int::class.java) ?: 30,
+            creditLimit = child("creditLimit").getValue(Double::class.java) ?: 0.0,
+            religion = child("religion").getValue(String::class.java) ?: "",
+            createdCustomerId = child("createdCustomerId").getValue(Long::class.java),
+            rejectionReason = child("rejectionReason").getValue(String::class.java) ?: ""
+        )
+    }
+
+    fun listenToLeads(onUpdate: (List<LeadEntity>) -> Unit): ValueEventListener {
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val list = mutableListOf<LeadEntity>()
+                for (child in snapshot.children) {
+                    val lead = child.toLead()
+                    if (lead != null && !lead.isDeleted) {
+                        list.add(lead)
+                    }
+                }
+                onUpdate(list)
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        }
+        rootRef.child("leads").addValueEventListener(listener)
+        return listener
+    }
+
+    suspend fun fetchLeads(): List<LeadEntity> = suspendCancellableCoroutine { cont ->
+        rootRef.child("leads").addListenerForSingleValueEvent(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val list = mutableListOf<LeadEntity>()
+                for (child in snapshot.children) {
+                    val lead = child.toLead()
+                    if (lead != null && !lead.isDeleted) {
+                        list.add(lead)
+                    }
+                }
+                if (cont.isActive) cont.resumeWith(Result.success(list))
+            }
+            override fun onCancelled(error: DatabaseError) {
+                if (cont.isActive) cont.resumeWith(Result.success(emptyList()))
+            }
+        })
+    }
+
+    fun listenToRegistrationRequests(onUpdate: (List<CustomerRegistrationRequestEntity>) -> Unit): ValueEventListener {
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val list = mutableListOf<CustomerRegistrationRequestEntity>()
+                for (child in snapshot.children) {
+                    val req = child.toRegistrationRequest()
+                    if (req != null) {
+                        list.add(req)
+                    }
+                }
+                onUpdate(list)
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        }
+        rootRef.child("customer_registration_requests").addValueEventListener(listener)
+        return listener
+    }
+
+    suspend fun fetchRegistrationRequests(): List<CustomerRegistrationRequestEntity> = suspendCancellableCoroutine { cont ->
+        rootRef.child("customer_registration_requests").addListenerForSingleValueEvent(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val list = mutableListOf<CustomerRegistrationRequestEntity>()
+                for (child in snapshot.children) {
+                    val req = child.toRegistrationRequest()
+                    if (req != null) {
+                        list.add(req)
+                    }
+                }
+                if (cont.isActive) cont.resumeWith(Result.success(list))
+            }
+            override fun onCancelled(error: DatabaseError) {
+                if (cont.isActive) cont.resumeWith(Result.success(emptyList()))
+            }
+        })
+    }
+
+    private fun DataSnapshot.toSupplierRegistrationRequest(): SupplierRegistrationRequestEntity? {
+        val key = key ?: return null
+        val reqId = child("id").getValue(String::class.java)?.takeIf { it.isNotBlank() } ?: key
+        return SupplierRegistrationRequestEntity(
+            id = reqId,
+            firmName = child("firmName").getValue(String::class.java) ?: "",
+            name = child("name").getValue(String::class.java) ?: "",
+            contactPerson = child("contactPerson").getValue(String::class.java) ?: "",
+            type = child("type").getValue(String::class.java) ?: "Manufacturer",
+            brand = child("brand").getValue(String::class.java) ?: "",
+            phone = child("phone").getValue(String::class.java) ?: "",
+            phone2 = child("phone2").getValue(String::class.java) ?: "",
+            email = child("email").getValue(String::class.java) ?: "",
+            address = child("address").getValue(String::class.java) ?: "",
+            officeAddress = child("officeAddress").getValue(String::class.java) ?: "",
+            marketArea = child("marketArea").getValue(String::class.java) ?: "",
+            city = child("city").getValue(String::class.java) ?: "Ahmedabad",
+            district = child("district").getValue(String::class.java) ?: "",
+            state = child("state").getValue(String::class.java) ?: "Gujarat",
+            pincode = child("pincode").getValue(String::class.java) ?: "",
+            mapLink = child("mapLink").getValue(String::class.java) ?: "",
+            productsMade = child("productsMade").getValue(String::class.java) ?: "",
+            categories = child("categories").getValue(String::class.java) ?: "",
+            priceRange = child("priceRange").getValue(String::class.java) ?: "",
+            gstin = child("gstin").getValue(String::class.java) ?: "",
+            panNumber = child("panNumber").getValue(String::class.java) ?: "",
+            bankName = child("bankName").getValue(String::class.java) ?: "",
+            accountNumber = child("accountNumber").getValue(String::class.java) ?: "",
+            ifscCode = child("ifscCode").getValue(String::class.java) ?: "",
+            visitingCardPhotoUri = child("visitingCardPhotoUri").getValue(String::class.java) ?: "",
+            shopPhotoUri = child("shopPhotoUri").getValue(String::class.java) ?: "",
+            gstCertPhotoUri = child("gstCertPhotoUri").getValue(String::class.java) ?: "",
+            panPhotoUri = child("panPhotoUri").getValue(String::class.java) ?: "",
+            notes = child("notes").getValue(String::class.java) ?: "",
+            status = child("status").getValue(String::class.java) ?: "PENDING",
+            phoneVerified = child("phoneVerified").getValue(Boolean::class.java) ?: true,
+            createdAt = child("createdAt").getValue(Long::class.java) ?: System.currentTimeMillis(),
+            approvedAt = child("approvedAt").getValue(Long::class.java),
+            approvedBy = child("approvedBy").getValue(String::class.java) ?: "",
+            createdSupplierId = child("createdSupplierId").getValue(Long::class.java),
+            rejectionReason = child("rejectionReason").getValue(String::class.java) ?: ""
+        )
+    }
+
+    fun listenToSupplierRegistrationRequests(onUpdate: (List<SupplierRegistrationRequestEntity>) -> Unit): ValueEventListener {
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val list = mutableListOf<SupplierRegistrationRequestEntity>()
+                for (child in snapshot.children) {
+                    val req = child.toSupplierRegistrationRequest()
+                    if (req != null) {
+                        list.add(req)
+                    }
+                }
+                onUpdate(list)
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        }
+        rootRef.child("supplier_registration_requests").addValueEventListener(listener)
+        return listener
+    }
+
+    suspend fun fetchSupplierRegistrationRequests(): List<SupplierRegistrationRequestEntity> = suspendCancellableCoroutine { cont ->
+        rootRef.child("supplier_registration_requests").addListenerForSingleValueEvent(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val list = mutableListOf<SupplierRegistrationRequestEntity>()
+                for (child in snapshot.children) {
+                    val req = child.toSupplierRegistrationRequest()
+                    if (req != null) {
+                        list.add(req)
+                    }
+                }
+                if (cont.isActive) cont.resumeWith(Result.success(list))
+            }
+            override fun onCancelled(error: DatabaseError) {
+                if (cont.isActive) cont.resumeWith(Result.success(emptyList()))
+            }
+        })
+    }
+
+    suspend fun approveSupplierRegistrationRequest(
+        requestId: String,
+        newSupplierId: Long,
+        brand: String,
+        marketName: String,
+        approvedBy: String
+    ) = suspendCancellableCoroutine<Unit> { cont ->
+        val updates = mapOf(
+            "status" to "APPROVED",
+            "approvedAt" to System.currentTimeMillis(),
+            "approvedBy" to approvedBy,
+            "brand" to brand,
+            "marketArea" to marketName,
+            "createdSupplierId" to newSupplierId
+        )
+        rootRef.child("supplier_registration_requests").child(requestId).updateChildren(updates)
+            .addOnSuccessListener {
+                if (cont.isActive) cont.resumeWith(Result.success(Unit))
+            }
+            .addOnFailureListener { e ->
+                if (cont.isActive) cont.resumeWith(Result.failure(e))
+            }
+    }
+
+    suspend fun rejectSupplierRegistrationRequest(
+        requestId: String,
+        reason: String
+    ) = suspendCancellableCoroutine<Unit> { cont ->
+        val updates = mapOf(
+            "status" to "REJECTED",
+            "rejectionReason" to reason
+        )
+        rootRef.child("supplier_registration_requests").child(requestId).updateChildren(updates)
+            .addOnSuccessListener {
+                if (cont.isActive) cont.resumeWith(Result.success(Unit))
+            }
+            .addOnFailureListener { e ->
+                if (cont.isActive) cont.resumeWith(Result.failure(e))
+            }
     }
 }
 

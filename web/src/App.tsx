@@ -19,6 +19,8 @@ import { TransportersView } from "./views/TransportersView"
 import { MarketsView } from "./views/MarketsView"
 import { DeletionsView } from "./views/DeletionsView"
 import { CustomerRegistrationView } from "./views/CustomerRegistrationView"
+import { SupplierRegistrationView } from "./views/SupplierRegistrationView"
+import { LeadsView } from "./views/LeadsView"
 import { Loader2 } from "lucide-react"
 
 function MainLayout() {
@@ -58,6 +60,8 @@ function MainLayout() {
         return <DeliveriesView />
       case "employees":
         return <EmployeesView onNavigate={(tab) => setActiveTab(tab as ActiveTab)} />
+      case "leads":
+        return <LeadsView />
       case "customers":
         return <CustomersView />
       case "suppliers":
@@ -85,6 +89,7 @@ function MainLayout() {
     payments: "Payments & Billing",
     deliveries: "Deliveries & Dispatch",
     employees: "Staff & Sales Agents",
+    leads: "Leads & Prospects (CRM)",
     customers: "Customers",
     suppliers: "Suppliers & Mills",
     products: "Product Master",
@@ -123,16 +128,38 @@ function MainLayout() {
 }
 
 export function App() {
-  const [isRegisterRoute, setIsRegisterRoute] = useState(() => {
+  const [isRegisterRoute, setIsRegisterRoute] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false
+    const hash = window.location.hash || ""
+    const pathname = window.location.pathname || ""
+    const search = window.location.search || ""
+    const params = new URLSearchParams(search)
+    const isSup =
+      hash.includes("supplier-register") ||
+      pathname.includes("supplier-register") ||
+      params.get("mode") === "supplier-register" ||
+      params.get("action") === "register-supplier"
+    return (
+      !isSup && (
+        hash.includes("register") ||
+        pathname.includes("register") ||
+        params.get("mode") === "register" ||
+        params.get("action") === "register-customer"
+      )
+    )
+  })
+
+  const [isSupplierRegisterRoute, setIsSupplierRegisterRoute] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false
     const hash = window.location.hash || ""
     const pathname = window.location.pathname || ""
     const search = window.location.search || ""
     const params = new URLSearchParams(search)
     return (
-      hash.includes("register") ||
-      pathname.includes("register") ||
-      params.get("mode") === "register" ||
-      params.get("action") === "register-customer"
+      hash.includes("supplier-register") ||
+      pathname.includes("supplier-register") ||
+      params.get("mode") === "supplier-register" ||
+      params.get("action") === "register-supplier"
     )
   })
 
@@ -142,11 +169,21 @@ export function App() {
       const pathname = window.location.pathname || ""
       const search = window.location.search || ""
       const params = new URLSearchParams(search)
+
+      const isSup =
+        hash.includes("supplier-register") ||
+        pathname.includes("supplier-register") ||
+        params.get("mode") === "supplier-register" ||
+        params.get("action") === "register-supplier"
+      setIsSupplierRegisterRoute(isSup)
+
       setIsRegisterRoute(
-        hash.includes("register") ||
-        pathname.includes("register") ||
-        params.get("mode") === "register" ||
-        params.get("action") === "register-customer"
+        !isSup && (
+          hash.includes("register") ||
+          pathname.includes("register") ||
+          params.get("mode") === "register" ||
+          params.get("action") === "register-customer"
+        )
       )
     }
 
@@ -157,6 +194,10 @@ export function App() {
       window.removeEventListener("popstate", checkRoute)
     }
   }, [])
+
+  if (isSupplierRegisterRoute) {
+    return <SupplierRegistrationView />
+  }
 
   if (isRegisterRoute) {
     return <CustomerRegistrationView />

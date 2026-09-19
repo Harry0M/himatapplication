@@ -53,6 +53,7 @@ import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.DeliveriesScreen
 import com.example.ui.screens.EmployeeDetailScreen
 import com.example.ui.screens.HomeScreen
+import com.example.ui.screens.LeadsScreen
 import com.example.ui.screens.MainScreen
 import com.example.ui.screens.LoginScreen
 import com.example.ui.screens.MarketDetailScreen
@@ -338,7 +339,8 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
         AppScreen.ADD_EDIT_MASTER,
         AppScreen.PAYMENTS,
         AppScreen.PENDINGS,
-        AppScreen.PROFILE
+        AppScreen.PROFILE,
+        AppScreen.LEADS
     )
 
     // Screens that display their own integrated flat header
@@ -367,7 +369,8 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
         AppScreen.ADD_EDIT_MASTER,
         AppScreen.PAYMENTS,
         AppScreen.PENDINGS,
-        AppScreen.PROFILE
+        AppScreen.PROFILE,
+        AppScreen.LEADS
     )
 
     // Handle Android system back button smoothly
@@ -822,6 +825,13 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
 
                 AppScreen.PROFILE -> {
                     ProfileScreen(
+                        viewModel = viewModel,
+                        onBack = { viewModel.navigateTo(AppScreen.DASHBOARD) }
+                    )
+                }
+
+                AppScreen.LEADS -> {
+                    LeadsScreen(
                         viewModel = viewModel,
                         onBack = { viewModel.navigateTo(AppScreen.DASHBOARD) }
                     )

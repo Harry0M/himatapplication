@@ -4,6 +4,12 @@ import android.content.Intent
 import android.net.Uri
 import com.example.ui.dialogs.FullScreenImageViewerDialog
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -23,6 +29,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -66,6 +73,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,7 +81,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -197,6 +209,43 @@ fun SupplierDetailScreen(
         }
     }
 
+    val listState = rememberLazyListState()
+    var isProfileExpanded by remember { mutableStateOf(true) }
+
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            private var accumulatedDelta = 0f
+
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source == NestedScrollSource.UserInput) {
+                    val delta = available.y
+                    if (delta < -15f) {
+                        if (accumulatedDelta > 0) accumulatedDelta = 0f
+                        accumulatedDelta += delta
+                        if (accumulatedDelta < -25f) {
+                            isProfileExpanded = false
+                        }
+                    } else if (delta > 15f) {
+                        if (accumulatedDelta < 0) accumulatedDelta = 0f
+                        accumulatedDelta += delta
+                        if (accumulatedDelta > 20f) {
+                            isProfileExpanded = true
+                        }
+                    }
+                }
+                return Offset.Zero
+            }
+        }
+    }
+
+    LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, searchQuery) {
+        if (searchQuery.isNotBlank()) {
+            // Keep search bar visible
+        } else if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset <= 10) {
+            isProfileExpanded = true
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -267,16 +316,27 @@ fun SupplierDetailScreen(
             )
         }
     ) { paddingValues ->
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(Color(0xFFF6F8FB))
+                .nestedScroll(nestedScrollConnection)
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(horizontal = 16.dp)
         ) {
-            // Cardless Hero Profile Header
-            item {
+            // 1. Collapsible Profile Details (above Search Bar)
+            AnimatedVisibility(
+                visible = isProfileExpanded && searchQuery.isBlank(),
+                enter = expandVertically(tween(240, easing = FastOutSlowInEasing)) + fadeIn(tween(200)),
+                exit = shrinkVertically(tween(220, easing = FastOutSlowInEasing)) + fadeOut(tween(180))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Cardless Hero Profile Header
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -471,93 +531,90 @@ fun SupplierDetailScreen(
                         }
                     }
                 }
-            }
 
             // Cardless Stats Row (NO cards, clean inline stats with 1dp vertical dividers)
-            item {
-                Row(
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "$totalOrders",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF0F172A)
+                    )
+                    Text(
+                        text = "Total Orders",
+                        fontSize = 11.sp,
+                        color = Color(0xFF64748B)
+                    )
+                }
+
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "$totalOrders",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF0F172A)
-                        )
-                        Text(
-                            text = "Total Orders",
-                            fontSize = 11.sp,
-                            color = Color(0xFF64748B)
-                        )
-                    }
+                        .height(24.dp)
+                        .width(1.dp)
+                        .background(Color(0xFFE2E8F0))
+                )
 
-                    Box(
-                        modifier = Modifier
-                            .height(24.dp)
-                            .width(1.dp)
-                            .background(Color(0xFFE2E8F0))
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = String.format("%,d", totalPieces),
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF0F172A)
                     )
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = String.format("%,d", totalPieces),
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF0F172A)
-                        )
-                        Text(
-                            text = "Total Pieces",
-                            fontSize = 11.sp,
-                            color = Color(0xFF64748B)
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .height(24.dp)
-                            .width(1.dp)
-                            .background(Color(0xFFE2E8F0))
+                    Text(
+                        text = "Total Pieces",
+                        fontSize = 11.sp,
+                        color = Color(0xFF64748B)
                     )
+                }
 
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "$deliveredOrders",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF059669)
-                        )
-                        Text(
-                            text = "Delivered",
-                            fontSize = 11.sp,
-                            color = Color(0xFF64748B)
-                        )
-                    }
+                Box(
+                    modifier = Modifier
+                        .height(24.dp)
+                        .width(1.dp)
+                        .background(Color(0xFFE2E8F0))
+                )
 
-                    Box(
-                        modifier = Modifier
-                            .height(24.dp)
-                            .width(1.dp)
-                            .background(Color(0xFFE2E8F0))
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "$deliveredOrders",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF059669)
                     )
+                    Text(
+                        text = "Delivered",
+                        fontSize = 11.sp,
+                        color = Color(0xFF64748B)
+                    )
+                }
 
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "$pendingOrders",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (pendingOrders > 0) Color(0xFFDC2626) else Color(0xFF059669)
-                        )
-                        Text(
-                            text = "Pending",
-                            fontSize = 11.sp,
-                            color = Color(0xFF64748B)
-                        )
-                    }
+                Box(
+                    modifier = Modifier
+                        .height(24.dp)
+                        .width(1.dp)
+                        .background(Color(0xFFE2E8F0))
+                )
+
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "$pendingOrders",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (pendingOrders > 0) Color(0xFFDC2626) else Color(0xFF059669)
+                    )
+                    Text(
+                        text = "Pending",
+                        fontSize = 11.sp,
+                        color = Color(0xFF64748B)
+                    )
                 }
             }
 
@@ -574,58 +631,56 @@ fun SupplierDetailScreen(
                     supplier.referredBy.isNotBlank()
 
             if (hasExtendedDetails) {
-                item {
-                    Surface(
-                        color = Color(0xFFF8FAFC),
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            if (officeAddr.isNotBlank() || supplier.officeLocation.isNotBlank()) {
-                                Row(verticalAlignment = Alignment.Top) {
-                                    Text("Office/Mill: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
-                                    Text(
-                                        text = listOfNotNull(officeAddr.takeIf { it.isNotBlank() }, supplier.officeLocation.takeIf { it.isNotBlank() }).joinToString(" • "),
-                                        fontSize = 11.sp,
-                                        color = Color(0xFF1E293B)
-                                    )
-                                }
+                Surface(
+                    color = Color(0xFFF8FAFC),
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (officeAddr.isNotBlank() || supplier.officeLocation.isNotBlank()) {
+                            Row(verticalAlignment = Alignment.Top) {
+                                Text("Office/Mill: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                Text(
+                                    text = listOfNotNull(officeAddr.takeIf { it.isNotBlank() }, supplier.officeLocation.takeIf { it.isNotBlank() }).joinToString(" • "),
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF1E293B)
+                                )
                             }
-                            if (supplier.homeAddress.isNotBlank() || supplier.personalLocation.isNotBlank()) {
-                                Row(verticalAlignment = Alignment.Top) {
-                                    Text("Home/Fact: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
-                                    Text(
-                                        text = listOfNotNull(supplier.homeAddress.takeIf { it.isNotBlank() }, supplier.personalLocation.takeIf { it.isNotBlank() }).joinToString(" • "),
-                                        fontSize = 11.sp,
-                                        color = Color(0xFF1E293B)
-                                    )
-                                }
+                        }
+                        if (supplier.homeAddress.isNotBlank() || supplier.personalLocation.isNotBlank()) {
+                            Row(verticalAlignment = Alignment.Top) {
+                                Text("Home/Fact: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                Text(
+                                    text = listOfNotNull(supplier.homeAddress.takeIf { it.isNotBlank() }, supplier.personalLocation.takeIf { it.isNotBlank() }).joinToString(" • "),
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF1E293B)
+                                )
                             }
-                            if (supplier.shopLocations.isNotBlank()) {
-                                Row(verticalAlignment = Alignment.Top) {
-                                    Text("Branches: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
-                                    Text(supplier.shopLocations, fontSize = 11.sp, color = Color(0xFF1E293B))
-                                }
+                        }
+                        if (supplier.shopLocations.isNotBlank()) {
+                            Row(verticalAlignment = Alignment.Top) {
+                                Text("Branches: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                Text(supplier.shopLocations, fontSize = 11.sp, color = Color(0xFF1E293B))
                             }
-                            if (supplier.markets.isNotBlank()) {
-                                Row(verticalAlignment = Alignment.Top) {
-                                    Text("Markets: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
-                                    Text(supplier.markets, fontSize = 11.sp, color = Color(0xFF0F766E), fontWeight = FontWeight.Medium)
-                                }
+                        }
+                        if (supplier.markets.isNotBlank()) {
+                            Row(verticalAlignment = Alignment.Top) {
+                                Text("Markets: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                Text(supplier.markets, fontSize = 11.sp, color = Color(0xFF0F766E), fontWeight = FontWeight.Medium)
                             }
-                            val cats = supplier.categories.ifBlank { supplier.garmentTypes }
-                            if (cats.isNotBlank()) {
-                                Row(verticalAlignment = Alignment.Top) {
-                                    Text("Products: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
-                                    Text(cats, fontSize = 11.sp, color = Color(0xFF6366F1), fontWeight = FontWeight.Medium)
-                                }
+                        }
+                        val cats = supplier.categories.ifBlank { supplier.garmentTypes }
+                        if (cats.isNotBlank()) {
+                            Row(verticalAlignment = Alignment.Top) {
+                                Text("Products: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                Text(cats, fontSize = 11.sp, color = Color(0xFF6366F1), fontWeight = FontWeight.Medium)
                             }
-                            if (supplier.referredBy.isNotBlank()) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Referred by: ", fontSize = 11.sp, color = Color(0xFF64748B))
-                                    Text(supplier.referredBy, fontSize = 11.sp, color = Color(0xFF1E293B), fontWeight = FontWeight.Medium)
-                                }
+                        }
+                        if (supplier.referredBy.isNotBlank()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Referred by: ", fontSize = 11.sp, color = Color(0xFF64748B))
+                                Text(supplier.referredBy, fontSize = 11.sp, color = Color(0xFF1E293B), fontWeight = FontWeight.Medium)
                             }
                         }
                     }
@@ -639,190 +694,204 @@ fun SupplierDetailScreen(
             )
 
             if (supplierDocs.isNotEmpty()) {
-                item {
-                    ElevatedCard(
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
+                ElevatedCard(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f, fill = false)
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        Icons.Default.CloudDone,
-                                        contentDescription = null,
-                                        tint = Color(0xFF059669),
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "Verification Photos & Cloud Media",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.5.sp,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                                Surface(
-                                    color = Color(0xFFECFDF5),
-                                    shape = RoundedCornerShape(6.dp),
-                                    border = BorderStroke(1.dp, Color(0xFFA7F3D0))
-                                ) {
-                                    Text(
-                                        text = "${supplierDocs.size} Attached",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF065F46),
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
+                                Icon(
+                                    Icons.Default.CloudDone,
+                                    contentDescription = null,
+                                    tint = Color(0xFF059669),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Verification Photos & Media",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
 
-                            Spacer(modifier = Modifier.height(10.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
 
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            Surface(
+                                color = Color(0xFFECFDF5),
+                                shape = RoundedCornerShape(6.dp),
+                                border = BorderStroke(1.dp, Color(0xFFA7F3D0))
                             ) {
-                                supplierDocs.forEach { (label, url) ->
-                                    var showPreview by remember { mutableStateOf(false) }
+                                Text(
+                                    text = "${supplierDocs.size} Attached",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF065F46),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
 
-                                    Surface(
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = Color(0xFFF8FAFC),
-                                        border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                                        modifier = Modifier
-                                            .width(140.dp)
-                                            .clickable { showPreview = true }
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            supplierDocs.forEach { (label, url) ->
+                                var showPreview by remember { mutableStateOf(false) }
+
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFF8FAFC),
+                                    border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                    modifier = Modifier
+                                        .width(140.dp)
+                                        .clickable { showPreview = true }
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(8.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        Column(
-                                            modifier = Modifier.padding(8.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        Box(
+                                            modifier = Modifier
+                                                .size(124.dp, 85.dp)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(Color(0xFFE2E8F0)),
+                                            contentAlignment = Alignment.Center
                                         ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(124.dp, 85.dp)
-                                                    .clip(RoundedCornerShape(6.dp))
-                                                    .background(Color(0xFFE2E8F0)),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                AsyncImage(
-                                                    model = url,
-                                                    contentDescription = label,
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier.fillMaxSize()
-                                                )
-                                            }
-                                            Spacer(modifier = Modifier.height(6.dp))
-                                            Text(
-                                                text = label,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = MaterialTheme.colorScheme.onSurface,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                text = if (url.startsWith("http")) "Firebase Cloud" else "Local File",
-                                                fontSize = 9.5.sp,
-                                                color = if (url.startsWith("http")) Color(0xFF059669) else Color(0xFF64748B)
+                                            AsyncImage(
+                                                model = url,
+                                                contentDescription = label,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize()
                                             )
                                         }
-                                    }
-
-                                    if (showPreview) {
-                                        FullScreenImageViewerDialog(
-                                            imageUrl = url,
-                                            title = "$label • ${supplier.firmName.ifBlank { supplier.name }}",
-                                            onDismiss = { showPreview = false }
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text(
+                                            text = label,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = if (url.startsWith("http")) "Firebase Cloud" else "Local File",
+                                            fontSize = 9.5.sp,
+                                            color = if (url.startsWith("http")) Color(0xFF059669) else Color(0xFF64748B)
                                         )
                                     }
+                                }
+
+                                if (showPreview) {
+                                    FullScreenImageViewerDialog(
+                                        imageUrl = url,
+                                        title = "$label • ${supplier.firmName.ifBlank { supplier.name }}",
+                                        onDismiss = { showPreview = false }
+                                    )
                                 }
                             }
                         }
                     }
                 }
             }
+        }
+    }
 
-            // Search and Cascading Filter Chips
-            item {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    // Compact 36dp Pill Search Bar
-                    Surface(
-                        shape = CircleShape,
-                        color = Color.White,
-                        border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(36.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = Color(0xFF64748B)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Box(
-                                modifier = Modifier.weight(1f),
-                                contentAlignment = Alignment.CenterStart
-                            ) {
-                                if (searchQuery.isEmpty()) {
-                                    Text(
-                                        text = "Search by Order #, Item, Customer...",
-                                        fontSize = 12.sp,
-                                        color = Color(0xFF94A3B8),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                BasicTextField(
-                                    value = searchQuery,
-                                    onValueChange = { searchQuery = it },
-                                    singleLine = true,
-                                    textStyle = androidx.compose.ui.text.TextStyle(
-                                        fontSize = 12.sp,
-                                        color = Color(0xFF0F172A),
-                                        fontWeight = FontWeight.Medium
-                                    ),
-                                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Color(0xFF2563EB)),
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
-                            if (searchQuery.isNotEmpty()) {
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .size(18.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFFE2E8F0))
-                                        .clickable { searchQuery = "" },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Clear,
-                                        contentDescription = "Clear",
-                                        modifier = Modifier.size(11.dp),
-                                        tint = Color(0xFF475569)
-                                    )
-                                }
-                            }
-                        }
-                    }
+    // 2. Compact 36dp Pill Search Bar (Fixed / Pinned directly below Hero)
+    Surface(
+        shape = CircleShape,
+        color = Color.White,
+        border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(36.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Search,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = Color(0xFF64748B)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Box(
+                modifier = Modifier.weight(1f),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                if (searchQuery.isEmpty()) {
+                    Text(
+                        text = "Search by Order #, Item, Customer...",
+                        fontSize = 12.sp,
+                        color = Color(0xFF94A3B8),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                BasicTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    singleLine = true,
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        fontSize = 12.sp,
+                        color = Color(0xFF0F172A),
+                        fontWeight = FontWeight.Medium
+                    ),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Color(0xFF2563EB)),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            if (searchQuery.isNotEmpty()) {
+                Spacer(modifier = Modifier.width(6.dp))
+                Box(
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFE2E8F0))
+                        .clickable { searchQuery = "" },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Clear,
+                        contentDescription = "Clear",
+                        modifier = Modifier.size(11.dp),
+                        tint = Color(0xFF475569)
+                    )
+                }
+            }
+        }
+    }
 
-                    Spacer(modifier = Modifier.height(10.dp))
+    // 3. LazyColumn for List items & Filters
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // Cascading Filter Chips
+        item {
+            Column(modifier = Modifier.fillMaxWidth()) {
 
                     // Cascading Filter Chips: Level 1 Single Line Parent Chips
                     val isAnyFilterActive = filterDateRange != "ALL" || filterStatus != "All" || filterCustomer != "All" || filterTransporter != "All"
@@ -1155,6 +1224,7 @@ fun SupplierDetailScreen(
             }
         }
     }
+}
 }
 
 @Composable

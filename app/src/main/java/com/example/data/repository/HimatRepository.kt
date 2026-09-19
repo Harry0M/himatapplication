@@ -3,6 +3,7 @@ package com.example.data.repository
 import com.example.data.local.AppDatabase
 import com.example.data.local.entity.BrandEntity
 import com.example.data.local.entity.CustomerEntity
+import com.example.data.local.entity.LeadEntity
 import com.example.data.local.entity.EmployeeEntity
 import com.example.data.local.entity.GarmentItemEntity
 import com.example.data.local.entity.MarketEntity
@@ -35,6 +36,23 @@ class HimatRepository(private val database: AppDatabase) {
     private val brandDao = database.brandDao()
     private val transporterDao = database.transporterDao()
     private val marketDao = database.marketDao()
+    private val leadDao = database.leadDao()
+
+    // Leads
+    val allLeads: Flow<List<LeadEntity>> = leadDao.getAllLeads()
+    fun getLeadsByType(type: String): Flow<List<LeadEntity>> = leadDao.getLeadsByType(type)
+    suspend fun getLeadById(id: Long): LeadEntity? = leadDao.getLeadById(id)
+    suspend fun getLeadByLeadId(leadId: String): LeadEntity? = leadDao.getLeadByLeadId(leadId)
+    suspend fun saveLead(lead: LeadEntity): Long {
+        return if (lead.id == 0L) {
+            leadDao.insertLead(lead)
+        } else {
+            leadDao.updateLead(lead)
+            lead.id
+        }
+    }
+    suspend fun deleteLead(lead: LeadEntity) = leadDao.deleteLead(lead)
+    suspend fun deleteLeadById(id: Long) = leadDao.deleteLeadById(id)
 
     // Customers
     val allCustomers: Flow<List<CustomerEntity>> = customerDao.getAllCustomers()
@@ -510,6 +528,18 @@ class HimatRepository(private val database: AppDatabase) {
         val valid = markets.filter { it.id > 0L && it.marketName.isNotBlank() }.distinctBy { it.id }
         if (valid.isNotEmpty()) {
             marketDao.insertAll(valid)
+        }
+    }
+
+    suspend fun syncLeadsFromCloud(leads: List<LeadEntity>) {
+        val valid = leads.filter { it.leadId.isNotBlank() && !it.isDeleted }.distinctBy { it.leadId }
+        valid.forEach { cloudLead ->
+            val existing = leadDao.getLeadByLeadId(cloudLead.leadId)
+            if (existing != null) {
+                leadDao.updateLead(cloudLead.copy(id = existing.id))
+            } else {
+                leadDao.insertLead(cloudLead)
+            }
         }
     }
 

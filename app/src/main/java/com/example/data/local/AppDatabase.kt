@@ -10,6 +10,7 @@ import com.example.data.local.dao.BrandDao
 import com.example.data.local.dao.CustomerDao
 import com.example.data.local.dao.EmployeeDao
 import com.example.data.local.dao.GarmentItemDao
+import com.example.data.local.dao.LeadDao
 import com.example.data.local.dao.MarketDao
 import com.example.data.local.dao.PackGroupDao
 import com.example.data.local.dao.ProductDao
@@ -23,6 +24,7 @@ import com.example.data.local.entity.BrandEntity
 import com.example.data.local.entity.CustomerEntity
 import com.example.data.local.entity.EmployeeEntity
 import com.example.data.local.entity.GarmentItemEntity
+import com.example.data.local.entity.LeadEntity
 import com.example.data.local.entity.MarketEntity
 import com.example.data.local.entity.PackGroupEntity
 import com.example.data.local.entity.ProductEntity
@@ -51,9 +53,10 @@ import kotlinx.coroutines.launch
         PackGroupEntity::class,
         BrandEntity::class,
         TransporterEntity::class,
-        MarketEntity::class
+        MarketEntity::class,
+        LeadEntity::class
     ],
-    version = 10,
+    version = 12,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -70,6 +73,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun brandDao(): BrandDao
     abstract fun transporterDao(): TransporterDao
     abstract fun marketDao(): MarketDao
+    abstract fun leadDao(): LeadDao
 
     companion object {
         @Volatile

@@ -2499,670 +2499,761 @@ private fun SupplierMasterForm(
     suppliersList: List<SupplierEntity>,
     employeesList: List<EmployeeEntity>
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    var selectedFormTab by remember { mutableStateOf(0) }
 
-        // Card 1: Mill / Supplier Profile
-        Card(
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-            modifier = Modifier.fillMaxWidth()
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Categorized Tabs Navigation Bar (Matching CustomerMasterForm)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = "1. Mill & Supplier Nature",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    color = NavyPrimary
-                )
+            val tabs = listOf(
+                0 to "1. Basic Info",
+                1 to "2. Contacts & Units (${contacts.size}/${factories.size + outlets.size})",
+                2 to "3. Market & Items",
+                3 to "4. Photos & Refs"
+            )
+            tabs.forEach { (index, label) ->
+                val isSelected = selectedFormTab == index
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (isSelected) NavyPrimary else Color.White,
+                    border = BorderStroke(1.dp, if (isSelected) NavyPrimary else Color(0xFFCBD5E1)),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { selectedFormTab = index }
+                ) {
+                    Text(
+                        text = label,
+                        fontSize = 11.5.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isSelected) GoldAccent else TextPrimary,
+                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
+                    )
+                }
+            }
+        }
 
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Manufacturer", "Wholesaler", "Trader").forEach { t ->
-                        val isSelected = type.equals(t, ignoreCase = true)
-                        Surface(
-                            color = if (isSelected) NavyPrimary else Color(0xFFF1F5F9),
-                            shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.dp, if (isSelected) NavyPrimary else Color(0xFFCBD5E1)),
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable { onTypeChange(t) }
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+        // =========================================================================
+        // TAB 0: BASIC INFO
+        // =========================================================================
+        if (selectedFormTab == 0) {
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Supplier Nature & Profile",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = NavyPrimary
+                    )
+
+                    // Nature Toggle: ONLY Wholesaler and Manufacturer (No icons, matching Customer toggle size)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("Wholesaler", "Manufacturer").forEach { t ->
+                            val isSelected = type.equals(t, ignoreCase = true)
+                            Surface(
+                                color = if (isSelected) NavyPrimary else Color(0xFFF1F5F9),
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, if (isSelected) NavyPrimary else Color(0xFFCBD5E1)),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { onTypeChange(t) }
                             ) {
-                                Text(
-                                    text = when (t) {
-                                        "Manufacturer" -> "🏭 Mill"
-                                        "Wholesaler" -> "🏪 Whole"
-                                        else -> "🤝 Trader"
-                                    },
-                                    color = if (isSelected) Color.White else TextPrimary,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.5.sp
-                                )
+                                Row(
+                                    modifier = Modifier.padding(vertical = 7.dp, horizontal = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = t,
+                                        color = if (isSelected) Color.White else TextPrimary,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.5.sp
+                                    )
+                                }
                             }
                         }
                     }
-                }
 
-                OutlinedTextField(
-                    value = firmName,
-                    onValueChange = onFirmNameChange,
-                    label = { Text("Firm / Mill Name *") },
-                    placeholder = { Text("e.g. Radheshyam Textile Mills Pvt Ltd") },
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    colors = defaultTextFieldColors()
-                )
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
-                        value = contactPerson,
-                        onValueChange = onContactPersonChange,
-                        label = { Text("Key Contact Person") },
-                        placeholder = { Text("e.g. Arvind Bhai") },
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.weight(1.2f),
+                        value = firmName,
+                        onValueChange = onFirmNameChange,
+                        label = { Text("Firm / Mill Name *", fontSize = 11.5.sp) },
+                        placeholder = { Text("e.g. Radheshyam Textile Mills Pvt Ltd", fontSize = 11.5.sp) },
+                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         colors = defaultTextFieldColors()
                     )
 
-                    OutlinedTextField(
-                        value = supplierId,
-                        onValueChange = onSupplierIdChange,
-                        label = { Text("Supplier ID") },
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.weight(0.8f),
-                        singleLine = true,
-                        colors = defaultTextFieldColors()
-                    )
-                }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = contactPerson,
+                            onValueChange = onContactPersonChange,
+                            label = { Text("Key Contact Person", fontSize = 11.5.sp) },
+                            placeholder = { Text("e.g. Arvind Bhai", fontSize = 11.5.sp) },
+                            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1.2f),
+                            singleLine = true,
+                            colors = defaultTextFieldColors()
+                        )
 
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = gstin,
-                        onValueChange = { onGstinChange(it.uppercase()) },
-                        label = { Text("GSTIN") },
-                        placeholder = { Text("24AAAAA0000A1Z5") },
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.weight(1.1f),
-                        singleLine = true,
-                        colors = defaultTextFieldColors()
-                    )
-
-                    OutlinedTextField(
-                        value = panNumber,
-                        onValueChange = { onPanNumberChange(it.uppercase()) },
-                        label = { Text("PAN Number") },
-                        placeholder = { Text("ABCDE1234F") },
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.weight(0.9f),
-                        singleLine = true,
-                        colors = defaultTextFieldColors()
-                    )
-                }
-            }
-        }
-
-        // Card 2: Market & Brand Association (with Inline Create)
-        Card(
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = "2. Market & Brand Selection",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    color = NavyPrimary
-                )
-
-                // Market Selection
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Box(modifier = Modifier.weight(1f)) {
-                        MasterDropdownField(
-                            label = "Select Textile Market *",
-                            selectedValue = marketName,
-                            items = marketsList.map { "${it.marketName} (${it.city})" to it.id },
-                            onSelect = { name, id ->
-                                val mkt = marketsList.find { it.id == id }
-                                if (mkt != null) onMarketSelect(mkt)
-                            },
-                            placeholder = "Choose market from master"
+                        OutlinedTextField(
+                            value = supplierId,
+                            onValueChange = onSupplierIdChange,
+                            label = { Text("Supplier ID", fontSize = 11.5.sp) },
+                            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(0.8f),
+                            singleLine = true,
+                            colors = defaultTextFieldColors()
                         )
                     }
-                    Spacer(modifier = Modifier.width(6.dp))
-                    OutlinedButton(
-                        onClick = onNewMarketClick,
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, NavyPrimary),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                        modifier = Modifier.defaultMinSize(minHeight = 50.dp)
-                    ) {
-                        Text("+ New", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = NavyPrimary)
-                    }
-                }
 
-                // Brand Selection
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Box(modifier = Modifier.weight(1f)) {
-                        MasterDropdownField(
-                            label = "Select Brand (Optional)",
-                            selectedValue = brandName,
-                            items = brandsList.map { it.brandName to it.id },
-                            onSelect = { name, id ->
-                                val b = brandsList.find { it.id == id }
-                                if (b != null) onBrandSelect(b)
-                            },
-                            placeholder = "Choose brand from master"
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = gstin,
+                            onValueChange = { onGstinChange(it.uppercase()) },
+                            label = { Text("GSTIN", fontSize = 11.5.sp) },
+                            placeholder = { Text("24AAAAA0000A1Z5", fontSize = 11.5.sp) },
+                            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1.1f),
+                            singleLine = true,
+                            colors = defaultTextFieldColors()
+                        )
+
+                        OutlinedTextField(
+                            value = panNumber,
+                            onValueChange = { onPanNumberChange(it.uppercase()) },
+                            label = { Text("PAN Number", fontSize = 11.5.sp) },
+                            placeholder = { Text("ABCDE1234F", fontSize = 11.5.sp) },
+                            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(0.9f),
+                            singleLine = true,
+                            colors = defaultTextFieldColors()
                         )
                     }
-                    Spacer(modifier = Modifier.width(6.dp))
-                    OutlinedButton(
-                        onClick = onNewBrandClick,
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, NavyPrimary),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                        modifier = Modifier.defaultMinSize(minHeight = 50.dp)
-                    ) {
-                        Text("+ New", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = NavyPrimary)
-                    }
                 }
-
-                OutlinedTextField(
-                    value = city,
-                    onValueChange = onCityChange,
-                    label = { Text("City / Textile Hub") },
-                    placeholder = { Text("Ahmedabad / Surat / Mumbai") },
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    colors = defaultTextFieldColors()
-                )
             }
-        }
 
-        // Card 3: Contact Info (Up to 5)
-        Card(
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+            // City & Regional Hub Card
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "3. Contacts Info (Up to 5 Lines)",
+                        text = "City & Location Hub",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
+                        fontSize = 12.sp,
                         color = NavyPrimary
                     )
-                    if (contacts.size < 5) {
-                        TextButton(
-                            onClick = {
-                                onContactsChange(contacts + MasterContact(name = "Desk ${contacts.size + 1}"))
-                            },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp), tint = NavyPrimary)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("+ Add Line", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = NavyPrimary)
+
+                    OutlinedTextField(
+                        value = city,
+                        onValueChange = onCityChange,
+                        label = { Text("City / Textile Hub *", fontSize = 11.5.sp) },
+                        placeholder = { Text("e.g. Ahmedabad / Surat / Mumbai", fontSize = 11.5.sp) },
+                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = defaultTextFieldColors()
+                    )
+                }
+            }
+        }
+
+        // =========================================================================
+        // TAB 1: CONTACTS & LOCATIONS
+        // =========================================================================
+        if (selectedFormTab == 1) {
+            // Contacts List Card
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Direct Contact Lines (${contacts.size}/5)",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = NavyPrimary
+                        )
+                        if (contacts.size < 5) {
+                            TextButton(
+                                onClick = {
+                                    onContactsChange(contacts + MasterContact(name = "Desk ${contacts.size + 1}"))
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(15.dp), tint = NavyPrimary)
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text("+ Add Line", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = NavyPrimary)
+                            }
                         }
                     }
-                }
 
-                contacts.forEachIndexed { index, contact ->
-                    Surface(
-                        color = Color(0xFFF8FAFC),
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = if (index == 0) "Primary Order Desk / WhatsApp *" else "Contact Line #${index + 1}",
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 11.5.sp,
-                                    color = NavyPrimary
-                                )
-                                if (contacts.size > 1) {
-                                    IconButton(
-                                        onClick = {
+                    contacts.forEachIndexed { index, contact ->
+                        Surface(
+                            color = Color(0xFFF8FAFC),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = if (index == 0) "Primary Order Desk / WhatsApp *" else "Contact Line #${index + 1}",
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 11.sp,
+                                        color = NavyPrimary
+                                    )
+                                    if (contacts.size > 1) {
+                                        IconButton(
+                                            onClick = {
+                                                val updated = contacts.toMutableList()
+                                                updated.removeAt(index)
+                                                onContactsChange(updated)
+                                            },
+                                            modifier = Modifier.size(22.dp)
+                                        ) {
+                                            Icon(Icons.Default.Close, contentDescription = "Delete", tint = Color(0xFFEF4444), modifier = Modifier.size(15.dp))
+                                        }
+                                    }
+                                }
+
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedTextField(
+                                        value = contact.name,
+                                        onValueChange = { newName ->
                                             val updated = contacts.toMutableList()
-                                            updated.removeAt(index)
+                                            updated[index] = contact.copy(name = newName)
                                             onContactsChange(updated)
                                         },
-                                        modifier = Modifier.size(24.dp)
-                                    ) {
-                                        Icon(Icons.Default.Close, contentDescription = "Delete", tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
-                                    }
+                                        label = { Text("Person / Department", fontSize = 11.sp) },
+                                        placeholder = { Text("Sales Desk", fontSize = 11.sp) },
+                                        textStyle = LocalTextStyle.current.copy(fontSize = 11.5.sp),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.weight(1f),
+                                        singleLine = true,
+                                        colors = defaultTextFieldColors()
+                                    )
+
+                                    OutlinedTextField(
+                                        value = contact.phone,
+                                        onValueChange = { newPhone ->
+                                            val updated = contacts.toMutableList()
+                                            updated[index] = contact.copy(phone = newPhone)
+                                            onContactsChange(updated)
+                                        },
+                                        label = { Text("Phone Number", fontSize = 11.sp) },
+                                        placeholder = { Text("98250XXXXX", fontSize = 11.sp) },
+                                        textStyle = LocalTextStyle.current.copy(fontSize = 11.5.sp),
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.weight(1f),
+                                        singleLine = true,
+                                        colors = defaultTextFieldColors()
+                                    )
                                 }
-                            }
-
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedTextField(
-                                    value = contact.name,
-                                    onValueChange = { newName ->
-                                        val updated = contacts.toMutableList()
-                                        updated[index] = contact.copy(name = newName)
-                                        onContactsChange(updated)
-                                    },
-                                    label = { Text("Person / Department") },
-                                    placeholder = { Text("e.g. Sales Desk") },
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.weight(1f),
-                                    singleLine = true,
-                                    colors = defaultTextFieldColors()
-                                )
-
-                                OutlinedTextField(
-                                    value = contact.phone,
-                                    onValueChange = { newPhone ->
-                                        val updated = contacts.toMutableList()
-                                        updated[index] = contact.copy(phone = newPhone)
-                                        onContactsChange(updated)
-                                    },
-                                    label = { Text("Phone Number") },
-                                    placeholder = { Text("98250XXXXX") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.weight(1f),
-                                    singleLine = true,
-                                    colors = defaultTextFieldColors()
-                                )
                             }
                         }
                     }
                 }
             }
-        }
 
-        // Card 4: What They Make & Price Range
-        Card(
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = "4. Manufacturing Items & Price Range",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    color = NavyPrimary
-                )
+            // Factory Units Card
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Factory / Manufacturing Units (${factories.size}/5)",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = NavyPrimary
+                        )
+                        if (factories.size < 5) {
+                            TextButton(
+                                onClick = {
+                                    onFactoriesChange(factories + MasterLocation(name = "Factory Unit #${factories.size + 1}"))
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(15.dp), tint = NavyPrimary)
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text("+ Add Unit", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = NavyPrimary)
+                            }
+                        }
+                    }
 
-                OutlinedTextField(
-                    value = productsMade,
-                    onValueChange = onProductsMadeChange,
-                    label = { Text("What They Make / Manufacturing Items") },
-                    placeholder = { Text("e.g. 100% Cotton Printed Kurtis, Heavy Rayon Palazzos, Shirting") },
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2,
-                    colors = defaultTextFieldColors()
-                )
-
-                OutlinedTextField(
-                    value = priceRange,
-                    onValueChange = onPriceRangeChange,
-                    label = { Text("Product Price Range (₹)") },
-                    placeholder = { Text("e.g. ₹250 - ₹750 / piece") },
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    colors = defaultTextFieldColors()
-                )
-
-                Text("Garment categories sold:", fontSize = 11.5.sp, color = TextSecondary)
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    MasterConstants.GARMENT_CATEGORIES.forEach { cat ->
-                        val isSelected = selectedCategories.contains(cat)
+                    factories.forEachIndexed { index, fac ->
                         Surface(
-                            shape = CircleShape,
-                            color = if (isSelected) NavyPrimary else Color(0xFFF1F5F9),
-                            border = BorderStroke(1.dp, if (isSelected) NavyPrimary else Color(0xFFCBD5E1)),
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .clickable { onToggleCategory(cat) }
+                            color = Color(0xFFF8FAFC),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(
-                                text = if (isSelected) "✓ $cat" else "+ $cat",
-                                fontSize = 11.5.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSelected) Color.White else TextPrimary,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                            )
-                        }
-                    }
-                }
-
-                OutlinedTextField(
-                    value = customCategory,
-                    onValueChange = onCustomCategoryChange,
-                    label = { Text("+ Custom Fabric / Category") },
-                    placeholder = { Text("e.g. Denim Lycra 10oz") },
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    colors = defaultTextFieldColors()
-                )
-            }
-        }
-
-        // Card 5: Factory Addresses (Up to 5)
-        Card(
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "5. Factory / Manufacturing Units (Up to 5)",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = NavyPrimary
-                    )
-                    if (factories.size < 5) {
-                        TextButton(
-                            onClick = {
-                                onFactoriesChange(factories + MasterLocation(name = "Factory Unit #${factories.size + 1}"))
-                            },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp), tint = NavyPrimary)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("+ Add Unit", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = NavyPrimary)
-                        }
-                    }
-                }
-
-                factories.forEachIndexed { index, fac ->
-                    Surface(
-                        color = Color(0xFFF8FAFC),
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = if (index == 0) "Main Mill / Manufacturing Unit" else "Factory Unit #${index + 1}",
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 11.5.sp,
-                                    color = NavyPrimary
-                                )
-                                if (factories.size > 1) {
-                                    IconButton(
-                                        onClick = {
-                                            val updated = factories.toMutableList()
-                                            updated.removeAt(index)
-                                            onFactoriesChange(updated)
-                                        },
-                                        modifier = Modifier.size(24.dp)
-                                    ) {
-                                        Icon(Icons.Default.Close, contentDescription = "Delete", tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
+                            Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = if (index == 0) "Main Mill / Manufacturing Unit" else "Factory Unit #${index + 1}",
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 11.sp,
+                                        color = NavyPrimary
+                                    )
+                                    if (factories.size > 1) {
+                                        IconButton(
+                                            onClick = {
+                                                val updated = factories.toMutableList()
+                                                updated.removeAt(index)
+                                                onFactoriesChange(updated)
+                                            },
+                                            modifier = Modifier.size(22.dp)
+                                        ) {
+                                            Icon(Icons.Default.Close, contentDescription = "Delete", tint = Color(0xFFEF4444), modifier = Modifier.size(15.dp))
+                                        }
                                     }
                                 }
+
+                                OutlinedTextField(
+                                    value = fac.name,
+                                    onValueChange = { newName ->
+                                        val updated = factories.toMutableList()
+                                        updated[index] = fac.copy(name = newName)
+                                        onFactoriesChange(updated)
+                                    },
+                                    label = { Text("Unit Title", fontSize = 11.sp) },
+                                    placeholder = { Text("e.g. Narol GIDC Dyeing Unit", fontSize = 11.sp) },
+                                    textStyle = LocalTextStyle.current.copy(fontSize = 11.5.sp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true,
+                                    colors = defaultTextFieldColors()
+                                )
+
+                                OutlinedTextField(
+                                    value = fac.address,
+                                    onValueChange = { newAddr ->
+                                        val updated = factories.toMutableList()
+                                        updated[index] = fac.copy(address = newAddr)
+                                        onFactoriesChange(updated)
+                                    },
+                                    label = { Text("Factory Physical Address", fontSize = 11.sp) },
+                                    placeholder = { Text("Plot 24, Narol GIDC Phase 2, Ahmedabad", fontSize = 11.sp) },
+                                    textStyle = LocalTextStyle.current.copy(fontSize = 11.5.sp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    minLines = 2,
+                                    colors = defaultTextFieldColors()
+                                )
                             }
-
-                            OutlinedTextField(
-                                value = fac.name,
-                                onValueChange = { newName ->
-                                    val updated = factories.toMutableList()
-                                    updated[index] = fac.copy(name = newName)
-                                    onFactoriesChange(updated)
-                                },
-                                label = { Text("Unit Title") },
-                                placeholder = { Text("e.g. Narol GIDC Dyeing Unit") },
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true,
-                                colors = defaultTextFieldColors()
-                            )
-
-                            OutlinedTextField(
-                                value = fac.address,
-                                onValueChange = { newAddr ->
-                                    val updated = factories.toMutableList()
-                                    updated[index] = fac.copy(address = newAddr)
-                                    onFactoriesChange(updated)
-                                },
-                                label = { Text("Factory Physical Address") },
-                                placeholder = { Text("Plot 24, Narol GIDC Phase 2, Ahmedabad") },
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth(),
-                                minLines = 2,
-                                colors = defaultTextFieldColors()
-                            )
                         }
                     }
                 }
             }
-        }
 
-        // Card 6: Outlet / Showroom Addresses (Up to 5)
-        Card(
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "6. Outlets / Showrooms (Up to 5)",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = NavyPrimary
-                    )
-                    if (outlets.size < 5) {
-                        TextButton(
-                            onClick = {
-                                onOutletsChange(outlets + MasterLocation(name = "Outlet #${outlets.size + 1}"))
-                            },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp), tint = NavyPrimary)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("+ Add Outlet", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = NavyPrimary)
+            // Outlets Card
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Outlets & Showrooms (${outlets.size}/5)",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = NavyPrimary
+                        )
+                        if (outlets.size < 5) {
+                            TextButton(
+                                onClick = {
+                                    onOutletsChange(outlets + MasterLocation(name = "Outlet #${outlets.size + 1}"))
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(15.dp), tint = NavyPrimary)
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text("+ Add Outlet", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = NavyPrimary)
+                            }
                         }
                     }
-                }
 
-                outlets.forEachIndexed { index, out ->
-                    Surface(
-                        color = Color(0xFFF8FAFC),
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = if (index == 0) "Main Sales Gaddi / Showroom" else "Branch / Outlet #${index + 1}",
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 11.5.sp,
-                                    color = NavyPrimary
-                                )
-                                if (outlets.size > 1) {
-                                    IconButton(
-                                        onClick = {
-                                            val updated = outlets.toMutableList()
-                                            updated.removeAt(index)
-                                            onOutletsChange(updated)
-                                        },
-                                        modifier = Modifier.size(24.dp)
-                                    ) {
-                                        Icon(Icons.Default.Close, contentDescription = "Delete", tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
+                    outlets.forEachIndexed { index, out ->
+                        Surface(
+                            color = Color(0xFFF8FAFC),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = if (index == 0) "Main Sales Gaddi / Showroom" else "Branch / Outlet #${index + 1}",
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 11.sp,
+                                        color = NavyPrimary
+                                    )
+                                    if (outlets.size > 1) {
+                                        IconButton(
+                                            onClick = {
+                                                val updated = outlets.toMutableList()
+                                                updated.removeAt(index)
+                                                onOutletsChange(updated)
+                                            },
+                                            modifier = Modifier.size(22.dp)
+                                        ) {
+                                            Icon(Icons.Default.Close, contentDescription = "Delete", tint = Color(0xFFEF4444), modifier = Modifier.size(15.dp))
+                                        }
                                     }
                                 }
+
+                                OutlinedTextField(
+                                    value = out.name,
+                                    onValueChange = { newName ->
+                                        val updated = outlets.toMutableList()
+                                        updated[index] = out.copy(name = newName)
+                                        onOutletsChange(updated)
+                                    },
+                                    label = { Text("Showroom / Shop Name", fontSize = 11.sp) },
+                                    placeholder = { Text("e.g. Maskati Cloth Market Shop", fontSize = 11.sp) },
+                                    textStyle = LocalTextStyle.current.copy(fontSize = 11.5.sp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true,
+                                    colors = defaultTextFieldColors()
+                                )
+
+                                OutlinedTextField(
+                                    value = out.address,
+                                    onValueChange = { newAddr ->
+                                        val updated = outlets.toMutableList()
+                                        updated[index] = out.copy(address = newAddr)
+                                        onOutletsChange(updated)
+                                    },
+                                    label = { Text("Shop Address", fontSize = 11.sp) },
+                                    placeholder = { Text("Shop 45, Ground Floor, Maskati Market", fontSize = 11.sp) },
+                                    textStyle = LocalTextStyle.current.copy(fontSize = 11.5.sp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    minLines = 2,
+                                    colors = defaultTextFieldColors()
+                                )
                             }
-
-                            OutlinedTextField(
-                                value = out.name,
-                                onValueChange = { newName ->
-                                    val updated = outlets.toMutableList()
-                                    updated[index] = out.copy(name = newName)
-                                    onOutletsChange(updated)
-                                },
-                                label = { Text("Showroom / Shop Name") },
-                                placeholder = { Text("e.g. Maskati Cloth Market Shop") },
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true,
-                                colors = defaultTextFieldColors()
-                            )
-
-                            OutlinedTextField(
-                                value = out.address,
-                                onValueChange = { newAddr ->
-                                    val updated = outlets.toMutableList()
-                                    updated[index] = out.copy(address = newAddr)
-                                    onOutletsChange(updated)
-                                },
-                                label = { Text("Shop Address") },
-                                placeholder = { Text("Shop 45, Ground Floor, Maskati Market") },
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth(),
-                                minLines = 2,
-                                colors = defaultTextFieldColors()
-                            )
                         }
                     }
                 }
             }
         }
 
-        // Card 7: Photos (Shop Photo & Visiting Card Photo)
-        Card(
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = "7. Verification Photos",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    color = NavyPrimary
-                )
+        // =========================================================================
+        // TAB 2: MARKET & ITEMS
+        // =========================================================================
+        if (selectedFormTab == 2) {
+            // Market & Brand Association
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Market & Brand Selection",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = NavyPrimary
+                    )
 
-                val safeSuppFolder = "suppliers/${supplierId.ifBlank { "supp_${System.currentTimeMillis()}" }.replace("/", "_")}/photos"
+                    // Market Selection
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            MasterDropdownField(
+                                label = "Select Textile Market *",
+                                selectedValue = marketName,
+                                items = marketsList.map { "${it.marketName} (${it.city})" to it.id },
+                                onSelect = { name, id ->
+                                    val mkt = marketsList.find { it.id == id }
+                                    if (mkt != null) onMarketSelect(mkt)
+                                },
+                                placeholder = "Choose market from master"
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        OutlinedButton(
+                            onClick = onNewMarketClick,
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, NavyPrimary),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.defaultMinSize(minHeight = 44.dp)
+                        ) {
+                            Text("+ New", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = NavyPrimary)
+                        }
+                    }
 
-                PhotoUploadCard(
-                    title = "Shop / Mill Front Photo",
-                    uriString = shopPhotoUri,
-                    onUriSelected = onShopPhotoChange,
-                    onClear = { onShopPhotoChange("") },
-                    folder = safeSuppFolder,
-                    prefix = "mill_front"
-                )
+                    // Brand Selection
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            MasterDropdownField(
+                                label = "Select Brand (Optional)",
+                                selectedValue = brandName,
+                                items = brandsList.map { it.brandName to it.id },
+                                onSelect = { name, id ->
+                                    val b = brandsList.find { it.id == id }
+                                    if (b != null) onBrandSelect(b)
+                                },
+                                placeholder = "Choose brand from master"
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        OutlinedButton(
+                            onClick = onNewBrandClick,
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, NavyPrimary),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.defaultMinSize(minHeight = 44.dp)
+                        ) {
+                            Text("+ New", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = NavyPrimary)
+                        }
+                    }
+                }
+            }
 
-                PhotoUploadCard(
-                    title = "Visiting Card Photo",
-                    uriString = visitingCardPhotoUri,
-                    onUriSelected = onVisitingCardPhotoChange,
-                    onClear = { onVisitingCardPhotoChange("") },
-                    folder = safeSuppFolder,
-                    prefix = "visiting_card"
-                )
+            // Manufacturing Items & Categories
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Manufacturing Items & Price Range",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = NavyPrimary
+                    )
+
+                    OutlinedTextField(
+                        value = productsMade,
+                        onValueChange = onProductsMadeChange,
+                        label = { Text("What They Make / Manufacturing Items", fontSize = 11.5.sp) },
+                        placeholder = { Text("e.g. 100% Cotton Printed Kurtis, Heavy Rayon Palazzos, Shirting", fontSize = 11.5.sp) },
+                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2,
+                        colors = defaultTextFieldColors()
+                    )
+
+                    OutlinedTextField(
+                        value = priceRange,
+                        onValueChange = onPriceRangeChange,
+                        label = { Text("Product Price Range (₹)", fontSize = 11.5.sp) },
+                        placeholder = { Text("e.g. ₹250 - ₹750 / piece", fontSize = 11.5.sp) },
+                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = defaultTextFieldColors()
+                    )
+
+                    Text("Garment categories sold:", fontSize = 11.sp, color = TextSecondary)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        MasterConstants.GARMENT_CATEGORIES.forEach { cat ->
+                            val isSelected = selectedCategories.contains(cat)
+                            Surface(
+                                shape = CircleShape,
+                                color = if (isSelected) NavyPrimary else Color(0xFFF1F5F9),
+                                border = BorderStroke(1.dp, if (isSelected) NavyPrimary else Color(0xFFCBD5E1)),
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable { onToggleCategory(cat) }
+                            ) {
+                                Text(
+                                    text = if (isSelected) "✓ $cat" else "+ $cat",
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) Color.White else TextPrimary,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = customCategory,
+                        onValueChange = onCustomCategoryChange,
+                        label = { Text("+ Custom Fabric / Category", fontSize = 11.5.sp) },
+                        placeholder = { Text("e.g. Denim Lycra 10oz", fontSize = 11.5.sp) },
+                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = defaultTextFieldColors()
+                    )
+                }
             }
         }
 
-        // Card 8: References & Communication
-        Card(
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = "8. References & Office Details",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    color = NavyPrimary
-                )
+        // =========================================================================
+        // TAB 3: PHOTOS & REFERENCE
+        // =========================================================================
+        if (selectedFormTab == 3) {
+            // Photos Card
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Verification Photos",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = NavyPrimary
+                    )
 
-                OutlinedTextField(
-                    value = officeAddress,
-                    onValueChange = onOfficeAddressChange,
-                    label = { Text("Registered Office Address") },
-                    placeholder = { Text("e.g. 401, Textile Tower, Ring Road") },
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    colors = defaultTextFieldColors()
-                )
+                    val safeSuppFolder = "suppliers/${supplierId.ifBlank { "supp_${System.currentTimeMillis()}" }.replace("/", "_")}/photos"
 
-                ReferredBySelectorField(
-                    value = referredBy,
-                    onValueChange = onReferredByChange,
-                    customersList = customersList,
-                    suppliersList = suppliersList,
-                    employeesList = employeesList,
-                    label = "Referred By (Entity Link)"
-                )
+                    PhotoUploadCard(
+                        title = "Shop / Mill Front Photo",
+                        uriString = shopPhotoUri,
+                        onUriSelected = onShopPhotoChange,
+                        onClear = { onShopPhotoChange("") },
+                        folder = safeSuppFolder,
+                        prefix = "mill_front"
+                    )
 
-                OutlinedTextField(
-                    value = email,
-                    onValueChange = onEmailChange,
-                    label = { Text("Official Email") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    colors = defaultTextFieldColors()
-                )
+                    PhotoUploadCard(
+                        title = "Visiting Card Photo",
+                        uriString = visitingCardPhotoUri,
+                        onUriSelected = onVisitingCardPhotoChange,
+                        onClear = { onVisitingCardPhotoChange("") },
+                        folder = safeSuppFolder,
+                        prefix = "visiting_card"
+                    )
+                }
+            }
 
-                OutlinedTextField(
-                    value = notes,
-                    onValueChange = onNotesChange,
-                    label = { Text("Commercial Terms / Notes") },
-                    placeholder = { Text("e.g. 5% cash discount in 7 days...") },
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2,
-                    colors = defaultTextFieldColors()
-                )
+            // References & Communication Card
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "References & Commercial Details",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = NavyPrimary
+                    )
+
+                    OutlinedTextField(
+                        value = officeAddress,
+                        onValueChange = onOfficeAddressChange,
+                        label = { Text("Registered Office Address", fontSize = 11.5.sp) },
+                        placeholder = { Text("e.g. 401, Textile Tower, Ring Road", fontSize = 11.5.sp) },
+                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = defaultTextFieldColors()
+                    )
+
+                    ReferredBySelectorField(
+                        value = referredBy,
+                        onValueChange = onReferredByChange,
+                        customersList = customersList,
+                        suppliersList = suppliersList,
+                        employeesList = employeesList,
+                        label = "Referred By (Entity Link)"
+                    )
+
+                    OutlinedTextField(
+                        value = email,
+                        onValueChange = onEmailChange,
+                        label = { Text("Official Email", fontSize = 11.5.sp) },
+                        placeholder = { Text("e.g. contact@textilemill.com", fontSize = 11.5.sp) },
+                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = defaultTextFieldColors()
+                    )
+
+                    OutlinedTextField(
+                        value = notes,
+                        onValueChange = onNotesChange,
+                        label = { Text("Commercial Terms / Notes", fontSize = 11.5.sp) },
+                        placeholder = { Text("e.g. 5% cash discount in 7 days...", fontSize = 11.5.sp) },
+                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2,
+                        colors = defaultTextFieldColors()
+                    )
+                }
             }
         }
     }

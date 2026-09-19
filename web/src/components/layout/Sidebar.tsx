@@ -20,6 +20,7 @@ import { useData } from "../../context/DataContext"
 import { cn } from "../../lib/utils"
 import { Badge } from "../ui/Badge"
 import { Button } from "../ui/Button"
+import { HIMAT_LOGO_DATA_URI } from "../../lib/logoBase64"
 
 export type ActiveTab =
   | "dashboard"
@@ -29,6 +30,7 @@ export type ActiveTab =
   | "payments"
   | "deliveries"
   | "employees"
+  | "leads"
   | "customers"
   | "suppliers"
   | "products"
@@ -47,6 +49,7 @@ interface SidebarProps {
 export function Sidebar({ activeTab, setActiveTab, isOpen, onClose }: SidebarProps) {
   const { user, logout } = useAuth()
   const {
+    leads,
     pendingPaymentsCount,
     pendingDeliveriesCount,
     activeTripsCount,
@@ -101,6 +104,13 @@ export function Sidebar({ activeTab, setActiveTab, isOpen, onClose }: SidebarPro
       id: "employees",
       label: "Staff & Agents",
       icon: UserCheck,
+    },
+    {
+      id: "leads",
+      label: "Leads (Prospects)",
+      icon: Sparkles,
+      badge: leads.length > 0 ? `${leads.length}` : undefined,
+      badgeVariant: "default" as const,
     },
     {
       id: "customers",
@@ -161,14 +171,14 @@ export function Sidebar({ activeTab, setActiveTab, isOpen, onClose }: SidebarPro
       >
         {/* Brand Header */}
         <div className="flex h-16 items-center gap-3 border-b border-zinc-200/80 px-6 dark:border-zinc-800/80">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-900 text-white dark:bg-zinc-50 dark:text-zinc-950 shadow-sm">
-            <Sparkles className="h-5 w-5" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-1 shadow-2xs overflow-hidden shrink-0">
+            <img src={HIMAT_LOGO_DATA_URI} alt="Himat Textile Logo" className="h-full w-full object-contain" />
           </div>
           <div>
-            <h1 className="text-sm font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
-              HIMAT SMS
+            <h1 className="text-sm font-bold tracking-tight text-zinc-900 dark:text-zinc-50 leading-tight">
+              Himat Textile
             </h1>
-            <p className="text-[11px] font-medium text-muted-foreground">Admin Operations</p>
+            <p className="text-[10px] font-medium text-muted-foreground">Admin Operations</p>
           </div>
         </div>
 

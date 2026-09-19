@@ -26,6 +26,7 @@ import { FileUpload } from "../components/ui/FileUpload"
 import { GARMENT_CATEGORIES } from "../lib/constants"
 import { CustomerRegistrationRequest } from "../types"
 import { REGISTRATION_TRANSLATIONS, RegistrationLang } from "../lib/registrationI18n"
+import { HIMAT_LOGO_DATA_URI } from "../lib/logoBase64"
 
 export function CustomerRegistrationView() {
   const [currentStep, setCurrentStep] = useState<number>(1)
@@ -95,6 +96,7 @@ export function CustomerRegistrationView() {
   // Feedback State
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null)
+  const recaptchaWrapperRef = useRef<HTMLDivElement | null>(null)
 
   // Sync phone2 if sameAsMobile is checked
   useEffect(() => {
@@ -133,22 +135,14 @@ export function CustomerRegistrationView() {
   }
 
   // Step Validation with localized error messages
-  const validateCurrentStep = (): boolean => {
+  const validateCurrentStep = (targetStep?: number): boolean => {
     setErrorMessage(null)
-    if (currentStep === 1) {
+    // Always enforce all 5 mandatory fields if currently on Step 1 or trying to navigate past Step 1
+    if (currentStep === 1 || (targetStep && targetStep > 1)) {
       if (!formData.firmName.trim()) {
         setErrorMessage(t.errFirmName)
         return false
       }
-      if (!formData.address.trim()) {
-        setErrorMessage(t.errAddress)
-        return false
-      }
-      if (!formData.city.trim()) {
-        setErrorMessage(t.errCity)
-        return false
-      }
-    } else if (currentStep === 2) {
       if (!formData.name.trim()) {
         setErrorMessage(t.errOwnerName)
         return false
@@ -158,12 +152,20 @@ export function CustomerRegistrationView() {
         setErrorMessage(t.errPhone)
         return false
       }
+      if (!formData.city.trim()) {
+        setErrorMessage(t.errCity)
+        return false
+      }
+      if (!formData.address.trim()) {
+        setErrorMessage(t.errAddress)
+        return false
+      }
     }
     return true
   }
 
   const handleNextStep = () => {
-    if (validateCurrentStep()) {
+    if (validateCurrentStep(currentStep + 1)) {
       setCurrentStep((prev) => Math.min(prev + 1, t.stepIndicators.length))
       window.scrollTo({ top: 0, behavior: "smooth" })
     }
@@ -175,7 +177,21 @@ export function CustomerRegistrationView() {
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
-  // Initialize Recaptcha Verifier
+  // Cleanup recaptcha on unmount
+  useEffect(() => {
+    return () => {
+      if (recaptchaVerifierRef.current) {
+        try {
+          recaptchaVerifierRef.current.clear()
+        } catch (e) {
+          // ignore
+        }
+        recaptchaVerifierRef.current = null
+      }
+    }
+  }, [])
+
+  // Initialize or Reset Recaptcha Verifier
   const getRecaptchaVerifier = () => {
     if (recaptchaVerifierRef.current) {
       try {
@@ -184,6 +200,19 @@ export function CustomerRegistrationView() {
         // ignore
       }
       recaptchaVerifierRef.current = null
+    }
+
+    // Completely replace the container DOM element so that no leftover grecaptcha widget ID or data attributes remain
+    const wrapper = recaptchaWrapperRef.current || document.getElementById("recaptcha-wrapper")
+    if (wrapper) {
+      wrapper.innerHTML = '<div id="recaptcha-container"></div>'
+    } else {
+      const oldContainer = document.getElementById("recaptcha-container")
+      if (oldContainer && oldContainer.parentNode) {
+        const newContainer = document.createElement("div")
+        newContainer.id = "recaptcha-container"
+        oldContainer.parentNode.replaceChild(newContainer, oldContainer)
+      }
     }
 
     const verifier = new RecaptchaVerifier(auth, "recaptcha-container", {
@@ -218,6 +247,27 @@ export function CustomerRegistrationView() {
       setResendTimer(60)
     } catch (err: any) {
       console.error("Firebase Phone Auth error:", err)
+      // On failure, clean up recaptcha verifier and DOM so the user can immediately retry
+      if (recaptchaVerifierRef.current) {
+        try {
+          recaptchaVerifierRef.current.clear()
+        } catch (e) {
+          // ignore
+        }
+        recaptchaVerifierRef.current = null
+      }
+      const wrapper = recaptchaWrapperRef.current || document.getElementById("recaptcha-wrapper")
+      if (wrapper) {
+        wrapper.innerHTML = '<div id="recaptcha-container"></div>'
+      } else {
+        const oldContainer = document.getElementById("recaptcha-container")
+        if (oldContainer && oldContainer.parentNode) {
+          const newContainer = document.createElement("div")
+          newContainer.id = "recaptcha-container"
+          oldContainer.parentNode.replaceChild(newContainer, oldContainer)
+        }
+      }
+
       if (err.code === "auth/invalid-phone-number") {
         setErrorMessage(t.errPhone)
       } else if (err.code === "auth/too-many-requests") {
@@ -315,15 +365,24 @@ export function CustomerRegistrationView() {
   if (submittedRequestId) {
     const whatsappMsg = encodeURIComponent(
       lang === "en"
-        ? `Hello Shree Himat Trading Company!\nI have submitted my new commercial account registration form online.\n\n📌 Firm Name: ${formData.firmName}\n👤 Proprietor: ${formData.name}\n📞 Mobile: +91 ${formData.phone.slice(-10)}\n📍 City: ${formData.city}\n🆔 Ref ID: ${submittedRequestId}\n\nPlease review our application and grant commercial account approval. Thank you!`
-        : `नमस्कार श्री हिम्मत ट्रेडिंग कंपनी!\nमैंने नया व्यापारिक खाता खोलने के लिए ऑनलाइन पंजीकरण फॉर्म सबमिट किया है।\n\n📌 फर्म का नाम: ${formData.firmName}\n👤 संचालक: ${formData.name}\n📞 मोबाइल: +91 ${formData.phone.slice(-10)}\n📍 शहर: ${formData.city}\n🆔 संदर्भ क्रमांक (Ref ID): ${submittedRequestId}\n\nकृपया हमारे खाते की समीक्षा कर अनुमोदन (Approval) प्रदान करें। धन्यवाद!`
+        ? `Hello Himat Textile!\nI have submitted my new commercial account registration form online.\n\n📌 Firm Name: ${formData.firmName}\n👤 Proprietor: ${formData.name}\n📞 Mobile: +91 ${formData.phone.slice(-10)}\n📍 City: ${formData.city}\n🆔 Ref ID: ${submittedRequestId}\n\nPlease review our application and grant commercial account approval. Thank you!`
+        : `नमस्ते हिम्मत टेक्सटाइल (Himat Textile)!\nमैंने नया व्यापारिक खाता खोलने के लिए ऑनलाइन पंजीकरण फॉर्म सबमिट किया है।\n\n📌 फर्म का नाम: ${formData.firmName}\n👤 संचालक: ${formData.name}\n📞 मोबाइल: +91 ${formData.phone.slice(-10)}\n📍 शहर: ${formData.city}\n🆔 संदर्भ क्रमांक (Ref ID): ${submittedRequestId}\n\nकृपया हमारे खाते की समीक्षा कर अनुमोदन (Approval) प्रदान करें। धन्यवाद!`
     )
 
     return (
       <div className="min-h-screen bg-gradient-to-b from-zinc-50 to-zinc-100 dark:from-zinc-950 dark:to-zinc-900 py-10 px-4 sm:px-6 flex items-center justify-center">
         <div className="max-w-xl w-full bg-white dark:bg-zinc-900 rounded-3xl shadow-xl border border-zinc-200 dark:border-zinc-800 p-6 sm:p-10 text-center space-y-6">
-          {/* Header Language Switcher on Success Screen */}
-          <div className="flex justify-end">
+          {/* Header Brand & Language Switcher on Success Screen */}
+          <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="h-9 w-9 rounded-xl bg-white dark:bg-zinc-800 p-1 border border-zinc-200 dark:border-zinc-700 shadow-2xs flex items-center justify-center overflow-hidden shrink-0">
+                <img src={HIMAT_LOGO_DATA_URI} alt="Himat Textile" className="h-full w-full object-contain" />
+              </div>
+              <div className="text-left">
+                <p className="font-bold text-xs text-zinc-900 dark:text-zinc-100 leading-none">{t.brandName}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">{t.brandTag}</p>
+              </div>
+            </div>
             <div className="inline-flex items-center bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl border border-zinc-200 dark:border-zinc-700 text-xs">
               <button
                 type="button"
@@ -455,25 +514,34 @@ export function CustomerRegistrationView() {
 
   return (
     <div className="min-h-screen bg-zinc-50/70 dark:bg-black text-zinc-900 dark:text-zinc-100 flex flex-col">
-      {/* Hidden Recaptcha Container */}
-      <div id="recaptcha-container"></div>
+      {/* Hidden Recaptcha Wrapper & Target Container */}
+      <div ref={recaptchaWrapperRef} id="recaptcha-wrapper">
+        <div id="recaptcha-container"></div>
+      </div>
 
       {/* Top Header */}
       <header className="sticky top-0 z-30 bg-white/95 dark:bg-zinc-900/95 backdrop-blur border-b border-zinc-200 dark:border-zinc-800 px-4 py-3 sm:px-6">
         <div className="max-w-4xl mx-auto flex items-center justify-between gap-2">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-black text-lg shadow-sm">
-              हि
+            <div className="h-11 w-11 sm:h-12 sm:w-12 rounded-xl bg-white dark:bg-zinc-800 p-1 border border-zinc-200 dark:border-zinc-700 shadow-2xs flex items-center justify-center overflow-hidden shrink-0">
+              <img
+                src={HIMAT_LOGO_DATA_URI}
+                alt="Himat Textile"
+                className="h-full w-full object-contain"
+              />
             </div>
             <div>
-              <h1 className="text-base font-bold tracking-tight text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                <span>{t.brandName}</span>
-                <span className="hidden sm:inline-block text-[11px] px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-medium border border-indigo-100 dark:border-indigo-900">
+              <div className="flex items-center gap-2">
+                <h1 className="text-base font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
+                  {t.brandName}
+                </h1>
+                <span className="hidden sm:inline-block text-[11px] px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-medium border border-indigo-100 dark:border-indigo-900">
                   {t.brandTag}
                 </span>
-              </h1>
-              <p className="text-xs text-muted-foreground truncate max-w-xs sm:max-w-md">
-                {t.pageTitle}
+              </div>
+              <p className="text-[11px] sm:text-xs text-muted-foreground truncate max-w-[210px] sm:max-w-md">
+                <span className="sm:hidden font-medium text-indigo-600 dark:text-indigo-400">{t.brandTag} • </span>
+                <span>{t.pageTitle}</span>
               </p>
             </div>
           </div>
@@ -525,7 +593,72 @@ export function CustomerRegistrationView() {
       <main className="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 md:p-8 space-y-6">
         {/* Wizard Steps Navigation Bar */}
         <div className="bg-white dark:bg-zinc-900 p-3 sm:p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
-          <div className="grid grid-cols-5 gap-1 sm:gap-2">
+          {/* Mobile Stepper: Connected Circles + Step Banner (No overlapping icons or wrapped text) */}
+          <div className="block sm:hidden space-y-3">
+            {/* Step Circles & Connecting Lines */}
+            <div className="flex items-center justify-between px-1">
+              {t.stepIndicators.map((step, idx) => {
+                const isCompleted = currentStep > step.id
+                const isCurrent = currentStep === step.id
+                const isLast = idx === t.stepIndicators.length - 1
+
+                return (
+                  <div key={step.id} className={`flex items-center ${isLast ? "" : "flex-1"}`}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (step.id < currentStep || validateCurrentStep(step.id)) {
+                          setCurrentStep(step.id)
+                        }
+                      }}
+                      className="relative z-10 flex flex-col items-center focus:outline-none"
+                    >
+                      <div
+                        className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                          isCompleted
+                            ? "bg-emerald-500 text-white shadow-xs"
+                            : isCurrent
+                            ? "bg-indigo-600 text-white shadow-sm ring-4 ring-indigo-100 dark:ring-indigo-950"
+                            : "bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500"
+                        }`}
+                      >
+                        {isCompleted ? <Check className="w-3.5 h-3.5 stroke-[2.5]" /> : step.id}
+                      </div>
+                    </button>
+
+                    {/* Connecting Line between steps */}
+                    {!isLast && (
+                      <div className="flex-1 mx-1.5 h-0.5 bg-zinc-200 dark:bg-zinc-800 relative">
+                        <div
+                          className={`h-full transition-all duration-300 ${
+                            isCompleted ? "bg-emerald-500" : "bg-transparent"
+                          }`}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Current Step Active Label Display */}
+            <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="shrink-0 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900">
+                  {lang === "hi" ? `चरण ${currentStep} / 5` : `Step ${currentStep} of 5`}
+                </span>
+                <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100 truncate">
+                  {t.stepIndicators[currentStep - 1]?.title}
+                </span>
+              </div>
+              <span className="shrink-0 text-[10px] text-muted-foreground truncate">
+                {t.stepIndicators[currentStep - 1]?.subtitle}
+              </span>
+            </div>
+          </div>
+
+          {/* Desktop Stepper: 5-Column Grid with Icon, Title, and Subtitle */}
+          <div className="hidden sm:grid sm:grid-cols-5 gap-2">
             {t.stepIndicators.map((step) => {
               const Icon = step.icon
               const isCompleted = currentStep > step.id
@@ -536,11 +669,11 @@ export function CustomerRegistrationView() {
                   key={step.id}
                   type="button"
                   onClick={() => {
-                    if (step.id < currentStep || validateCurrentStep()) {
+                    if (step.id < currentStep || validateCurrentStep(step.id)) {
                       setCurrentStep(step.id)
                     }
                   }}
-                  className={`flex flex-col sm:flex-row items-center gap-1.5 sm:gap-2 p-2 sm:p-2.5 rounded-xl text-center sm:text-left transition-all ${
+                  className={`flex flex-row items-center gap-2 p-2.5 rounded-xl text-left transition-all ${
                     isCurrent
                       ? "bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-500/30"
                       : isCompleted
@@ -549,7 +682,7 @@ export function CustomerRegistrationView() {
                   }`}
                 >
                   <div
-                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center text-xs font-bold transition-all ${
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 transition-all ${
                       isCurrent
                         ? "bg-indigo-600 text-white shadow-sm"
                         : isCompleted
@@ -557,13 +690,13 @@ export function CustomerRegistrationView() {
                         : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500"
                     }`}
                   >
-                    {isCompleted ? <Check className="w-4 h-4" /> : <Icon className="w-3.5 h-3.5" />}
+                    {isCompleted ? <Check className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-[11px] sm:text-xs font-bold truncate leading-tight">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold truncate leading-tight">
                       {step.title}
                     </p>
-                    <p className="hidden sm:block text-[10px] text-muted-foreground truncate">
+                    <p className="text-[10px] text-muted-foreground truncate">
                       {step.subtitle}
                     </p>
                   </div>
@@ -584,7 +717,7 @@ export function CustomerRegistrationView() {
         {/* Step Body */}
         <div className="bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm p-5 sm:p-8 space-y-6">
           {/* ============================================================== */}
-          {/* STEP 1: BUSINESS PROFILE                                       */}
+          {/* STEP 1: MANDATORY DETAILS (*)                                  */}
           {/* ============================================================== */}
           {currentStep === 1 && (
             <div className="space-y-6 animate-in fade-in">
@@ -593,15 +726,22 @@ export function CustomerRegistrationView() {
                   <Building2 className="w-5 h-5 text-indigo-600" />
                   <span>{t.step1Heading}</span>
                 </h2>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   {t.step1Subheading}
                 </p>
               </div>
 
+              {/* Informational Banner */}
+              <div className="p-3.5 rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900/50 flex items-start gap-2.5 text-xs text-indigo-900 dark:text-indigo-200">
+                <Sparkles className="w-4 h-4 flex-shrink-0 mt-0.5 text-indigo-600 dark:text-indigo-400" />
+                <span className="font-medium leading-relaxed">{t.step1MandatoryBadge}</span>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                {/* Firm Name */}
+                {/* 1. Firm Name (Required *) */}
                 <div className="sm:col-span-2 space-y-1.5">
                   <label className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1">
+                    <Building2 className="w-3.5 h-3.5 text-zinc-500" />
                     <span>{t.firmNameLabel}</span>
                     <span className="text-red-500 font-bold">*</span>
                   </label>
@@ -615,131 +755,10 @@ export function CustomerRegistrationView() {
                   />
                 </div>
 
-                {/* Market Area */}
-                <div className="space-y-1.5">
-                  <label className="font-semibold text-zinc-800 dark:text-zinc-200">
-                    {t.marketAreaLabel}
-                  </label>
-                  <input
-                    type="text"
-                    placeholder={t.marketAreaPlaceholder}
-                    value={formData.marketArea}
-                    onChange={(e) => handleInputChange("marketArea", e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
-                  />
-                </div>
-
-                {/* City */}
+                {/* 2. Proprietor / Owner Name (Required *) */}
                 <div className="space-y-1.5">
                   <label className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1">
-                    <span>{t.cityLabel}</span>
-                    <span className="text-red-500 font-bold">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder={t.cityPlaceholder}
-                    value={formData.city}
-                    onChange={(e) => handleInputChange("city", e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
-                  />
-                </div>
-
-                {/* District */}
-                <div className="space-y-1.5">
-                  <label className="font-semibold text-zinc-800 dark:text-zinc-200">
-                    {t.districtLabel}
-                  </label>
-                  <input
-                    type="text"
-                    placeholder={t.districtPlaceholder}
-                    value={formData.district}
-                    onChange={(e) => handleInputChange("district", e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
-                  />
-                </div>
-
-                {/* State & Pincode */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1.5">
-                    <label className="font-semibold text-zinc-800 dark:text-zinc-200">
-                      {t.stateLabel}
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.state}
-                      onChange={(e) => handleInputChange("state", e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="font-semibold text-zinc-800 dark:text-zinc-200">
-                      {t.pincodeLabel}
-                    </label>
-                    <input
-                      type="text"
-                      maxLength={6}
-                      placeholder="380002"
-                      value={formData.pincode}
-                      onChange={(e) => handleInputChange("pincode", e.target.value.replace(/\D/g, ""))}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-mono"
-                    />
-                  </div>
-                </div>
-
-                {/* Full Address */}
-                <div className="sm:col-span-2 space-y-1.5">
-                  <label className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1">
-                    <span>{t.addressLabel}</span>
-                    <span className="text-red-500 font-bold">*</span>
-                  </label>
-                  <textarea
-                    rows={2}
-                    required
-                    placeholder={t.addressPlaceholder}
-                    value={formData.address}
-                    onChange={(e) => handleInputChange("address", e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
-                  />
-                </div>
-
-                {/* Google Maps Location Link */}
-                <div className="sm:col-span-2 space-y-1.5">
-                  <label className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1">
-                    <MapPin className="w-3.5 h-3.5 text-indigo-500" />
-                    <span>{t.mapLinkLabel}</span>
-                  </label>
-                  <input
-                    type="url"
-                    placeholder={t.mapLinkPlaceholder}
-                    value={formData.shopMapLink}
-                    onChange={(e) => handleInputChange("shopMapLink", e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ============================================================== */}
-          {/* STEP 2: OWNER & CONTACT DETAILS                                */}
-          {/* ============================================================== */}
-          {currentStep === 2 && (
-            <div className="space-y-6 animate-in fade-in">
-              <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3">
-                <h2 className="text-lg sm:text-xl font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                  <User className="w-5 h-5 text-indigo-600" />
-                  <span>{t.step2Heading}</span>
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  {t.step2Subheading}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                {/* Proprietor Name */}
-                <div className="sm:col-span-2 space-y-1.5">
-                  <label className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1">
+                    <User className="w-3.5 h-3.5 text-zinc-500" />
                     <span>{t.ownerNameLabel}</span>
                     <span className="text-red-500 font-bold">*</span>
                   </label>
@@ -753,7 +772,7 @@ export function CustomerRegistrationView() {
                   />
                 </div>
 
-                {/* Mobile Number for SMS OTP */}
+                {/* 3. Primary Mobile Number for SMS OTP (Required *) */}
                 <div className="space-y-1.5">
                   <label className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1">
                     <Phone className="w-3.5 h-3.5 text-emerald-600" />
@@ -779,7 +798,60 @@ export function CustomerRegistrationView() {
                   </p>
                 </div>
 
-                {/* WhatsApp Number */}
+                {/* 4. City (Required *) */}
+                <div className="sm:col-span-2 space-y-1.5">
+                  <label className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1">
+                    <Building2 className="w-3.5 h-3.5 text-zinc-500" />
+                    <span>{t.cityLabel}</span>
+                    <span className="text-red-500 font-bold">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder={t.cityPlaceholder}
+                    value={formData.city}
+                    onChange={(e) => handleInputChange("city", e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-sm"
+                  />
+                </div>
+
+                {/* 5. Complete Shop Address (Required *) */}
+                <div className="sm:col-span-2 space-y-1.5">
+                  <label className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5 text-zinc-500" />
+                    <span>{t.addressLabel}</span>
+                    <span className="text-red-500 font-bold">*</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    required
+                    placeholder={t.addressPlaceholder}
+                    value={formData.address}
+                    onChange={(e) => handleInputChange("address", e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ============================================================== */}
+          {/* STEP 2: ADDITIONAL PROFILE & CONTACT (OPTIONAL)                 */}
+          {/* ============================================================== */}
+          {currentStep === 2 && (
+            <div className="space-y-6 animate-in fade-in">
+              <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3">
+                <h2 className="text-lg sm:text-xl font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                  <User className="w-5 h-5 text-indigo-600" />
+                  <span>{t.step2Heading}</span>
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {t.step2Subheading}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                {/* WhatsApp Number (Optional) */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <label className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1">
@@ -812,8 +884,8 @@ export function CustomerRegistrationView() {
                   </div>
                 </div>
 
-                {/* Email Address */}
-                <div className="sm:col-span-2 space-y-1.5">
+                {/* Email Address (Optional) */}
+                <div className="space-y-1.5">
                   <label className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1">
                     <Mail className="w-3.5 h-3.5 text-zinc-400" />
                     <span>{t.emailLabel}</span>
@@ -823,11 +895,82 @@ export function CustomerRegistrationView() {
                     placeholder={t.emailPlaceholder}
                     value={formData.email}
                     onChange={(e) => handleInputChange("email", e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
                   />
                 </div>
 
-                {/* Garment Categories Preference */}
+                {/* Market Area (Optional) */}
+                <div className="space-y-1.5">
+                  <label className="font-semibold text-zinc-800 dark:text-zinc-200">
+                    {t.marketAreaLabel}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={t.marketAreaPlaceholder}
+                    value={formData.marketArea}
+                    onChange={(e) => handleInputChange("marketArea", e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                  />
+                </div>
+
+                {/* District (Optional) */}
+                <div className="space-y-1.5">
+                  <label className="font-semibold text-zinc-800 dark:text-zinc-200">
+                    {t.districtLabel}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={t.districtPlaceholder}
+                    value={formData.district}
+                    onChange={(e) => handleInputChange("district", e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                  />
+                </div>
+
+                {/* State & Pincode (Optional) */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1.5">
+                    <label className="font-semibold text-zinc-800 dark:text-zinc-200">
+                      {t.stateLabel}
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.state}
+                      onChange={(e) => handleInputChange("state", e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="font-semibold text-zinc-800 dark:text-zinc-200">
+                      {t.pincodeLabel}
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      placeholder="380002"
+                      value={formData.pincode}
+                      onChange={(e) => handleInputChange("pincode", e.target.value.replace(/\D/g, ""))}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-mono"
+                    />
+                  </div>
+                </div>
+
+                {/* Google Maps Location Link (Optional) */}
+                <div className="space-y-1.5">
+                  <label className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>{t.mapLinkLabel}</span>
+                  </label>
+                  <input
+                    type="url"
+                    placeholder={t.mapLinkPlaceholder}
+                    value={formData.shopMapLink}
+                    onChange={(e) => handleInputChange("shopMapLink", e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                  />
+                </div>
+
+                {/* Garment Categories Preference (Optional) */}
                 <div className="sm:col-span-2 space-y-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
                   <label className="font-semibold text-zinc-800 dark:text-zinc-200">
                     {t.garmentsLabel}
@@ -1237,14 +1380,29 @@ export function CustomerRegistrationView() {
             )}
 
             {currentStep < 5 && (
-              <button
-                type="button"
-                onClick={handleNextStep}
-                className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs transition-colors shadow-sm"
-              >
-                <span>{t.nextBtn}</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex items-center gap-2">
+                {currentStep >= 2 && currentStep <= 4 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (validateCurrentStep(5)) {
+                        setCurrentStep(5)
+                      }
+                    }}
+                    className="hidden sm:inline-flex items-center gap-1 px-3.5 py-2.5 rounded-xl border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/70 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 font-semibold text-xs hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
+                  >
+                    <span>{t.skipToVerificationBtn}</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleNextStep}
+                  className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs transition-colors shadow-sm"
+                >
+                  <span>{t.nextBtn}</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             )}
           </div>
         </div>

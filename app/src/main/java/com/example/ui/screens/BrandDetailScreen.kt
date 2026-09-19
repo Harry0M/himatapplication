@@ -4,9 +4,24 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -150,6 +165,43 @@ fun BrandDetailScreen(
         }
     }
 
+    val listState = rememberLazyListState()
+    var isProfileExpanded by remember { mutableStateOf(true) }
+
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            private var accumulatedDelta = 0f
+
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source == NestedScrollSource.UserInput) {
+                    val delta = available.y
+                    if (delta < -15f) {
+                        if (accumulatedDelta > 0) accumulatedDelta = 0f
+                        accumulatedDelta += delta
+                        if (accumulatedDelta < -25f) {
+                            isProfileExpanded = false
+                        }
+                    } else if (delta > 15f) {
+                        if (accumulatedDelta < 0) accumulatedDelta = 0f
+                        accumulatedDelta += delta
+                        if (accumulatedDelta > 20f) {
+                            isProfileExpanded = true
+                        }
+                    }
+                }
+                return Offset.Zero
+            }
+        }
+    }
+
+    LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, searchQuery) {
+        if (searchQuery.isNotBlank()) {
+            // Keep search bar visible
+        } else if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset <= 10) {
+            isProfileExpanded = true
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -183,218 +235,230 @@ fun BrandDetailScreen(
             )
         }
     ) { paddingValues ->
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xFFF6F8FB))
+                .nestedScroll(nestedScrollConnection)
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(horizontal = 16.dp)
         ) {
-            // Cardless Hero Profile Header
-            item {
+            // 1. Collapsible Profile Details (above Search Bar)
+            AnimatedVisibility(
+                visible = isProfileExpanded && searchQuery.isBlank(),
+                enter = expandVertically(tween(240, easing = FastOutSlowInEasing)) + fadeIn(tween(200)),
+                exit = shrinkVertically(tween(220, easing = FastOutSlowInEasing)) + fadeOut(tween(180))
+            ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 2.dp, bottom = 4.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .padding(bottom = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = Color(0xFFFFFBEB),
-                        border = BorderStroke(2.dp, Color(0xFFFDE68A)),
+                    // Cardless Hero Profile Header
+                    Column(
                         modifier = Modifier
-                            .size(66.dp)
-                            .then(
-                                if (brand.logoPhotoUri.isNotBlank()) Modifier.clickable { showLogoViewer = true }
-                                else Modifier
-                            )
+                            .fillMaxWidth()
+                            .padding(top = 2.dp, bottom = 2.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        if (brand.logoPhotoUri.isNotBlank()) {
-                            AsyncImage(
-                                model = brand.logoPhotoUri,
-                                contentDescription = brand.brandName,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.Sell,
-                                    contentDescription = null,
-                                    tint = Color(0xFFD97706),
-                                    modifier = Modifier.size(32.dp)
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFFFFFBEB),
+                            border = BorderStroke(2.dp, Color(0xFFFDE68A)),
+                            modifier = Modifier
+                                .size(60.dp)
+                                .then(
+                                    if (brand.logoPhotoUri.isNotBlank()) Modifier.clickable { showLogoViewer = true }
+                                    else Modifier
                                 )
+                        ) {
+                            if (brand.logoPhotoUri.isNotBlank()) {
+                                AsyncImage(
+                                    model = brand.logoPhotoUri,
+                                    contentDescription = brand.brandName,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.Sell,
+                                        contentDescription = null,
+                                        tint = Color(0xFFD97706),
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                }
                             }
                         }
-                    }
 
-                    if (brand.logoPhotoUri.isNotBlank()) {
+                        if (brand.logoPhotoUri.isNotBlank()) {
+                            Text(
+                                text = "Tap logo for full view",
+                                fontSize = 10.sp,
+                                color = Color(0xFFD97706),
+                                modifier = Modifier.padding(top = 2.dp).clickable { showLogoViewer = true }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
                         Text(
-                            text = "Tap logo for full view & download",
-                            fontSize = 10.5.sp,
-                            color = Color(0xFFD97706),
-                            modifier = Modifier.padding(top = 4.dp).clickable { showLogoViewer = true }
+                            text = brand.brandName,
+                            fontSize = 17.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0F172A),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
-                    }
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                        val mfgSubtitle = if (brand.manufacturerName.isNotBlank()) "Mill: ${brand.manufacturerName}" else "Direct / Independent Brand"
+                        Text(
+                            text = mfgSubtitle,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF64748B)
+                        )
 
-                    Text(
-                        text = brand.brandName,
-                        fontSize = 19.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF0F172A),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (brand.category.isNotBlank()) {
+                                Surface(
+                                    color = Color(0xFFFEF3C7),
+                                    shape = RoundedCornerShape(4.dp),
+                                    border = BorderStroke(0.5.dp, Color(0xFFFDE68A))
+                                ) {
+                                    Text(
+                                        text = brand.category,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFFB45309),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
 
-                    Spacer(modifier = Modifier.height(2.dp))
-                    val mfgSubtitle = if (brand.manufacturerName.isNotBlank()) "Mill: ${brand.manufacturerName}" else "Direct / Independent Brand"
-                    Text(
-                        text = mfgSubtitle,
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFF64748B)
-                    )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (brand.category.isNotBlank()) {
                             Surface(
-                                color = Color(0xFFFEF3C7),
+                                color = if (brand.isActive) Color(0xFFECFDF5) else Color(0xFFF1F5F9),
                                 shape = RoundedCornerShape(4.dp),
-                                border = BorderStroke(0.5.dp, Color(0xFFFDE68A))
+                                border = BorderStroke(0.5.dp, if (brand.isActive) Color(0xFFA7F3D0) else Color(0xFFCBD5E1))
                             ) {
                                 Text(
-                                    text = brand.category,
-                                    fontSize = 10.5.sp,
+                                    text = if (brand.isActive) "Active" else "Inactive",
+                                    fontSize = 10.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFFB45309),
+                                    color = if (brand.isActive) Color(0xFF047857) else Color(0xFF64748B),
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
                         }
 
-                        Surface(
-                            color = if (brand.isActive) Color(0xFFECFDF5) else Color(0xFFF1F5F9),
-                            shape = RoundedCornerShape(4.dp),
-                            border = BorderStroke(0.5.dp, if (brand.isActive) Color(0xFFA7F3D0) else Color(0xFFCBD5E1))
-                        ) {
-                            Text(
-                                text = if (brand.isActive) "Active" else "Inactive",
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (brand.isActive) Color(0xFF047857) else Color(0xFF64748B),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
-
-                    // Action Pills
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Surface(
-                            shape = CircleShape,
-                            color = Color(0xFFFFFBEB),
-                            border = BorderStroke(1.dp, Color(0xFFFDE68A)),
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .clickable { onEdit() }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        // Action Pills
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Surface(
+                                shape = CircleShape,
+                                color = Color(0xFFFFFBEB),
+                                border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable { onEdit() }
                             ) {
-                                Icon(Icons.Default.Edit, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(13.dp))
-                                Text("Edit Brand", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF92400E))
-                            }
-                        }
-
-                        Surface(
-                            shape = CircleShape,
-                            color = Color(0xFFF8FAFC),
-                            border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .clickable {
-                                    val text = "Brand: ${brand.brandName}\nManufacturer: ${brand.manufacturerName}\nCategory: ${brand.category}\nActive Products: ${brandProducts.size}"
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    clipboard.setPrimaryClip(ClipData.newPlainText("Brand Specs", text))
-                                    Toast.makeText(context, "Brand details copied", Toast.LENGTH_SHORT).show()
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(Icons.Default.Edit, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(12.dp))
+                                    Text("Edit Brand", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF92400E))
                                 }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Color(0xFF475569), modifier = Modifier.size(13.dp))
-                                Text("Copy Specs", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
                             }
+
+                            Surface(
+                                shape = CircleShape,
+                                color = Color(0xFFF8FAFC),
+                                border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        val text = "Brand: ${brand.brandName}\nManufacturer: ${brand.manufacturerName}\nCategory: ${brand.category}\nActive Products: ${brandProducts.size}"
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                        clipboard.setPrimaryClip(ClipData.newPlainText("Brand Specs", text))
+                                        Toast.makeText(context, "Brand details copied", Toast.LENGTH_SHORT).show()
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Color(0xFF475569), modifier = Modifier.size(12.dp))
+                                    Text("Copy Specs", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
+                                }
+                            }
+                        }
+                    }
+
+                    // Cardless Stats Row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "${brandProducts.size}",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF0F172A)
+                            )
+                            Text("Products", fontSize = 10.5.sp, color = Color(0xFF64748B))
+                        }
+
+                        Box(modifier = Modifier.height(20.dp).width(1.dp).background(Color(0xFFE2E8F0)))
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "${brandOrders.size}",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF0F172A)
+                            )
+                            Text("Orders", fontSize = 10.5.sp, color = Color(0xFF64748B))
+                        }
+
+                        Box(modifier = Modifier.height(20.dp).width(1.dp).background(Color(0xFFE2E8F0)))
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = String.format("%,d", totalPiecesVolume),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF059669)
+                            )
+                            Text("Pieces Sold", fontSize = 10.5.sp, color = Color(0xFF64748B))
                         }
                     }
                 }
             }
 
-            // Cardless Stats Row
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "${brandProducts.size}",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF0F172A)
-                        )
-                        Text("Products", fontSize = 11.sp, color = Color(0xFF64748B))
-                    }
-
-                    Box(modifier = Modifier.height(24.dp).width(1.dp).background(Color(0xFFE2E8F0)))
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "${brandOrders.size}",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF0F172A)
-                        )
-                        Text("Orders", fontSize = 11.sp, color = Color(0xFF64748B))
-                    }
-
-                    Box(modifier = Modifier.height(24.dp).width(1.dp).background(Color(0xFFE2E8F0)))
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = String.format("%,d", totalPiecesVolume),
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF059669)
-                        )
-                        Text("Pieces Sold", fontSize = 11.sp, color = Color(0xFF64748B))
-                    }
-                }
-            }
-
-            // Live Search Bar
-            item {
+            // 2. Pinned Search Bar (Sticky right below TopAppBar when collapsed)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+            ) {
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp),
+                        .height(46.dp),
                     placeholder = {
                         Text(
                             if (selectedTab == "PRODUCTS") "Search products by name or code..."
@@ -425,98 +489,108 @@ fun BrandDetailScreen(
                 )
             }
 
-            // Tab Selector Pills
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val isProd = selectedTab == "PRODUCTS"
-                    Surface(
-                        shape = CircleShape,
-                        color = if (isProd) Color(0xFFD97706) else Color.White,
-                        border = BorderStroke(1.dp, if (isProd) Color(0xFFD97706) else Color(0xFFCBD5E1)),
+            // 3. Content below Search Bar (LazyColumn)
+            LazyColumn(
+                state = listState,
+                contentPadding = PaddingValues(bottom = 88.dp, top = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                // Tab Selector Pills (Horizontally Scrollable)
+                item {
+                    Row(
                         modifier = Modifier
-                            .clip(CircleShape)
-                            .clickable { selectedTab = "PRODUCTS" }
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        val isProd = selectedTab == "PRODUCTS"
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isProd) Color(0xFFD97706) else Color.White,
+                            border = BorderStroke(1.dp, if (isProd) Color(0xFFD97706) else Color(0xFFCBD5E1)),
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable { selectedTab = "PRODUCTS" }
                         ) {
-                            Icon(
-                                Icons.Default.Inventory,
-                                contentDescription = null,
-                                tint = if (isProd) Color.White else Color(0xFFD97706),
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Text(
-                                text = "Products (${filteredProducts.size})",
-                                fontSize = 11.5.sp,
-                                fontWeight = if (isProd) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isProd) Color.White else Color(0xFF334155)
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Inventory,
+                                    contentDescription = null,
+                                    tint = if (isProd) Color.White else Color(0xFFD97706),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = "Products (${filteredProducts.size})",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (isProd) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isProd) Color.White else Color(0xFF334155)
+                                )
+                            }
                         }
-                    }
 
-                    val isOrder = selectedTab == "ORDERS"
-                    Surface(
-                        shape = CircleShape,
-                        color = if (isOrder) Color(0xFF2563EB) else Color.White,
-                        border = BorderStroke(1.dp, if (isOrder) Color(0xFF2563EB) else Color(0xFFCBD5E1)),
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .clickable { selectedTab = "ORDERS" }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        val isOrder = selectedTab == "ORDERS"
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isOrder) Color(0xFF2563EB) else Color.White,
+                            border = BorderStroke(1.dp, if (isOrder) Color(0xFF2563EB) else Color(0xFFCBD5E1)),
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable { selectedTab = "ORDERS" }
                         ) {
-                            Icon(
-                                Icons.Default.Receipt,
-                                contentDescription = null,
-                                tint = if (isOrder) Color.White else Color(0xFF2563EB),
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Text(
-                                text = "Orders (${filteredOrders.size})",
-                                fontSize = 11.5.sp,
-                                fontWeight = if (isOrder) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isOrder) Color.White else Color(0xFF334155)
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Receipt,
+                                    contentDescription = null,
+                                    tint = if (isOrder) Color.White else Color(0xFF2563EB),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = "Orders (${filteredOrders.size})",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (isOrder) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isOrder) Color.White else Color(0xFF334155)
+                                )
+                            }
                         }
-                    }
 
-                    val isMfg = selectedTab == "MANUFACTURER"
-                    Surface(
-                        shape = CircleShape,
-                        color = if (isMfg) Color(0xFF475569) else Color.White,
-                        border = BorderStroke(1.dp, if (isMfg) Color(0xFF475569) else Color(0xFFCBD5E1)),
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .clickable { selectedTab = "MANUFACTURER" }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        val isMfg = selectedTab == "MANUFACTURER"
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isMfg) Color(0xFF475569) else Color.White,
+                            border = BorderStroke(1.dp, if (isMfg) Color(0xFF475569) else Color(0xFFCBD5E1)),
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable { selectedTab = "MANUFACTURER" }
                         ) {
-                            Icon(
-                                Icons.Default.Business,
-                                contentDescription = null,
-                                tint = if (isMfg) Color.White else Color(0xFF475569),
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Text(
-                                text = "Linked Mill",
-                                fontSize = 11.5.sp,
-                                fontWeight = if (isMfg) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isMfg) Color.White else Color(0xFF334155)
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Business,
+                                    contentDescription = null,
+                                    tint = if (isMfg) Color.White else Color(0xFF475569),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = "Linked Mill",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (isMfg) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isMfg) Color.White else Color(0xFF334155)
+                                )
+                            }
                         }
-                    }
                 }
             }
 
@@ -774,6 +848,7 @@ fun BrandDetailScreen(
             }
         }
     }
+}
 
     if (showLogoViewer && brand.logoPhotoUri.isNotBlank()) {
         FullScreenImageViewerDialog(

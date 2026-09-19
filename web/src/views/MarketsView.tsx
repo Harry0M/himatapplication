@@ -223,7 +223,7 @@ export function MarketsView() {
         </div>
       </div>
 
-      {/* Grid of Markets */}
+      {/* Markets Master List Table */}
       {filteredMarkets.length === 0 ? (
         <Card className="flex flex-col items-center justify-center p-12 text-center border-dashed">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 mb-3">
@@ -239,81 +239,99 @@ export function MarketsView() {
           </Button>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredMarkets.map((market) => {
-            const count = supplierCountMap.get(market.marketName) || 0
-            return (
-              <Card key={market.id} className="group relative overflow-hidden border border-zinc-200/80 p-4 transition-all hover:shadow-md dark:border-zinc-800">
-                <div className="flex items-start justify-between">
-                  <div
-                    className="flex items-center gap-3 cursor-pointer flex-1"
-                    onClick={() => setSelectedMarketId(market.id)}
-                  >
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-700 font-bold text-base dark:bg-emerald-500/20 dark:text-emerald-400">
-                      <Compass className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-zinc-900 dark:text-zinc-50 line-clamp-1 hover:text-emerald-600 transition-colors">
-                        {market.marketName}
-                      </h4>
-                      <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
-                        {market.city || "Ahmedabad"}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
-                    <Button
-                      variant="ghost"
-                      size="sm"
+        <div className="overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xs">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/80 text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                <tr>
+                  <th className="py-3 px-4">Market & Hub</th>
+                  <th className="py-3 px-4">Area & Pincode</th>
+                  <th className="py-3 px-4">Market Type</th>
+                  <th className="py-3 px-4">Linked Mills & Suppliers</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+                {filteredMarkets.map((market) => {
+                  const count = supplierCountMap.get(market.marketName) || 0
+                  return (
+                    <tr
+                      key={market.id}
                       onClick={() => setSelectedMarketId(market.id)}
-                      className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900"
-                      title="View Dedicated Details & Orders"
+                      className="hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20 cursor-pointer transition-colors group"
                     >
-                      <Eye className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => openEditModal(market)}
-                      className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900"
-                    >
-                      <Edit2 className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(market.id)}
-                      className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-
-                <div
-                  className="mt-3 space-y-2 border-t border-zinc-100 pt-3 dark:border-zinc-800 text-xs cursor-pointer"
-                  onClick={() => setSelectedMarketId(market.id)}
-                >
-                  {market.area && (
-                    <div className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-400">
-                      <MapPin className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                      <span>Area: {market.area} {market.pincode && `(${market.pincode})`}</span>
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="text-[11px] text-zinc-500">
-                      {market.marketType || "Textile Cluster"}
-                    </span>
-                    <Badge variant="outline" className="text-[10px] font-semibold bg-zinc-100 text-zinc-700 border-zinc-200">
-                      {count} Suppliers Linked
-                    </Badge>
-                  </div>
-                </div>
-              </Card>
-            )
-          })}
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-700 font-bold text-base dark:bg-emerald-500/20 dark:text-emerald-400 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                            <Compass className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <div className="font-bold text-zinc-900 dark:text-zinc-100 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                              {market.marketName}
+                            </div>
+                            <div className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium">
+                              {market.city || "Ahmedabad"}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        {market.area ? (
+                          <div className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300">
+                            <MapPin className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                            <span>{market.area} {market.pincode && `(${market.pincode})`}</span>
+                          </div>
+                        ) : (
+                          <span className="text-zinc-400">—</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <Badge variant="outline" className="text-[10px] font-semibold text-zinc-600 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800">
+                          {market.marketType || "Textile Cluster"}
+                        </Badge>
+                      </td>
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <Badge variant="outline" className="text-[10px] font-bold bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800">
+                          {count} Suppliers Linked
+                        </Badge>
+                      </td>
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedMarketId(market.id)}
+                            className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900"
+                            title="View Dedicated Details & Orders"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openEditModal(market)}
+                            className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-900"
+                            title="Edit Market"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDelete(market.id)}
+                            className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
+                            title="Delete Market"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

@@ -100,6 +100,23 @@ object ShareUtil {
         shareWhatsAppText(context, msg, phone)
     }
 
+    fun shareSupplierRegistrationLink(context: Context, phone: String? = null) {
+        val regUrl = "https://himatsms.web.app/#supplier-register"
+        val msg = """
+            *हिम्मत टेक्सटाइल — नया सप्लायर / फैब्रिक मिल पंजीकरण*
+            
+            नमस्कार! हिम्मत टेक्सटाइल (Himat Textile) के साथ फैब्रिक मिल / सप्लायर के रूप में जुड़ने के लिए कृपया नीचे दिए गए लिंक पर अपनी मिल व व्यावसायिक जानकारी भरें:
+            
+            🔗 $regUrl
+            
+            _नोट: फॉर्म भरने के बाद आपके नंबर पर सत्यापन होगा।_
+            
+            धन्यवाद!
+            हिम्मत टेक्सटाइल, अहमदाबाद
+        """.trimIndent()
+        shareWhatsAppText(context, msg, phone)
+    }
+
     fun buildCustomerReportText(
         visit: VisitEntity,
         customer: CustomerEntity?,

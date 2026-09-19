@@ -69,8 +69,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
+import com.example.ui.components.DeliveryDaysSelector
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -106,6 +109,7 @@ fun VisitDetailScreen(
     val packGroups by viewModel.visitPackGroups.collectAsStateWithLifecycle()
     val suppliers by viewModel.visibleSuppliers.collectAsStateWithLifecycle()
     val customers by viewModel.visibleCustomers.collectAsStateWithLifecycle()
+    val employees by viewModel.allEmployees.collectAsStateWithLifecycle()
 
     var showSupplierSheet by remember { mutableStateOf(false) }
     var showManagePackSheet by remember { mutableStateOf(false) }
@@ -162,6 +166,10 @@ fun VisitDetailScreen(
         ) {
             // 1. Top Navigation & Customer Header (Borderless, flat & spacious)
             item {
+                val customer = customers.find { it.id == visit.customerId || it.firmName.equals(visit.customerName, true) || it.name.equals(visit.customerName, true) }
+                val visitPhotoUrl = customer?.let { it.purchaserPhotoUri.ifBlank { it.shopPhotoUri } }?.takeIf { it.isNotBlank() }
+                    ?: entries.firstOrNull { !it.orderFormPhotoUri.isNullOrBlank() }?.orderFormPhotoUri
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -181,7 +189,38 @@ fun VisitDetailScreen(
                             modifier = Modifier.size(20.dp)
                         )
                     }
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // Associated Visit / Customer Photo
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFEFF6FF),
+                        border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                    ) {
+                        if (!visitPhotoUrl.isNullOrBlank()) {
+                            AsyncImage(
+                                model = visitPhotoUrl,
+                                contentDescription = visit.customerName,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = visit.customerName.take(2).uppercase(),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = NavyPrimary
+                                )
+                            }
+                        }
+                    }
+
                     Spacer(modifier = Modifier.width(10.dp))
+
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = visit.customerName,
@@ -233,8 +272,11 @@ fun VisitDetailScreen(
                 }
             }
 
-            // 2. Salesman Info Bar (Clean, borderless separate component)
+            // 2. Salesman Info Bar with Actual Photo
             item {
+                val salesman = employees.find { it.id == visit.employeeId || it.name.equals(visit.employeeName, true) }
+                val salesmanPhoto = salesman?.photoUri?.takeIf { it.isNotBlank() }
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -246,15 +288,28 @@ fun VisitDetailScreen(
                         Surface(
                             shape = CircleShape,
                             color = NavyPrimary.copy(alpha = 0.08f),
-                            modifier = Modifier.size(22.dp)
+                            border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(CircleShape)
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    Icons.Default.Person,
-                                    contentDescription = null,
-                                    tint = NavyPrimary,
-                                    modifier = Modifier.size(13.dp)
+                            if (!salesmanPhoto.isNullOrBlank()) {
+                                AsyncImage(
+                                    model = salesmanPhoto,
+                                    contentDescription = visit.employeeName,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
                                 )
+                            } else {
+                                Box(contentAlignment = Alignment.Center) {
+                                    val smInitials = visit.employeeName.take(1).uppercase()
+                                    Text(
+                                        text = if (smInitials.isNotBlank()) smInitials else "S",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = NavyPrimary
+                                    )
+                                }
                             }
                         }
                         Spacer(modifier = Modifier.width(6.dp))
@@ -1733,29 +1788,21 @@ fun EditStopBottomSheet(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                DeliveryDaysSelector(
+                    expectedDeliveryDate = expectedDeliveryDate,
+                    onDeliveryDateChange = { expectedDeliveryDate = it }
+                )
+
                 OutlinedTextField(
                     value = transporter,
                     onValueChange = { transporter = it },
                     label = { Text("Transporter / LR") },
                     placeholder = { Text("e.g. VRL, Jaipur Golden") },
-                    modifier = Modifier.weight(1.2f),
-                    singleLine = true,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = NavyPrimary,
-                        unfocusedBorderColor = Color(0xFFE2E8F0)
-                    )
-                )
-                OutlinedTextField(
-                    value = expectedDeliveryDate,
-                    onValueChange = { expectedDeliveryDate = it },
-                    label = { Text("Exp Delivery Date") },
-                    placeholder = { Text("YYYY-MM-DD") },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     shape = RoundedCornerShape(10.dp),
                     colors = OutlinedTextFieldDefaults.colors(

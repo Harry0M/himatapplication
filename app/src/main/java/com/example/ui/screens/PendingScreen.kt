@@ -37,7 +37,9 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Search
+import com.example.ui.dialogs.CustomerRequestsDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -99,6 +101,9 @@ fun PendingScreen(
     val customers by viewModel.visibleCustomers.collectAsStateWithLifecycle()
     val suppliers by viewModel.visibleSuppliers.collectAsStateWithLifecycle()
     val packGroups by viewModel.allPackGroups.collectAsStateWithLifecycle()
+    val isSuperAdmin by viewModel.isSuperAdmin.collectAsStateWithLifecycle()
+    val pendingRequestsCount by viewModel.pendingRegistrationRequestsCount.collectAsStateWithLifecycle()
+    var showRequestsDialog by remember { mutableStateOf(false) }
 
     val visitMap = remember(visits) { visits.associateBy { it.id } }
     val customerMap = remember(customers) { customers.associateBy { it.id } }
@@ -341,6 +346,65 @@ fun PendingScreen(
             contentPadding = PaddingValues(top = 14.dp, bottom = 80.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            // Admin Pending Customer Registration Requests Banner
+            if (isSuperAdmin && pendingRequestsCount > 0) {
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showRequestsDialog = true },
+                        shape = RoundedCornerShape(10.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF3C7)),
+                        border = BorderStroke(1.dp, Color(0xFFF59E0B))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Surface(
+                                    color = Color(0xFFD97706),
+                                    shape = CircleShape,
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.PersonAdd, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        text = "$pendingRequestsCount Customer Requests",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF92400E)
+                                    )
+                                    Text(
+                                        text = "New retail registrations waiting for admin approval",
+                                        fontSize = 9.5.sp,
+                                        color = Color(0xFFB45309)
+                                    )
+                                }
+                            }
+                            Button(
+                                onClick = { showRequestsDialog = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                                shape = RoundedCornerShape(6.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text("Review", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+
             // TOP METRIC OVERVIEW CARDS
             item {
                 Row(
@@ -927,6 +991,13 @@ fun PendingScreen(
                 viewModel.updateDeliveryStatus(entry, newStatus, transporter)
                 deliveryEntryToUpdate = null
             }
+        )
+    }
+
+    if (showRequestsDialog) {
+        CustomerRequestsDialog(
+            viewModel = viewModel,
+            onDismiss = { showRequestsDialog = false }
         )
     }
 }
