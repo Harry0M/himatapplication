@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react"
 import {
   Building2,
+  Store,
   User,
   Phone,
   Mail,
@@ -17,15 +18,15 @@ import {
   Sparkles,
   Check,
   MessageSquare,
-  Globe
+  Globe,
+  Tag
 } from "lucide-react"
 import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from "firebase/auth"
 import { ref, set } from "firebase/database"
 import { auth, rtdb } from "../lib/firebase"
 import { FileUpload } from "../components/ui/FileUpload"
-import { GARMENT_CATEGORIES } from "../lib/constants"
+import { GARMENT_CATEGORIES, AHMEDABAD_TEXTILE_MARKETS } from "../lib/constants"
 import { CustomerRegistrationRequest } from "../types"
-import { REGISTRATION_TRANSLATIONS, RegistrationLang } from "../lib/registrationI18n"
 import { HIMAT_LOGO_DATA_URI } from "../lib/logoBase64"
 import {
   fetchGstDetails,
@@ -37,23 +38,30 @@ import {
 export function CustomerRegistrationView() {
   const [currentStep, setCurrentStep] = useState<number>(1)
 
-  // Language State - Defaults to English ('en') with user toggle
-  const [lang, setLang] = useState<RegistrationLang>(() => {
-    return (localStorage.getItem("himat_reg_lang") as RegistrationLang) || "en"
+  // Language State - English ('en'), Hindi ('hi'), Gujarati ('gu')
+  const [lang, setLang] = useState<"en" | "hi" | "gu">(() => {
+    return (localStorage.getItem("himat_customer_reg_lang") as "en" | "hi" | "gu") || "en"
   })
 
-  const t = REGISTRATION_TRANSLATIONS[lang]
-
-  const handleLanguageSwitch = (newLang: RegistrationLang) => {
+  const handleLanguageSwitch = (newLang: "en" | "hi" | "gu") => {
     setLang(newLang)
-    localStorage.setItem("himat_reg_lang", newLang)
+    localStorage.setItem("himat_customer_reg_lang", newLang)
   }
 
   // Form State
   const [formData, setFormData] = useState({
     // Step 1: Business Profile
     firmName: "",
-    marketArea: "",
+    name: "", // Owner / Contact Person
+    customerType: "Retailer" as "Retailer" | "Wholesaler",
+    phone: "",
+    phone2: "",
+    sameAsMobile: true,
+    email: "",
+
+    // Step 2: Location & Shop
+    marketArea: "Maskati Cloth Market (Sakarkalupur)",
+    customMarket: "",
     address: "",
     shopAddress: "",
     city: "Ahmedabad",
@@ -62,32 +70,29 @@ export function CustomerRegistrationView() {
     pincode: "",
     shopMapLink: "",
 
-    // Step 2: Owner & Contact
-    name: "",
-    phone: "",
-    phone2: "",
-    sameAsMobile: true,
-    email: "",
-
-    // Step 3: KYC & Docs
+    // Step 3: Garments, Transport & Bank
+    preferredTransporterName: "",
+    transportPreference: "Godown Delivery",
     gstin: "",
     panNumber: "",
-    shopPhotoUri: "",
-    gstCertPhotoUri: "",
-    panPhotoUri: "",
-    aadharPhotoUri: "",
-
-    // Step 4: Transport & Bank
-    preferredTransporterName: "",
-    transportPreference: "",
     bankName: "",
     accountNumber: "",
     ifscCode: "",
     notes: "",
+
+    // Step 4: KYC & Photos
+    visitingCardPhotoUri: "",
+    shopPhotoUri: "",
+    gstCertPhotoUri: "",
+    panPhotoUri: "",
+    aadharPhotoUri: "",
   })
 
   // Selected Garment Categories (Pills)
-  const [selectedGarments, setSelectedGarments] = useState<string[]>([])
+  const [selectedGarments, setSelectedGarments] = useState<string[]>([
+    "Kurtis & Ethnic Wear",
+    "Cotton Shirting & Suiting"
+  ])
   const [customGarment, setCustomGarment] = useState<string>("")
 
   // Phone Auth State
@@ -124,6 +129,8 @@ export function CustomerRegistrationView() {
         message:
           lang === "hi"
             ? "कृपया 15 अक्षरों का मान्य जीएसटी नंबर दर्ज करें (उदा. 24AAAAA0000A1Z5)"
+            : lang === "gu"
+            ? "કૃપા કરીને 15 અક્ષરોનો માન્ય જીએસટી નંબર દાખલ કરો (દા.ત. 24AAAAA0000A1Z5)"
             : "Please enter a valid 15-character GSTIN (e.g. 24AAAAA0000A1Z5)",
       })
       return
@@ -161,13 +168,22 @@ export function CustomerRegistrationView() {
         }))
         setGstFeedback({
           type: "success",
-          message: t.gstAutoSuccess,
+          message:
+            lang === "hi"
+              ? "✓ जीएसटी से फर्म विवरण व पता स्वतः प्राप्त हो गया"
+              : lang === "gu"
+              ? "✓ જીએસટી પરથી પેઢીની વિગતો અને સરનામું આપોઆપ આવી ગયું"
+              : "✓ Business name & address retrieved from GSTIN",
         })
       } else {
-        // Offline state & PAN detected, manual entry for rest
         setGstFeedback({
           type: "offline",
-          message: t.gstAutoOffline,
+          message:
+            lang === "hi"
+              ? "✓ राज्य और पैन नंबर स्वतः पहचान लिए गए हैं। कृपया नीचे दुकान का नाम दर्ज करें।"
+              : lang === "gu"
+              ? "✓ રાજ્ય અને પાન નંબર આપોઆપ મળી ગયા છે. કૃપા કરીને નીચે દુકાનનું નામ દાખલ કરો."
+              : "✓ State & PAN auto-detected from GSTIN. Please enter Shop Name below.",
         })
       }
     } catch (err) {
@@ -182,7 +198,12 @@ export function CustomerRegistrationView() {
       }))
       setGstFeedback({
         type: "offline",
-        message: t.gstAutoOffline,
+        message:
+          lang === "hi"
+            ? "✓ राज्य और पैन नंबर स्वतः पहचान लिए गए हैं।"
+            : lang === "gu"
+            ? "✓ રાજ્ય અને પાન નંબર આપોઆપ ઓળખાઈ ગયા છે."
+            : "✓ State & PAN auto-detected from GSTIN.",
       })
     } finally {
       setIsFetchingGst(false)
@@ -233,148 +254,132 @@ export function CustomerRegistrationView() {
     }
   }
 
-  // Step Validation with localized error messages
+  // Step Validation
   const validateCurrentStep = (targetStep?: number): boolean => {
     setErrorMessage(null)
-    // Always enforce all 5 mandatory fields if currently on Step 1 or trying to navigate past Step 1
+    // Mandatory fields check for Step 1
     if (currentStep === 1 || (targetStep && targetStep > 1)) {
       if (!formData.firmName.trim()) {
-        setErrorMessage(t.errFirmName)
+        setErrorMessage(
+          lang === "hi"
+            ? "कृपया दुकान / फर्म का नाम दर्ज करें"
+            : lang === "gu"
+            ? "કૃપા કરીને દુકાન / પેઢીનું નામ દાખલ કરો"
+            : "Please enter Shop / Firm Name"
+        )
         return false
       }
       if (!formData.name.trim()) {
-        setErrorMessage(t.errOwnerName)
+        setErrorMessage(
+          lang === "hi"
+            ? "कृपया संचालक / मालिक का नाम दर्ज करें"
+            : lang === "gu"
+            ? "કૃપા કરીને માલિકનું નામ દાખલ કરો"
+            : "Please enter Proprietor / Owner Name"
+        )
         return false
       }
       const cleanPhone = formData.phone.replace(/\D/g, "")
-      if (cleanPhone.length !== 10) {
-        setErrorMessage(t.errPhone)
-        return false
-      }
-      if (!formData.city.trim()) {
-        setErrorMessage(t.errCity)
-        return false
-      }
-      if (!formData.address.trim()) {
-        setErrorMessage(t.errAddress)
+      if (!cleanPhone || cleanPhone.length < 10) {
+        setErrorMessage(
+          lang === "hi"
+            ? "कृपया 10 अंकों का मान्य मोबाइल नंबर दर्ज करें"
+            : lang === "gu"
+            ? "કૃપા કરીને 10 અંકનો માન્ય મોબાઈલ નંબર દાખલ કરો"
+            : "Please enter a valid 10-digit mobile number"
+        )
         return false
       }
     }
+
+    if (currentStep === 2 || (targetStep && targetStep > 2)) {
+      if (!formData.address.trim() && !formData.shopAddress.trim()) {
+        setErrorMessage(
+          lang === "hi"
+            ? "कृपया दुकान / स्टोर का पता दर्ज करें"
+            : lang === "gu"
+            ? "કૃપા કરીને દુકાનનું સરનામું દાખલ કરો"
+            : "Please enter Shop / Store Address"
+        )
+        return false
+      }
+      if (!formData.city.trim()) {
+        setErrorMessage(
+          lang === "hi"
+            ? "कृपया शहर का नाम दर्ज करें"
+            : lang === "gu"
+            ? "કૃપા કરીને શહેરનું નામ દાખલ કરો"
+            : "Please enter City"
+        )
+        return false
+      }
+    }
+
     return true
   }
 
-  const handleNextStep = () => {
+  const goToNextStep = () => {
     if (validateCurrentStep(currentStep + 1)) {
-      setCurrentStep((prev) => Math.min(prev + 1, t.stepIndicators.length))
+      setCurrentStep((prev) => Math.min(prev + 1, 5))
       window.scrollTo({ top: 0, behavior: "smooth" })
     }
   }
 
-  const handlePrevStep = () => {
+  const goToPrevStep = () => {
     setErrorMessage(null)
     setCurrentStep((prev) => Math.max(prev - 1, 1))
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
-  // Cleanup recaptcha on unmount
-  useEffect(() => {
-    return () => {
-      if (recaptchaVerifierRef.current) {
-        try {
-          recaptchaVerifierRef.current.clear()
-        } catch (e) {
-          // ignore
-        }
-        recaptchaVerifierRef.current = null
-      }
-    }
-  }, [])
-
-  // Initialize or Reset Recaptcha Verifier
-  const getRecaptchaVerifier = () => {
-    if (recaptchaVerifierRef.current) {
+  // Firebase Phone Auth - Setup invisible reCAPTCHA
+  const setupRecaptcha = () => {
+    if (!recaptchaVerifierRef.current) {
       try {
-        recaptchaVerifierRef.current.clear()
-      } catch (e) {
-        // ignore
-      }
-      recaptchaVerifierRef.current = null
-    }
-
-    // Completely replace the container DOM element so that no leftover grecaptcha widget ID or data attributes remain
-    const wrapper = recaptchaWrapperRef.current || document.getElementById("recaptcha-wrapper")
-    if (wrapper) {
-      wrapper.innerHTML = '<div id="recaptcha-container"></div>'
-    } else {
-      const oldContainer = document.getElementById("recaptcha-container")
-      if (oldContainer && oldContainer.parentNode) {
-        const newContainer = document.createElement("div")
-        newContainer.id = "recaptcha-container"
-        oldContainer.parentNode.replaceChild(newContainer, oldContainer)
+        recaptchaVerifierRef.current = new RecaptchaVerifier(
+          auth,
+          "customer-recaptcha-container",
+          {
+            size: "invisible",
+            callback: () => {},
+            "expired-callback": () => {
+              setErrorMessage("reCAPTCHA expired. Please try sending OTP again.")
+            },
+          }
+        )
+      } catch (err: any) {
+        console.error("Recaptcha setup error:", err)
       }
     }
-
-    const verifier = new RecaptchaVerifier(auth, "recaptcha-container", {
-      size: "invisible",
-      callback: () => {
-        // Recaptcha resolved
-      },
-      "expired-callback": () => {
-        setErrorMessage(t.errSecurityExpired)
-      },
-    })
-    recaptchaVerifierRef.current = verifier
-    return verifier
   }
 
-  // Send SMS OTP via Firebase Phone Auth
+  // Send OTP
   const handleSendOtp = async () => {
     setErrorMessage(null)
     const cleanPhone = formData.phone.replace(/\D/g, "").slice(-10)
     if (cleanPhone.length !== 10) {
-      setErrorMessage(t.errPhone)
+      setErrorMessage("Please enter a valid 10-digit mobile number")
       return
     }
 
     setIsSendingOtp(true)
     try {
-      const fullPhoneNumber = `+91${cleanPhone}`
-      const appVerifier = getRecaptchaVerifier()
-      const confirmation = await signInWithPhoneNumber(auth, fullPhoneNumber, appVerifier)
+      setupRecaptcha()
+      const formattedPhone = `+91${cleanPhone}`
+      const appVerifier = recaptchaVerifierRef.current
+      if (!appVerifier) throw new Error("Recaptcha not initialized")
+
+      const confirmation = await signInWithPhoneNumber(auth, formattedPhone, appVerifier)
       setConfirmationResult(confirmation)
       setOtpSent(true)
-      setResendTimer(60)
+      setResendTimer(30)
     } catch (err: any) {
-      console.error("Firebase Phone Auth error:", err)
-      // On failure, clean up recaptcha verifier and DOM so the user can immediately retry
-      if (recaptchaVerifierRef.current) {
-        try {
-          recaptchaVerifierRef.current.clear()
-        } catch (e) {
-          // ignore
-        }
-        recaptchaVerifierRef.current = null
-      }
-      const wrapper = recaptchaWrapperRef.current || document.getElementById("recaptcha-wrapper")
-      if (wrapper) {
-        wrapper.innerHTML = '<div id="recaptcha-container"></div>'
-      } else {
-        const oldContainer = document.getElementById("recaptcha-container")
-        if (oldContainer && oldContainer.parentNode) {
-          const newContainer = document.createElement("div")
-          newContainer.id = "recaptcha-container"
-          oldContainer.parentNode.replaceChild(newContainer, oldContainer)
-        }
-      }
-
+      console.error("SMS Send Error:", err)
       if (err.code === "auth/invalid-phone-number") {
-        setErrorMessage(t.errPhone)
+        setErrorMessage("Invalid mobile number format.")
       } else if (err.code === "auth/too-many-requests") {
-        setErrorMessage(t.errTooManyAttempts)
-      } else if (err.code === "auth/quota-exceeded") {
-        setErrorMessage(t.errQuotaExceeded)
+        setErrorMessage("Too many SMS attempts. Please try again later.")
       } else {
-        setErrorMessage(err.message || t.errGenericPhoneAuth)
+        setErrorMessage(err.message || "Failed to send OTP. Please check your connection.")
       }
     } finally {
       setIsSendingOtp(false)
@@ -385,28 +390,29 @@ export function CustomerRegistrationView() {
   const handleVerifyAndSubmit = async () => {
     setErrorMessage(null)
     if (!confirmationResult) {
-      setErrorMessage(t.errSendOtpFirst)
+      setErrorMessage("Please request an OTP first.")
       return
     }
     if (!otpCode.trim() || otpCode.trim().length < 6) {
-      setErrorMessage(t.errOtpLength)
+      setErrorMessage("Please enter the 6-digit verification code.")
       return
     }
 
     setIsVerifyingOtp(true)
     try {
-      // 1. Confirm OTP with Firebase Auth
       const userCredential = await confirmationResult.confirm(otpCode.trim())
       const verifiedUser = userCredential.user
 
-      // 2. Determine Primary Key and Request ID
-      // GSTIN is the primary key if provided; if not, 10-digit clean phone number is used.
       const cleanGstin = formData.gstin.trim().toUpperCase()
       const cleanPhone = formData.phone.replace(/\D/g, "").slice(-10)
       const primaryKey = cleanGstin || cleanPhone
       const keyType: "GSTIN" | "PHONE" = cleanGstin ? "GSTIN" : "PHONE"
       const requestId = cleanGstin ? `req_gst_${cleanGstin}` : `req_phone_${cleanPhone}`
       const reqRef = ref(rtdb, `customer_registration_requests/${requestId}`)
+
+      const finalMarket = formData.marketArea === "Other / Outside Ahmedabad" && formData.customMarket.trim()
+        ? formData.customMarket.trim()
+        : formData.marketArea
 
       const payload: CustomerRegistrationRequest = {
         id: requestId,
@@ -419,7 +425,7 @@ export function CustomerRegistrationView() {
         email: formData.email.trim(),
         address: formData.address.trim(),
         shopAddress: formData.shopAddress.trim() || formData.address.trim(),
-        marketArea: formData.marketArea.trim(),
+        marketArea: finalMarket,
         city: formData.city.trim() || "Ahmedabad",
         district: formData.district.trim(),
         state: formData.state.trim() || "Gujarat",
@@ -444,7 +450,6 @@ export function CustomerRegistrationView() {
         createdAt: Date.now(),
       }
 
-      // Filter out undefined keys for Firebase RTDB
       const cleanPayload: Record<string, any> = {}
       for (const [k, v] of Object.entries(payload)) {
         if (v !== undefined) cleanPayload[k] = v
@@ -454,172 +459,99 @@ export function CustomerRegistrationView() {
       setSubmittedRequestId(requestId)
       window.scrollTo({ top: 0, behavior: "smooth" })
     } catch (err: any) {
-      console.error("OTP verification or submission error:", err)
+      console.error("Submission error:", err)
       if (err.code === "auth/invalid-verification-code") {
-        setErrorMessage(t.errOtpInvalid)
-      } else if (err.code === "auth/code-expired") {
-        setErrorMessage(t.errOtpExpired)
+        setErrorMessage("Invalid OTP code. Please re-check the SMS.")
       } else {
-        setErrorMessage(err.message || t.errGenericPhoneAuth)
+        setErrorMessage(err.message || "Verification failed. Please try again.")
       }
     } finally {
       setIsVerifyingOtp(false)
     }
   }
 
-  // Render Submitted Success Screen
+  // SUCCESS VIEW
   if (submittedRequestId) {
     const cleanGst = formData.gstin.trim().toUpperCase()
     const cleanPhone = formData.phone.replace(/\D/g, "").slice(-10)
     const primaryKeyDisplay = cleanGst ? `${cleanGst} (GSTIN)` : `+91 ${cleanPhone} (Mobile)`
-    const whatsappMsg = encodeURIComponent(
-      lang === "en"
-        ? `Hello Himat Textile!\nI have submitted my new commercial account registration form online.\n\n📌 Firm Name: ${formData.firmName}\n👤 Proprietor: ${formData.name}\n🔑 Primary Key: ${primaryKeyDisplay}\n📞 Mobile: +91 ${cleanPhone}\n📍 City: ${formData.city}\n🆔 Ref ID: ${submittedRequestId}\n\nPlease review our application and grant commercial account approval. Thank you!`
-        : `नमस्ते हिम्मत टेक्सटाइल (Himat Textile)!\nमैंने नया व्यापारिक खाता खोलने के लिए ऑनलाइन पंजीकरण फॉर्म सबमिट किया है।\n\n📌 फर्म का नाम: ${formData.firmName}\n👤 संचालक: ${formData.name}\n🔑 मुख्य पहचान (Key): ${primaryKeyDisplay}\n📞 मोबाइल: +91 ${cleanPhone}\n📍 शहर: ${formData.city}\n🆔 संदर्भ क्रमांक (Ref ID): ${submittedRequestId}\n\nकृपया हमारे खाते की समीक्षा कर अनुमोदन (Approval) प्रदान करें। धन्यवाद!`
-    )
+    const shareMessage = `Namaste! We have submitted our customer commercial account registration with Himat Textile.%0A%0A*Shop / Firm:* ${encodeURIComponent(formData.firmName)}%0A*Contact:* ${encodeURIComponent(formData.name)} (+91 ${cleanPhone})%0A*Primary Key:* ${encodeURIComponent(primaryKeyDisplay)}%0A*City:* ${encodeURIComponent(formData.city)}%0A*Ref ID:* ${submittedRequestId}`
 
     return (
-      <div className="min-h-screen bg-gradient-to-b from-zinc-50 to-zinc-100 dark:from-zinc-950 dark:to-zinc-900 py-10 px-4 sm:px-6 flex items-center justify-center">
-        <div className="max-w-xl w-full bg-white dark:bg-zinc-900 rounded-3xl shadow-xl border border-zinc-200 dark:border-zinc-800 p-6 sm:p-10 text-center space-y-6">
-          {/* Header Brand & Language Switcher on Success Screen */}
-          <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
-            <div className="flex items-center gap-2.5">
-              <div className="h-9 w-9 rounded-xl bg-white dark:bg-zinc-800 p-1 border border-zinc-200 dark:border-zinc-700 shadow-2xs flex items-center justify-center overflow-hidden shrink-0">
-                <img src={HIMAT_LOGO_DATA_URI} alt="Himat Textile" className="h-full w-full object-contain" />
-              </div>
-              <div className="text-left">
-                <p className="font-bold text-xs text-zinc-900 dark:text-zinc-100 leading-none">{t.brandName}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">{t.brandTag}</p>
-              </div>
-            </div>
-            <div className="inline-flex items-center bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl border border-zinc-200 dark:border-zinc-700 text-xs">
-              <button
-                type="button"
-                onClick={() => handleLanguageSwitch("en")}
-                className={`px-2.5 py-0.5 rounded-lg font-semibold transition-all ${
-                  lang === "en"
-                    ? "bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-2xs"
-                    : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
-                }`}
-              >
-                English
-              </button>
-              <button
-                type="button"
-                onClick={() => handleLanguageSwitch("hi")}
-                className={`px-2.5 py-0.5 rounded-lg font-semibold transition-all ${
-                  lang === "hi"
-                    ? "bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-2xs"
-                    : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
-                }`}
-              >
-                हिंदी
-              </button>
-            </div>
+      <div className="min-h-screen bg-gradient-to-b from-zinc-50 to-zinc-100 dark:from-zinc-950 dark:to-zinc-900 py-10 px-4 sm:px-6">
+        <div className="max-w-xl mx-auto bg-white dark:bg-zinc-900 rounded-2xl shadow-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden text-center p-8 sm:p-10">
+          <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-950/60 rounded-full flex items-center justify-center mx-auto mb-5 text-emerald-600 dark:text-emerald-400 shadow-inner">
+            <CheckCircle2 className="w-9 h-9" />
           </div>
 
-          <div className="mx-auto w-20 h-20 bg-emerald-100 dark:bg-emerald-950/60 rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400 ring-8 ring-emerald-50 dark:ring-emerald-950/30">
-            <CheckCircle2 className="w-10 h-10 animate-bounce" />
-          </div>
+          <h2 className="text-2xl font-black text-zinc-900 dark:text-zinc-50 tracking-tight">
+            {lang === "hi"
+              ? "पंजीकरण सफलतापूर्वक सबमिट हुआ!"
+              : lang === "gu"
+              ? "નોંધણી સફળતાપૂર્વક સબમિટ થઈ ગઈ!"
+              : "Registration Submitted Successfully!"}
+          </h2>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-2">
+            {lang === "hi"
+              ? "हिम्मत टेक्सटाइल के साथ अपनी दुकान/फर्म का व्यापारिक खाता पंजीकरण कराने के लिए धन्यवाद। हमारी टीम आपके विवरण की समीक्षा कर जल्द संपर्क करेगी।"
+              : lang === "gu"
+              ? "હિંમત ટેક્સટાઈલ સાથે તમારી દુકાન/પેઢીનું વેપારી ખાતું ખોલવા બદલ આભાર. અમારી ટીમ ટૂંક સમયમાં સંપર્ક કરશે."
+              : "Thank you for registering your retail/wholesale store with Himat Textile. Our team will review your business profile and grant commercial account approval."}
+          </p>
 
-          <div className="space-y-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-              <Sparkles className="w-3.5 h-3.5" /> {t.successBadge}
-            </span>
-            <h1 className="text-2xl sm:text-3xl font-bold text-zinc-900 dark:text-zinc-100">
-              {t.successHeading} {formData.name}!
-            </h1>
-            <p className="text-sm text-zinc-600 dark:text-zinc-400 max-w-md mx-auto">
-              <strong className="text-zinc-900 dark:text-zinc-100">{formData.firmName}</strong>'s {t.successSubtitle}
-            </p>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 text-left space-y-2.5 text-xs">
-            <div className="flex justify-between items-center py-1 border-b border-zinc-200/60 dark:border-zinc-700/60">
-              <span className="text-muted-foreground">{t.primaryKeyLabel}</span>
+          <div className="mt-6 p-4 bg-zinc-50 dark:bg-zinc-800/60 rounded-xl border border-zinc-200 dark:border-zinc-700 text-left space-y-2">
+            <div className="flex justify-between text-xs">
+              <span className="text-zinc-500">Primary Account Key:</span>
               <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                {formData.gstin ? `${formData.gstin} (GSTIN)` : `+91 ${formData.phone.slice(-10)} (Mobile)`}
+                {formData.gstin ? `${formData.gstin} (GSTIN)` : `+91 ${formData.phone.replace(/\D/g, "").slice(-10)} (Mobile)`}
               </span>
             </div>
-            <div className="flex justify-between items-center py-1 border-b border-zinc-200/60 dark:border-zinc-700/60">
-              <span className="text-muted-foreground">{t.refIdLabel}</span>
+            <div className="flex justify-between text-xs">
+              <span className="text-zinc-500">Reference ID:</span>
               <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{submittedRequestId}</span>
             </div>
-            <div className="flex justify-between items-center py-1 border-b border-zinc-200/60 dark:border-zinc-700/60">
-              <span className="text-muted-foreground">{t.verifiedMobileLabel}</span>
-              <span className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1">
-                <Check className="w-3.5 h-3.5 text-emerald-600" /> +91 {formData.phone.slice(-10)}
-              </span>
+            <div className="flex justify-between text-xs">
+              <span className="text-zinc-500">Shop / Firm:</span>
+              <span className="font-bold text-zinc-900 dark:text-zinc-100">{formData.firmName}</span>
             </div>
-            <div className="flex justify-between items-center py-1 border-b border-zinc-200/60 dark:border-zinc-700/60">
-              <span className="text-muted-foreground">{t.cityMarketLabel}</span>
-              <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-                {formData.city} {formData.marketArea ? `• ${formData.marketArea}` : ""}
-              </span>
+            <div className="flex justify-between text-xs">
+              <span className="text-zinc-500">Proprietor:</span>
+              <span className="font-medium text-zinc-800 dark:text-zinc-200">{formData.name}</span>
             </div>
-            <div className="flex justify-between items-center py-1">
-              <span className="text-muted-foreground">{t.statusLabel}</span>
+            <div className="flex justify-between text-xs">
+              <span className="text-zinc-500">Verified Mobile:</span>
+              <span className="font-medium text-zinc-800 dark:text-zinc-200">+91 {formData.phone.replace(/\D/g, "").slice(-10)}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-zinc-500">City / Market:</span>
+              <span className="font-medium text-zinc-800 dark:text-zinc-200">{formData.city} {formData.marketArea ? `• ${formData.marketArea}` : ""}</span>
+            </div>
+            <div className="flex justify-between text-xs pt-1 border-t border-zinc-200 dark:border-zinc-700">
+              <span className="text-zinc-500">Status:</span>
               <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300">
-                {t.statusPendingValue}
+                Pending Approval
               </span>
             </div>
           </div>
 
-          <div className="text-xs text-muted-foreground leading-relaxed px-2">
-            {t.successNotice}
-          </div>
-
-          <div className="pt-2 flex flex-col sm:flex-row gap-3 justify-center">
+          <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
             <a
-              href={`https://wa.me/919427028169?text=${whatsappMsg}`}
+              href={`https://wa.me/919427028169?text=${shareMessage}`}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm transition-all shadow-md hover:shadow-lg"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-all"
             >
               <MessageSquare className="w-4 h-4" />
-              {t.notifyAdminWhatsAppBtn}
+              Notify Admin on WhatsApp
             </a>
 
             <button
               type="button"
-              onClick={() => {
-                setSubmittedRequestId(null)
-                setCurrentStep(1)
-                setOtpSent(false)
-                setOtpCode("")
-                setFormData({
-                  firmName: "",
-                  marketArea: "",
-                  address: "",
-                  shopAddress: "",
-                  city: "Ahmedabad",
-                  district: "",
-                  state: "Gujarat",
-                  pincode: "",
-                  shopMapLink: "",
-                  name: "",
-                  phone: "",
-                  phone2: "",
-                  sameAsMobile: true,
-                  email: "",
-                  gstin: "",
-                  panNumber: "",
-                  shopPhotoUri: "",
-                  gstCertPhotoUri: "",
-                  panPhotoUri: "",
-                  aadharPhotoUri: "",
-                  preferredTransporterName: "",
-                  transportPreference: "",
-                  bankName: "",
-                  accountNumber: "",
-                  ifscCode: "",
-                  notes: "",
-                })
-                setSelectedGarments([])
-              }}
-              className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 font-medium text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700/50 transition-colors"
+              onClick={() => window.location.reload()}
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-semibold text-xs border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all"
             >
-              {t.registerAnotherBtn}
+              <RefreshCw className="w-4 h-4" />
+              Submit Another Registration
             </button>
           </div>
         </div>
@@ -627,1011 +559,829 @@ export function CustomerRegistrationView() {
     )
   }
 
+  // WIZARD VIEW
   return (
-    <div className="min-h-screen bg-zinc-50/70 dark:bg-black text-zinc-900 dark:text-zinc-100 flex flex-col">
-      {/* Hidden Recaptcha Wrapper & Target Container */}
-      <div ref={recaptchaWrapperRef} id="recaptcha-wrapper">
-        <div id="recaptcha-container"></div>
-      </div>
+    <div className="min-h-screen bg-gradient-to-b from-zinc-50 via-zinc-100 to-zinc-200 dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-950 py-8 px-4 sm:px-6">
+      {/* Invisible reCAPTCHA container */}
+      <div id="customer-recaptcha-container" ref={recaptchaWrapperRef}></div>
 
-      {/* Top Header */}
-      <header className="sticky top-0 z-30 bg-white/95 dark:bg-zinc-900/95 backdrop-blur border-b border-zinc-200 dark:border-zinc-800 px-4 py-3 sm:px-6">
-        <div className="max-w-4xl mx-auto flex items-center justify-between gap-2">
-          <div className="flex items-center gap-3">
-            <div className="h-11 w-11 sm:h-12 sm:w-12 rounded-xl bg-white dark:bg-zinc-800 p-1 border border-zinc-200 dark:border-zinc-700 shadow-2xs flex items-center justify-center overflow-hidden shrink-0">
-              <img
-                src={HIMAT_LOGO_DATA_URI}
-                alt="Himat Textile"
-                className="h-full w-full object-contain"
-              />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
-                  {t.brandName}
-                </h1>
-                <span className="hidden sm:inline-block text-[11px] px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-medium border border-indigo-100 dark:border-indigo-900">
-                  {t.brandTag}
-                </span>
-              </div>
-              <p className="text-[11px] sm:text-xs text-muted-foreground truncate max-w-[210px] sm:max-w-md">
-                <span className="sm:hidden font-medium text-indigo-600 dark:text-indigo-400">{t.brandTag} • </span>
-                <span>{t.pageTitle}</span>
-              </p>
-            </div>
+      <div className="max-w-2xl mx-auto">
+        {/* Header with Himat Textile Logo */}
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center gap-3 mb-2">
+            <img
+              src={HIMAT_LOGO_DATA_URI}
+              alt="Himat Textile"
+              className="h-10 w-auto rounded-lg shadow-sm"
+            />
+            <h1 className="text-2xl font-black tracking-tight text-zinc-900 dark:text-zinc-50">
+              Himat Textile
+            </h1>
           </div>
 
-          <div className="flex items-center gap-2 text-xs">
-            {/* Language Switcher Pill */}
-            <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl border border-zinc-200 dark:border-zinc-700 shadow-2xs">
-              <button
-                type="button"
-                onClick={() => handleLanguageSwitch("en")}
-                className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all ${
-                  lang === "en"
-                    ? "bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-xs"
-                    : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
-                }`}
-                title="Switch to English"
-              >
-                English
-              </button>
-              <button
-                type="button"
-                onClick={() => handleLanguageSwitch("hi")}
-                className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all ${
-                  lang === "hi"
-                    ? "bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-xs"
-                    : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
-                }`}
-                title="हिंदी में बदलें"
-              >
-                हिंदी
-              </button>
-            </div>
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-xs font-semibold mb-2">
+            <Store className="w-3.5 h-3.5" />
+            <span>
+              {lang === "hi"
+                ? "व्यापारी व ग्राहक ऑनबोर्डिंग फॉर्म"
+                : lang === "gu"
+                ? "વેપારી અને ગ્રાહક નોંધણી ફોર્મ"
+                : "Buyer & Customer Commercial Onboarding"}
+            </span>
+          </div>
 
-            {/* Help Support */}
-            <a
-              href="https://wa.me/919427028169"
-              target="_blank"
-              rel="noreferrer"
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-medium hover:bg-emerald-100 transition-colors"
+          <p className="text-xs text-zinc-600 dark:text-zinc-400 max-w-md mx-auto">
+            {lang === "hi"
+              ? "हिम्मत टेक्सटाइल से सीधे रेडी गारमेंट्स और फैब्रिक्स की थोक खरीद हेतु अपनी दुकान/फर्म का खाता खोलें।"
+              : lang === "gu"
+              ? "હિંમત ટેક્સટાઈલમાંથી સીધા રેડી ગારમેન્ટ્સ અને કાપડની હોલસેલ ખરીદી માટે તમારી દુકાનનું ખાતું ખોલો."
+              : "Register your retail store, wholesale agency or garment shop to purchase fabrics and garments directly with trade credit and bill tracking."}
+          </p>
+
+          {/* Language Toggle */}
+          <div className="mt-4 inline-flex items-center p-1 rounded-xl bg-zinc-200/80 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700">
+            <button
+              type="button"
+              onClick={() => handleLanguageSwitch("en")}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                lang === "en"
+                  ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
+                  : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900"
+              }`}
             >
-              <MessageSquare className="w-3.5 h-3.5" />
-              <span>{t.whatsappHelp}</span>
-            </a>
+              English
+            </button>
+            <button
+              type="button"
+              onClick={() => handleLanguageSwitch("hi")}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                lang === "hi"
+                  ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
+                  : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900"
+              }`}
+            >
+              हिंदी
+            </button>
+            <button
+              type="button"
+              onClick={() => handleLanguageSwitch("gu")}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                lang === "gu"
+                  ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
+                  : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900"
+              }`}
+            >
+              ગુજરાતી
+            </button>
           </div>
         </div>
-      </header>
 
-      {/* Main Form Content */}
-      <main className="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 md:p-8 space-y-6">
-        {/* Wizard Steps Navigation Bar */}
-        <div className="bg-white dark:bg-zinc-900 p-3 sm:p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
-          {/* Mobile Stepper: Connected Circles + Step Banner (No overlapping icons or wrapped text) */}
-          <div className="block sm:hidden space-y-3">
-            {/* Step Circles & Connecting Lines */}
-            <div className="flex items-center justify-between px-1">
-              {t.stepIndicators.map((step, idx) => {
-                const isCompleted = currentStep > step.id
-                const isCurrent = currentStep === step.id
-                const isLast = idx === t.stepIndicators.length - 1
-
-                return (
-                  <div key={step.id} className={`flex items-center ${isLast ? "" : "flex-1"}`}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (step.id < currentStep || validateCurrentStep(step.id)) {
-                          setCurrentStep(step.id)
-                        }
-                      }}
-                      className="relative z-10 flex flex-col items-center focus:outline-none"
-                    >
-                      <div
-                        className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-                          isCompleted
-                            ? "bg-emerald-500 text-white shadow-xs"
-                            : isCurrent
-                            ? "bg-indigo-600 text-white shadow-sm ring-4 ring-indigo-100 dark:ring-indigo-950"
-                            : "bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500"
-                        }`}
-                      >
-                        {isCompleted ? <Check className="w-3.5 h-3.5 stroke-[2.5]" /> : step.id}
-                      </div>
-                    </button>
-
-                    {/* Connecting Line between steps */}
-                    {!isLast && (
-                      <div className="flex-1 mx-1.5 h-0.5 bg-zinc-200 dark:bg-zinc-800 relative">
-                        <div
-                          className={`h-full transition-all duration-300 ${
-                            isCompleted ? "bg-emerald-500" : "bg-transparent"
-                          }`}
-                        />
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* Current Step Active Label Display */}
-            <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="shrink-0 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900">
-                  {lang === "hi" ? `चरण ${currentStep} / 5` : `Step ${currentStep} of 5`}
-                </span>
-                <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100 truncate">
-                  {t.stepIndicators[currentStep - 1]?.title}
-                </span>
-              </div>
-              <span className="shrink-0 text-[10px] text-muted-foreground truncate">
-                {t.stepIndicators[currentStep - 1]?.subtitle}
-              </span>
-            </div>
-          </div>
-
-          {/* Desktop Stepper: 5-Column Grid with Icon, Title, and Subtitle */}
-          <div className="hidden sm:grid sm:grid-cols-5 gap-2">
-            {t.stepIndicators.map((step) => {
-              const Icon = step.icon
-              const isCompleted = currentStep > step.id
-              const isCurrent = currentStep === step.id
-
-              return (
-                <button
-                  key={step.id}
-                  type="button"
-                  onClick={() => {
-                    if (step.id < currentStep || validateCurrentStep(step.id)) {
-                      setCurrentStep(step.id)
-                    }
-                  }}
-                  className={`flex flex-row items-center gap-2 p-2.5 rounded-xl text-left transition-all ${
-                    isCurrent
-                      ? "bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-500/30"
-                      : isCompleted
-                      ? "text-emerald-600 dark:text-emerald-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
-                      : "text-zinc-400 dark:text-zinc-600 hover:bg-zinc-50 dark:hover:bg-zinc-800/30"
-                  }`}
-                >
+        {/* Wizard Steps Indicator */}
+        <div className="mb-6 bg-white dark:bg-zinc-900 rounded-xl p-3 border border-zinc-200 dark:border-zinc-800 shadow-sm">
+          <div className="flex items-center justify-between">
+            {[
+              { num: 1, label: "Profile" },
+              { num: 2, label: "Location" },
+              { num: 3, label: "Garments" },
+              { num: 4, label: "Photos" },
+              { num: 5, label: "Verify" },
+            ].map((step, idx) => (
+              <React.Fragment key={step.num}>
+                <div className="flex flex-col items-center">
                   <div
-                    className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 transition-all ${
-                      isCurrent
-                        ? "bg-indigo-600 text-white shadow-sm"
-                        : isCompleted
-                        ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300"
-                        : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500"
+                    className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                      currentStep === step.num
+                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 ring-2 ring-emerald-500"
+                        : currentStep > step.num
+                        ? "bg-emerald-600 text-white"
+                        : "bg-zinc-100 dark:bg-zinc-800 text-zinc-400"
                     }`}
                   >
-                    {isCompleted ? <Check className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
+                    {currentStep > step.num ? <Check className="w-3.5 h-3.5" /> : step.num}
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-bold truncate leading-tight">
-                      {step.title}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground truncate">
-                      {step.subtitle}
-                    </p>
-                  </div>
-                </button>
-              )
-            })}
+                  <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 mt-1 hidden sm:block">
+                    {step.label}
+                  </span>
+                </div>
+                {idx < 4 && (
+                  <div
+                    className={`flex-1 h-0.5 mx-1.5 transition-all ${
+                      currentStep > idx + 1 ? "bg-emerald-600" : "bg-zinc-200 dark:bg-zinc-800"
+                    }`}
+                  />
+                )}
+              </React.Fragment>
+            ))}
           </div>
         </div>
 
-        {/* Global Error Banner */}
+        {/* Error Alert */}
         {errorMessage && (
-          <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 flex items-start gap-2.5 text-xs text-red-700 dark:text-red-300 animate-in fade-in">
-            <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-            <div className="flex-1 font-medium">{errorMessage}</div>
+          <div className="mb-6 p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 flex items-start gap-2.5 text-xs text-red-700 dark:text-red-300">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>{errorMessage}</span>
           </div>
         )}
 
-        {/* Step Body */}
-        <div className="bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm p-5 sm:p-8 space-y-6">
-          {/* ============================================================== */}
-          {/* STEP 1: MANDATORY DETAILS (*)                                  */}
-          {/* ============================================================== */}
+        {/* Step Card */}
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-lg border border-zinc-200 dark:border-zinc-800 p-6 sm:p-8">
+          {/* STEP 1: BUSINESS & CONTACT PROFILE */}
           {currentStep === 1 && (
-            <div className="space-y-6 animate-in fade-in">
-              <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3">
-                <h2 className="text-lg sm:text-xl font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                  <Building2 className="w-5 h-5 text-indigo-600" />
-                  <span>{t.step1Heading}</span>
-                </h2>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {t.step1Subheading}
+            <div className="space-y-4">
+              <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3 mb-4">
+                <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-emerald-600" />
+                  <span>Step 1: Shop & Contact Profile</span>
+                </h3>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Enter your firm name and primary proprietor/manager details.
                 </p>
               </div>
 
-              {/* Informational Banner */}
-              <div className="p-3.5 rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900/50 flex items-start gap-2.5 text-xs text-indigo-900 dark:text-indigo-200">
-                <Sparkles className="w-4 h-4 flex-shrink-0 mt-0.5 text-indigo-600 dark:text-indigo-400" />
-                <span className="font-medium leading-relaxed">{t.step1MandatoryBadge}</span>
+              {/* GSTIN First with Auto-Fetch Option */}
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-50/70 via-teal-50/40 to-emerald-50/70 dark:from-emerald-950/40 dark:via-zinc-800/50 dark:to-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/80 space-y-2.5">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <label className="font-bold text-xs text-emerald-950 dark:text-emerald-200 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <span>
+                      {lang === "hi"
+                        ? "जीएसटी नंबर (GSTIN - वैकल्पिक / स्वतः विवरण भरें)"
+                        : lang === "gu"
+                        ? "જીએસટી નંબર (GSTIN - વૈકલ્પિક / આપોઆપ વિગતો મેળવો)"
+                        : "GSTIN Number (Optional - Auto-Fetch Details)"}
+                    </span>
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                      {lang === "hi" ? "वैकल्पिक • मुख्य पहचान" : "Optional • Primary Key"}
+                    </span>
+                    {formData.gstin && (
+                      <button
+                        type="button"
+                        onClick={handleClearGst}
+                        className="text-[11px] text-zinc-500 hover:text-red-600 dark:hover:text-red-400 underline ml-1"
+                      >
+                        {lang === "hi" ? "हटाएं" : "Clear"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      maxLength={15}
+                      placeholder="24AAAAA0000A1Z5 (15 Characters)"
+                      value={formData.gstin}
+                      onChange={(e) => {
+                        const val = e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "")
+                        handleInputChange("gstin", val)
+                        if (val.length === 15 && isValidGstin(val)) {
+                          handleGstLookup(val)
+                        } else if (val.length === 0) {
+                          setGstFeedback({ type: null, message: "" })
+                        }
+                      }}
+                      className="w-full h-10 px-3.5 rounded-xl border border-emerald-300 dark:border-emerald-700/80 bg-white dark:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-sm tracking-wider uppercase text-zinc-900 dark:text-zinc-100"
+                    />
+                    {formData.gstin.length === 15 && isValidGstin(formData.gstin) && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={isFetchingGst || !formData.gstin.trim()}
+                    onClick={() => handleGstLookup()}
+                    className="h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition-all shadow-xs disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shrink-0"
+                  >
+                    {isFetchingGst ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>{lang === "hi" ? "डेटा लोड हो रहा है..." : "Fetching..."}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>{lang === "hi" ? "विवरण प्राप्त करें" : "Fetch Details"}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {gstFeedback.message ? (
+                  <div
+                    className={`text-[11px] p-2 rounded-xl flex items-start gap-1.5 font-medium ${
+                      gstFeedback.type === "success"
+                        ? "bg-emerald-100/70 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800"
+                        : gstFeedback.type === "offline"
+                        ? "bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
+                        : "bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
+                    }`}
+                  >
+                    <span className="shrink-0">
+                      {gstFeedback.type === "success" ? "✓" : gstFeedback.type === "offline" ? "ℹ" : "⚠"}
+                    </span>
+                    <span className="leading-tight">{gstFeedback.message}</span>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-emerald-900/70 dark:text-emerald-300/70">
+                    {lang === "hi"
+                      ? "जीएसटी नंबर दर्ज करने से राज्य, पैन नंबर, दुकान का नाम और पता स्वतः भर जाएगा। यदि जीएसटी नहीं है तो खाली छोड़ें।"
+                      : lang === "gu"
+                      ? "જીએસટી નંબર દાખલ કરવાથી રાજ્ય, પાન નંબર, દુકાનનું નામ અને સરનામું આપોઆપ ભરાઈ જશે."
+                      : "Enter 15-digit GSTIN to auto-fetch shop name, address, state & PAN. If unregistered, leave blank."}
+                  </p>
+                )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                {/* 0. GSTIN Number - Primary Key (Optional) at the very beginning of the form */}
-                <div className="sm:col-span-2 p-4 rounded-2xl bg-gradient-to-r from-indigo-50/70 via-blue-50/40 to-indigo-50/70 dark:from-indigo-950/40 dark:via-zinc-800/50 dark:to-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/80 space-y-2.5">
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <label className="font-bold text-xs text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
-                      <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                      <span>{t.gstinStep1Label}</span>
-                    </label>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                        {t.gstOptionalBadge}
-                      </span>
-                      {formData.gstin && (
-                        <button
-                          type="button"
-                          onClick={handleClearGst}
-                          className="text-[11px] text-zinc-500 hover:text-red-600 dark:hover:text-red-400 underline ml-1"
-                        >
-                          {t.gstClearBtn}
-                        </button>
-                      )}
-                    </div>
-                  </div>
+              {/* Classification Toggle */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  Business Classification <span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleInputChange("customerType", "Retailer")}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                      formData.customerType === "Retailer"
+                        ? "border-emerald-600 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 ring-1 ring-emerald-600"
+                        : "border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50"
+                    }`}
+                  >
+                    <Store className="w-4 h-4" />
+                    <span>Retailer / Garment Store</span>
+                  </button>
 
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <div className="relative flex-1">
-                      <input
-                        type="text"
-                        maxLength={15}
-                        placeholder={t.gstinStep1Placeholder}
-                        value={formData.gstin}
-                        onChange={(e) => {
-                          const val = e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "")
-                          handleInputChange("gstin", val)
-                          if (val.length === 15 && isValidGstin(val)) {
-                            handleGstLookup(val)
-                          } else if (val.length === 0) {
-                            setGstFeedback({ type: null, message: "" })
-                          }
-                        }}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-indigo-300 dark:border-indigo-700/80 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm tracking-wider uppercase"
-                      />
-                      {formData.gstin.length === 15 && isValidGstin(formData.gstin) && (
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        </div>
-                      )}
-                    </div>
-
-                    <button
-                      type="button"
-                      disabled={isFetchingGst || !formData.gstin.trim()}
-                      onClick={() => handleGstLookup()}
-                      className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs transition-all shadow-xs disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shrink-0"
-                    >
-                      {isFetchingGst ? (
-                        <>
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          <span>{t.fetchingGst}</span>
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-3.5 h-3.5" />
-                          <span>{t.fetchGstBtn}</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-
-                  {/* Feedback or Helper Message */}
-                  {gstFeedback.message ? (
-                    <div
-                      className={`text-[11px] p-2 rounded-xl flex items-start gap-1.5 font-medium ${
-                        gstFeedback.type === "success"
-                          ? "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
-                          : gstFeedback.type === "offline"
-                          ? "bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
-                          : "bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
-                      }`}
-                    >
-                      <span className="shrink-0">
-                        {gstFeedback.type === "success" ? "✓" : gstFeedback.type === "offline" ? "ℹ" : "⚠"}
-                      </span>
-                      <span className="leading-tight">{gstFeedback.message}</span>
-                    </div>
-                  ) : (
-                    <p className="text-[11px] text-indigo-900/70 dark:text-indigo-300/70">
-                      {t.gstinStep1Help}
-                    </p>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleInputChange("customerType", "Wholesaler")}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                      formData.customerType === "Wholesaler"
+                        ? "border-emerald-600 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 ring-1 ring-emerald-600"
+                        : "border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50"
+                    }`}
+                  >
+                    <Building2 className="w-4 h-4" />
+                    <span>Wholesaler / Stockist</span>
+                  </button>
                 </div>
+              </div>
 
-                {/* 1. Firm Name (Required *) */}
-                <div className="sm:col-span-2 space-y-1.5">
-                  <label className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1">
-                    <Building2 className="w-3.5 h-3.5 text-zinc-500" />
-                    <span>{t.firmNameLabel}</span>
-                    <span className="text-red-500 font-bold">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder={t.firmNamePlaceholder}
-                    value={formData.firmName}
-                    onChange={(e) => handleInputChange("firmName", e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-sm"
-                  />
-                </div>
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                  Shop / Firm Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.firmName}
+                  onChange={(e) => handleInputChange("firmName", e.target.value)}
+                  placeholder="e.g. Mahavir Garments & Sarees"
+                  className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
 
-                {/* 2. Proprietor / Owner Name (Required *) */}
-                <div className="space-y-1.5">
-                  <label className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1">
-                    <User className="w-3.5 h-3.5 text-zinc-500" />
-                    <span>{t.ownerNameLabel}</span>
-                    <span className="text-red-500 font-bold">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder={t.ownerNamePlaceholder}
-                    value={formData.name}
-                    onChange={(e) => handleInputChange("name", e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-sm"
-                  />
-                </div>
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                  Proprietor / Contact Person <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => handleInputChange("name", e.target.value)}
+                  placeholder="e.g. Dineshbhai Shah"
+                  className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
 
-                {/* 3. Primary Mobile Number for SMS OTP (Required *) */}
-                <div className="space-y-1.5">
-                  <label className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1">
-                    <Phone className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>{t.mobileLabel}</span>
-                    <span className="text-red-500 font-bold">*</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                    Mobile Number (for SMS OTP) <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
-                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-semibold text-zinc-500 text-xs">
-                      +91
-                    </span>
+                    <span className="absolute left-3 top-2.5 text-xs text-zinc-500 font-semibold">+91</span>
                     <input
                       type="tel"
-                      required
                       maxLength={10}
-                      placeholder="9876543210"
                       value={formData.phone}
-                      onChange={(e) => handleInputChange("phone", e.target.value.replace(/\D/g, ""))}
-                      className="w-full pl-12 pr-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono font-medium text-sm"
+                      onChange={(e) => handleInputChange("phone", e.target.value)}
+                      placeholder="9825012345"
+                      className="w-full h-10 pl-11 pr-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
                   </div>
-                  <p className="text-[10px] text-muted-foreground">
-                    {t.mobileHelp}
-                  </p>
                 </div>
 
-                {/* 4. City (Required *) */}
-                <div className="sm:col-span-2 space-y-1.5">
-                  <label className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1">
-                    <Building2 className="w-3.5 h-3.5 text-zinc-500" />
-                    <span>{t.cityLabel}</span>
-                    <span className="text-red-500 font-bold">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder={t.cityPlaceholder}
-                    value={formData.city}
-                    onChange={(e) => handleInputChange("city", e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-sm"
-                  />
-                </div>
-
-                {/* 5. Complete Shop Address (Required *) */}
-                <div className="sm:col-span-2 space-y-1.5">
-                  <label className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1">
-                    <MapPin className="w-3.5 h-3.5 text-zinc-500" />
-                    <span>{t.addressLabel}</span>
-                    <span className="text-red-500 font-bold">*</span>
-                  </label>
-                  <textarea
-                    rows={3}
-                    required
-                    placeholder={t.addressPlaceholder}
-                    value={formData.address}
-                    onChange={(e) => handleInputChange("address", e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ============================================================== */}
-          {/* STEP 2: ADDITIONAL PROFILE & CONTACT (OPTIONAL)                 */}
-          {/* ============================================================== */}
-          {currentStep === 2 && (
-            <div className="space-y-6 animate-in fade-in">
-              <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3">
-                <h2 className="text-lg sm:text-xl font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                  <User className="w-5 h-5 text-indigo-600" />
-                  <span>{t.step2Heading}</span>
-                </h2>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {t.step2Subheading}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                {/* WhatsApp Number (Optional) */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1">
-                      <MessageSquare className="w-3.5 h-3.5 text-emerald-500" />
-                      <span>{t.whatsappLabel}</span>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                      WhatsApp Number
                     </label>
-                    <label className="flex items-center gap-1 text-[11px] text-indigo-600 dark:text-indigo-400 cursor-pointer font-medium">
+                    <label className="inline-flex items-center gap-1 text-[11px] text-zinc-500 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={formData.sameAsMobile}
                         onChange={(e) => handleInputChange("sameAsMobile", e.target.checked)}
-                        className="rounded text-indigo-600 focus:ring-0"
+                        className="rounded border-zinc-300 text-emerald-600 focus:ring-emerald-500"
                       />
-                      <span>{t.sameAsMobileLabel}</span>
+                      <span>Same as Mobile</span>
                     </label>
                   </div>
-                  <div className="relative">
-                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-semibold text-zinc-500 text-xs">
-                      +91
-                    </span>
-                    <input
-                      type="tel"
-                      maxLength={10}
-                      disabled={formData.sameAsMobile}
-                      placeholder="9876543210"
-                      value={formData.phone2}
-                      onChange={(e) => handleInputChange("phone2", e.target.value.replace(/\D/g, ""))}
-                      className="w-full pl-12 pr-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-xs disabled:opacity-60"
-                    />
-                  </div>
-                </div>
-
-                {/* Email Address (Optional) */}
-                <div className="space-y-1.5">
-                  <label className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1">
-                    <Mail className="w-3.5 h-3.5 text-zinc-400" />
-                    <span>{t.emailLabel}</span>
-                  </label>
-                  <input
-                    type="email"
-                    placeholder={t.emailPlaceholder}
-                    value={formData.email}
-                    onChange={(e) => handleInputChange("email", e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
-                  />
-                </div>
-
-                {/* Market Area (Optional) */}
-                <div className="space-y-1.5">
-                  <label className="font-semibold text-zinc-800 dark:text-zinc-200">
-                    {t.marketAreaLabel}
-                  </label>
-                  <input
-                    type="text"
-                    placeholder={t.marketAreaPlaceholder}
-                    value={formData.marketArea}
-                    onChange={(e) => handleInputChange("marketArea", e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
-                  />
-                </div>
-
-                {/* District (Optional) */}
-                <div className="space-y-1.5">
-                  <label className="font-semibold text-zinc-800 dark:text-zinc-200">
-                    {t.districtLabel}
-                  </label>
-                  <input
-                    type="text"
-                    placeholder={t.districtPlaceholder}
-                    value={formData.district}
-                    onChange={(e) => handleInputChange("district", e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
-                  />
-                </div>
-
-                {/* State & Pincode (Optional) */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1.5">
-                    <label className="font-semibold text-zinc-800 dark:text-zinc-200">
-                      {t.stateLabel}
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.state}
-                      onChange={(e) => handleInputChange("state", e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="font-semibold text-zinc-800 dark:text-zinc-200">
-                      {t.pincodeLabel}
-                    </label>
-                    <input
-                      type="text"
-                      maxLength={6}
-                      placeholder="380002"
-                      value={formData.pincode}
-                      onChange={(e) => handleInputChange("pincode", e.target.value.replace(/\D/g, ""))}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-mono"
-                    />
-                  </div>
-                </div>
-
-                {/* Google Maps Location Link (Optional) */}
-                <div className="space-y-1.5">
-                  <label className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1">
-                    <MapPin className="w-3.5 h-3.5 text-indigo-500" />
-                    <span>{t.mapLinkLabel}</span>
-                  </label>
-                  <input
-                    type="url"
-                    placeholder={t.mapLinkPlaceholder}
-                    value={formData.shopMapLink}
-                    onChange={(e) => handleInputChange("shopMapLink", e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
-                  />
-                </div>
-
-                {/* Garment Categories Preference (Optional) */}
-                <div className="sm:col-span-2 space-y-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
-                  <label className="font-semibold text-zinc-800 dark:text-zinc-200">
-                    {t.garmentsLabel}
-                  </label>
-                  <p className="text-[11px] text-muted-foreground">
-                    {t.garmentsSubheading}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {GARMENT_CATEGORIES.map((cat) => {
-                      const isSelected = selectedGarments.includes(cat)
-                      return (
-                        <button
-                          key={cat}
-                          type="button"
-                          onClick={() => toggleGarment(cat)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
-                            isSelected
-                              ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
-                              : "bg-zinc-50 dark:bg-zinc-800/50 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:border-zinc-400"
-                          }`}
-                        >
-                          {isSelected ? `✓ ${cat}` : cat}
-                        </button>
-                      )
-                    })}
-                  </div>
-
-                  {/* Custom Garment add */}
-                  <div className="flex gap-2 max-w-sm pt-1">
-                    <input
-                      type="text"
-                      placeholder={t.customGarmentPlaceholder}
-                      value={customGarment}
-                      onChange={(e) => setCustomGarment(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault()
-                          addCustomGarment()
-                        }
-                      }}
-                      className="flex-1 px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800 text-xs"
-                    />
-                    <button
-                      type="button"
-                      onClick={addCustomGarment}
-                      className="px-3 py-1.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs font-semibold hover:bg-zinc-300"
-                    >
-                      {t.addBtn}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ============================================================== */}
-          {/* STEP 3: TAX & KYC DOCUMENTS                                    */}
-          {/* ============================================================== */}
-          {currentStep === 3 && (
-            <div className="space-y-6 animate-in fade-in">
-              <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3">
-                <h2 className="text-lg sm:text-xl font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                  <ShieldCheck className="w-5 h-5 text-indigo-600" />
-                  <span>{t.step3Heading}</span>
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  {t.step3Subheading}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                {/* GSTIN */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="font-semibold text-zinc-800 dark:text-zinc-200">
-                      {t.gstinLabel}
-                    </label>
-                    {formData.gstin && (
-                      <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
-                        ✓ Primary Key
-                      </span>
-                    )}
-                  </div>
-                  <input
-                    type="text"
-                    maxLength={15}
-                    placeholder={t.gstinPlaceholder}
-                    value={formData.gstin}
-                    onChange={(e) => {
-                      const val = e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "")
-                      handleInputChange("gstin", val)
-                      if (val.length >= 12 && !formData.panNumber) {
-                        const pan = extractPanFromGstin(val)
-                        if (pan) handleInputChange("panNumber", pan)
-                      }
-                    }}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-xs uppercase"
-                  />
-                  <p className="text-[10px] text-muted-foreground">
-                    {t.gstinHelp}
-                  </p>
-                </div>
-
-                {/* PAN Number */}
-                <div className="space-y-1.5">
-                  <label className="font-semibold text-zinc-800 dark:text-zinc-200">
-                    {t.panLabel}
-                  </label>
-                  <input
-                    type="text"
-                    maxLength={10}
-                    placeholder={t.panPlaceholder}
-                    value={formData.panNumber}
-                    onChange={(e) => handleInputChange("panNumber", e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, ""))}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-xs uppercase"
-                  />
-                </div>
-
-                {/* Upload: Shop Photo */}
-                <div className="sm:col-span-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
-                  <FileUpload
-                    label={t.shopPhotoLabel}
-                    folder="kyc/shop"
-                    prefix="shop_front"
-                    value={formData.shopPhotoUri}
-                    onChange={(url) => handleInputChange("shopPhotoUri", url)}
-                    description={t.shopPhotoDesc}
-                  />
-                </div>
-
-                {/* Upload: GST or Visiting Card */}
-                <div>
-                  <FileUpload
-                    label={t.gstCertLabel}
-                    folder="kyc/gst"
-                    prefix="gst_card"
-                    value={formData.gstCertPhotoUri}
-                    onChange={(url) => handleInputChange("gstCertPhotoUri", url)}
-                  />
-                </div>
-
-                {/* Upload: Aadhaar / Owner ID */}
-                <div>
-                  <FileUpload
-                    label={t.aadharLabel}
-                    folder="kyc/id"
-                    prefix="aadhar"
-                    value={formData.aadharPhotoUri}
-                    onChange={(url) => handleInputChange("aadharPhotoUri", url)}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ============================================================== */}
-          {/* STEP 4: LOGISTICS & BANK DETAILS                               */}
-          {/* ============================================================== */}
-          {currentStep === 4 && (
-            <div className="space-y-6 animate-in fade-in">
-              <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3">
-                <h2 className="text-lg sm:text-xl font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                  <Truck className="w-5 h-5 text-indigo-600" />
-                  <span>{t.step4Heading}</span>
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  {t.step4Subheading}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                {/* Preferred Transporter */}
-                <div className="space-y-1.5">
-                  <label className="font-semibold text-zinc-800 dark:text-zinc-200">
-                    {t.transporterLabel}
-                  </label>
-                  <input
-                    type="text"
-                    placeholder={t.transporterPlaceholder}
-                    value={formData.preferredTransporterName}
-                    onChange={(e) => handleInputChange("preferredTransporterName", e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
-                  />
-                </div>
-
-                {/* Booking Station / Delivery Destination */}
-                <div className="space-y-1.5">
-                  <label className="font-semibold text-zinc-800 dark:text-zinc-200">
-                    {t.stationLabel}
-                  </label>
-                  <input
-                    type="text"
-                    placeholder={t.stationPlaceholder}
-                    value={formData.transportPreference}
-                    onChange={(e) => handleInputChange("transportPreference", e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
-                  />
-                </div>
-
-                {/* Bank Name */}
-                <div className="space-y-1.5">
-                  <label className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1">
-                    <Landmark className="w-3.5 h-3.5 text-zinc-400" />
-                    <span>{t.bankNameLabel}</span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder={t.bankNamePlaceholder}
-                    value={formData.bankName}
-                    onChange={(e) => handleInputChange("bankName", e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
-                  />
-                </div>
-
-                {/* Account Number */}
-                <div className="space-y-1.5">
-                  <label className="font-semibold text-zinc-800 dark:text-zinc-200">
-                    {t.accountNumberLabel}
-                  </label>
-                  <input
-                    type="text"
-                    placeholder={t.accountNumberPlaceholder}
-                    value={formData.accountNumber}
-                    onChange={(e) => handleInputChange("accountNumber", e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-xs"
-                  />
-                </div>
-
-                {/* IFSC Code */}
-                <div className="space-y-1.5">
-                  <label className="font-semibold text-zinc-800 dark:text-zinc-200">
-                    {t.ifscLabel}
-                  </label>
-                  <input
-                    type="text"
-                    maxLength={11}
-                    placeholder={t.ifscPlaceholder}
-                    value={formData.ifscCode}
-                    onChange={(e) => handleInputChange("ifscCode", e.target.value.toUpperCase())}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-xs uppercase"
-                  />
-                </div>
-
-                {/* Remarks / Notes */}
-                <div className="sm:col-span-2 space-y-1.5">
-                  <label className="font-semibold text-zinc-800 dark:text-zinc-200">
-                    {t.notesLabel}
-                  </label>
-                  <textarea
-                    rows={2}
-                    placeholder={t.notesPlaceholder}
-                    value={formData.notes}
-                    onChange={(e) => handleInputChange("notes", e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ============================================================== */}
-          {/* STEP 5: SMS OTP VERIFICATION                                   */}
-          {/* ============================================================== */}
-          {currentStep === 5 && (
-            <div className="space-y-6 animate-in fade-in">
-              <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3">
-                <h2 className="text-lg sm:text-xl font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                  <Phone className="w-5 h-5 text-indigo-600" />
-                  <span>{t.step5Heading}</span>
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  {t.step5Subheading}
-                </p>
-              </div>
-
-              {/* Summary Card Before OTP */}
-              <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700/60 space-y-2 text-xs">
-                <p className="font-bold text-zinc-800 dark:text-zinc-200">
-                  {t.summaryTitle}
-                </p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
-                  <div>
-                    <span className="text-muted-foreground block">{t.summaryFirm}</span>
-                    <span className="font-semibold text-zinc-900 dark:text-zinc-100">{formData.firmName}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground block">{t.summaryOwner}</span>
-                    <span className="font-semibold text-zinc-900 dark:text-zinc-100">{formData.name}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground block">{t.summaryKey}</span>
-                    <span className="font-semibold font-mono text-indigo-600 dark:text-indigo-400">
-                      {formData.gstin ? `${formData.gstin} (GSTIN)` : `+91 ${formData.phone.slice(-10)} (Mobile)`}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground block">{t.summaryCityState}</span>
-                    <span className="font-semibold text-zinc-900 dark:text-zinc-100">{formData.city}, {formData.state}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground block">{t.summaryMobile}</span>
-                    <span className="font-semibold font-mono text-zinc-900 dark:text-zinc-100">+91 {formData.phone.slice(-10)}</span>
-                  </div>
-                  {formData.preferredTransporterName && (
-                    <div>
-                      <span className="text-muted-foreground block">{t.summaryTransport}</span>
-                      <span className="font-semibold text-zinc-900 dark:text-zinc-100">{formData.preferredTransporterName}</span>
+                  {!formData.sameAsMobile ? (
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-xs text-zinc-500 font-semibold">+91</span>
+                      <input
+                        type="tel"
+                        maxLength={10}
+                        value={formData.phone2}
+                        onChange={(e) => handleInputChange("phone2", e.target.value)}
+                        placeholder="WhatsApp phone number"
+                        className="w-full h-10 pl-11 pr-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
                     </div>
+                  ) : (
+                    <input
+                      type="text"
+                      disabled
+                      value={formData.phone ? `+91 ${formData.phone}` : "Same as Mobile"}
+                      className="w-full h-10 px-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/40 text-xs text-zinc-400 cursor-not-allowed"
+                    />
                   )}
                 </div>
               </div>
 
-              {/* OTP Verification Box */}
-              <div className="max-w-md mx-auto p-6 rounded-2xl bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/50 text-center space-y-4">
-                <div className="w-12 h-12 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 mx-auto flex items-center justify-center">
-                  <Phone className="w-6 h-6" />
-                </div>
-
-                <div className="space-y-1">
-                  <h3 className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
-                    {t.otpBoxHeading}
-                  </h3>
-                  <p className="text-xs text-muted-foreground">
-                    {t.otpBoxSub} <strong className="text-zinc-900 dark:text-zinc-100 font-mono">+91 {formData.phone.slice(-10)}</strong>
-                  </p>
-                </div>
-
-                {!otpSent ? (
-                  <button
-                    type="button"
-                    disabled={isSendingOtp}
-                    onClick={handleSendOtp}
-                    className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm transition-all shadow disabled:opacity-60"
-                  >
-                    {isSendingOtp ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>{t.sendingOtpBtn}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Send className="w-4 h-4" />
-                        <span>{t.sendOtpBtn}</span>
-                      </>
-                    )}
-                  </button>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 block">
-                        {t.enterOtpLabel}
-                      </label>
-                      <input
-                        type="text"
-                        maxLength={6}
-                        autoFocus
-                        placeholder="• • • • • •"
-                        value={otpCode}
-                        onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
-                        className="w-48 mx-auto text-center px-4 py-2.5 rounded-xl border-2 border-indigo-400 dark:border-indigo-600 bg-white dark:bg-zinc-900 text-xl font-mono tracking-widest font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between text-xs">
-                      <button
-                        type="button"
-                        disabled={resendTimer > 0 || isSendingOtp}
-                        onClick={handleSendOtp}
-                        className="text-indigo-600 dark:text-indigo-400 font-medium hover:underline disabled:opacity-50 disabled:no-underline flex items-center gap-1"
-                      >
-                        <RefreshCw className="w-3 h-3" />
-                        <span>{t.resendOtpBtn} {resendTimer > 0 ? `(${resendTimer}s)` : ""}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setCurrentStep(2)}
-                        className="text-zinc-500 hover:underline"
-                      >
-                        {t.changeNumberBtn}
-                      </button>
-                    </div>
-
-                    <button
-                      type="button"
-                      disabled={isVerifyingOtp || otpCode.length < 6}
-                      onClick={handleVerifyAndSubmit}
-                      className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm transition-all shadow-md hover:shadow-lg disabled:opacity-60"
-                    >
-                      {isVerifyingOtp ? (
-                        <>
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                          <span>{t.verifyingBtn}</span>
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle2 className="w-4 h-4" />
-                          <span>{t.verifySubmitBtn}</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                )}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                  Email Address (Optional)
+                </label>
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => handleInputChange("email", e.target.value)}
+                  placeholder="e.g. mahavirgarments@gmail.com"
+                  className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
               </div>
             </div>
           )}
 
-          {/* Navigation Buttons (Prev / Next) */}
-          <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
+          {/* STEP 2: LOCATION & SHOP DETAILS */}
+          {currentStep === 2 && (
+            <div className="space-y-4">
+              <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3 mb-4">
+                <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-emerald-600" />
+                  <span>Step 2: Shop Location & Market Hub</span>
+                </h3>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Specify your shop or showroom address for order billing and dispatch delivery.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                  Textile Market / Commercial Hub
+                </label>
+                <select
+                  value={formData.marketArea}
+                  onChange={(e) => handleInputChange("marketArea", e.target.value)}
+                  className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  {AHMEDABAD_TEXTILE_MARKETS.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {formData.marketArea === "Other / Outside Ahmedabad" && (
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                    Custom Market / Area Name
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.customMarket}
+                    onChange={(e) => handleInputChange("customMarket", e.target.value)}
+                    placeholder="e.g. Rajkot Soni Bazar, Surat Ring Road"
+                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                  Shop / Store Address <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  rows={2}
+                  value={formData.address}
+                  onChange={(e) => {
+                    handleInputChange("address", e.target.value)
+                    handleInputChange("shopAddress", e.target.value)
+                  }}
+                  placeholder="Shop number, floor, complex name, market road..."
+                  className="w-full p-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                    City <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.city}
+                    onChange={(e) => handleInputChange("city", e.target.value)}
+                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                    State
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.state}
+                    onChange={(e) => handleInputChange("state", e.target.value)}
+                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                    Pincode
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={6}
+                    value={formData.pincode}
+                    onChange={(e) => handleInputChange("pincode", e.target.value)}
+                    placeholder="380001"
+                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                  Google Maps Location Link (Optional)
+                </label>
+                <input
+                  type="url"
+                  value={formData.shopMapLink}
+                  onChange={(e) => handleInputChange("shopMapLink", e.target.value)}
+                  placeholder="https://maps.app.goo.gl/..."
+                  className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* STEP 3: GARMENTS, TRANSPORT & BANK */}
+          {currentStep === 3 && (
+            <div className="space-y-4">
+              <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3 mb-4">
+                <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                  <Tag className="w-4 h-4 text-emerald-600" />
+                  <span>Step 3: Garments & Transport</span>
+                </h3>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Select garment lines you retail and your preferred transport service.
+                </p>
+              </div>
+
+              {/* Garment Categories Pills */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-2">
+                  Garments & Fabrics Retailed (Select all that apply)
+                </label>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {GARMENT_CATEGORIES.map((cat) => {
+                    const isSelected = selectedGarments.includes(cat)
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => toggleGarment(cat)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                          isSelected
+                            ? "bg-emerald-600 text-white shadow-sm"
+                            : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
+                        }`}
+                      >
+                        {isSelected && <Check className="w-3 h-3 inline mr-1" />}
+                        {cat}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <div className="flex gap-2 mt-2">
+                  <input
+                    type="text"
+                    value={customGarment}
+                    onChange={(e) => setCustomGarment(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault()
+                        addCustomGarment()
+                      }
+                    }}
+                    placeholder="Add other garment category..."
+                    className="flex-1 h-9 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={addCustomGarment}
+                    className="px-3 h-9 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-xs font-bold rounded-xl"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                    Preferred Transporter / Carrier (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.preferredTransporterName}
+                    onChange={(e) => handleInputChange("preferredTransporterName", e.target.value)}
+                    placeholder="e.g. V-Trans, ARC, TCI Express, Mahaveer"
+                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                    Delivery Preference
+                  </label>
+                  <select
+                    value={formData.transportPreference}
+                    onChange={(e) => handleInputChange("transportPreference", e.target.value)}
+                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="Godown Delivery">Transporter Godown Delivery (Self Pickup)</option>
+                    <option value="Door Delivery">Door Delivery to Shop</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                    PAN Number (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={10}
+                    value={formData.panNumber}
+                    onChange={(e) => handleInputChange("panNumber", e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, ""))}
+                    placeholder="ABCDE1234F"
+                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 uppercase font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                    Bank Name (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.bankName}
+                    onChange={(e) => handleInputChange("bankName", e.target.value)}
+                    placeholder="e.g. HDFC Bank, SBI, ICICI"
+                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                  Additional Notes / Purchase Requirements
+                </label>
+                <textarea
+                  rows={2}
+                  value={formData.notes}
+                  onChange={(e) => handleInputChange("notes", e.target.value)}
+                  placeholder="e.g. Preferred credit period, weekly dispatch schedules, lot preferences..."
+                  className="w-full p-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* STEP 4: KYC & PHOTOS */}
+          {currentStep === 4 && (
+            <div className="space-y-4">
+              <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3 mb-4">
+                <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <span>Step 4: Verification Photos</span>
+                </h3>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Upload visiting cards and shop photos to fast-track your commercial account approval.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <FileUpload
+                    label="Visiting Card Photo"
+                    folder="customer_requests/visiting_cards"
+                    value={formData.visitingCardPhotoUri}
+                    onChange={(url: string) => handleInputChange("visitingCardPhotoUri", url)}
+                  />
+                </div>
+
+                <div>
+                  <FileUpload
+                    label="Shop Front / Signboard Photo"
+                    folder="customer_requests/shop_front"
+                    value={formData.shopPhotoUri}
+                    onChange={(url: string) => handleInputChange("shopPhotoUri", url)}
+                  />
+                </div>
+
+                <div>
+                  <FileUpload
+                    label="GST Certificate (Optional)"
+                    folder="customer_requests/gst_certs"
+                    value={formData.gstCertPhotoUri}
+                    onChange={(url: string) => handleInputChange("gstCertPhotoUri", url)}
+                  />
+                </div>
+
+                <div>
+                  <FileUpload
+                    label="PAN / Aadhaar Card Photo (Optional)"
+                    folder="customer_requests/id_proofs"
+                    value={formData.panPhotoUri || formData.aadharPhotoUri}
+                    onChange={(url: string) => {
+                      handleInputChange("panPhotoUri", url)
+                      handleInputChange("aadharPhotoUri", url)
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 5: PHONE VERIFICATION & SUBMISSION */}
+          {currentStep === 5 && (
+            <div className="space-y-4">
+              <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3 mb-4">
+                <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                  <Phone className="w-4 h-4 text-emerald-600" />
+                  <span>Step 5: Verify Mobile & Submit</span>
+                </h3>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Verify your mobile number via 6-digit SMS code to finalize your commercial account.
+                </p>
+              </div>
+
+              <div className="bg-zinc-50 dark:bg-zinc-800/60 p-4 rounded-xl border border-zinc-200 dark:border-zinc-700 space-y-2">
+                <div className="flex justify-between text-xs">
+                  <span className="text-zinc-500">Firm Name:</span>
+                  <span className="font-bold text-zinc-900 dark:text-zinc-100">{formData.firmName}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-zinc-500">Primary Key:</span>
+                  <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                    {formData.gstin ? `${formData.gstin} (GSTIN)` : `+91 ${formData.phone.replace(/\D/g, "").slice(-10)} (Mobile)`}
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-zinc-500">Classification:</span>
+                  <span className="font-semibold text-emerald-600">{formData.customerType}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-zinc-500">Proprietor:</span>
+                  <span className="font-medium text-zinc-800 dark:text-zinc-200">{formData.name} ({formData.phone})</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-zinc-500">Market / City:</span>
+                  <span className="font-medium text-zinc-800 dark:text-zinc-200">{formData.marketArea}, {formData.city}</span>
+                </div>
+              </div>
+
+              {!otpSent ? (
+                <div className="text-center py-4 space-y-3">
+                  <p className="text-xs text-zinc-600 dark:text-zinc-400">
+                    We will send a one-time password (OTP) via SMS to <strong>+91 {formData.phone}</strong>.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleSendOtp}
+                    disabled={isSendingOtp}
+                    className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-all disabled:opacity-50"
+                  >
+                    {isSendingOtp ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Sending OTP...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4" />
+                        <span>Send Verification OTP</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4 pt-2">
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                      Enter 6-Digit OTP Code
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={otpCode}
+                      onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
+                      placeholder="123456"
+                      className="w-full h-12 text-center tracking-widest text-lg font-bold rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-zinc-500">Didn't receive code?</span>
+                    {resendTimer > 0 ? (
+                      <span className="text-zinc-400">Resend in {resendTimer}s</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleSendOtp}
+                        disabled={isSendingOtp}
+                        className="text-emerald-600 hover:underline font-semibold"
+                      >
+                        Resend OTP
+                      </button>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleVerifyAndSubmit}
+                    disabled={isVerifyingOtp || otpCode.length < 6}
+                    className="w-full h-11 rounded-xl font-bold text-xs bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 text-white shadow-md transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {isVerifyingOtp ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Verifying & Submitting...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Verify & Submit Registration</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Navigation Buttons */}
+          <div className="mt-8 pt-4 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
             {currentStep > 1 ? (
               <button
                 type="button"
-                onClick={handlePrevStep}
-                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium text-xs hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+                onClick={goToPrevStep}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-zinc-300 dark:border-zinc-700 text-xs font-semibold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
-                <span>{t.backBtn}</span>
+                <span>Back</span>
               </button>
             ) : (
               <div></div>
             )}
 
             {currentStep < 5 && (
-              <div className="flex items-center gap-2">
-                {currentStep >= 2 && currentStep <= 4 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (validateCurrentStep(5)) {
-                        setCurrentStep(5)
-                      }
-                    }}
-                    className="hidden sm:inline-flex items-center gap-1 px-3.5 py-2.5 rounded-xl border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/70 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 font-semibold text-xs hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
-                  >
-                    <span>{t.skipToVerificationBtn}</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={handleNextStep}
-                  className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs transition-colors shadow-sm"
-                >
-                  <span>{t.nextBtn}</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={goToNextStep}
+                className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 text-white text-xs font-bold shadow-md transition-all"
+              >
+                <span>Continue</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
             )}
           </div>
         </div>
-      </main>
-
-      {/* Public Footer */}
-      <footer className="mt-auto py-6 border-t border-zinc-200 dark:border-zinc-800 text-center text-xs text-muted-foreground">
-        <p>© {new Date().getFullYear()} {t.footerText}</p>
-      </footer>
+      </div>
     </div>
   )
 }
