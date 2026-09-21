@@ -345,7 +345,9 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
         AppScreen.PAYMENTS,
         AppScreen.PENDINGS,
         AppScreen.PROFILE,
-        AppScreen.LEADS
+        AppScreen.LEADS,
+        AppScreen.PURCHASE_ORDERS,
+        AppScreen.CUSTOMER_ORDERS_REPORT
     )
 
     // Screens that display their own integrated flat header
@@ -375,7 +377,9 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
         AppScreen.PAYMENTS,
         AppScreen.PENDINGS,
         AppScreen.PROFILE,
-        AppScreen.LEADS
+        AppScreen.LEADS,
+        AppScreen.PURCHASE_ORDERS,
+        AppScreen.CUSTOMER_ORDERS_REPORT
     )
 
     // Handle Android system back button smoothly
@@ -416,6 +420,8 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
             AppScreen.ADD_EDIT_MASTER -> {
                 viewModel.navigateTo(AppScreen.CUSTOMER_MASTER)
             }
+            AppScreen.PURCHASE_ORDERS,
+            AppScreen.CUSTOMER_ORDERS_REPORT,
             AppScreen.ANALYTICS_DASHBOARD,
             AppScreen.PROFILE -> {
                 viewModel.navigateTo(AppScreen.DASHBOARD)

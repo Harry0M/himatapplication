@@ -72,6 +72,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.local.entity.CustomerEntity
 import com.example.data.local.entity.PurchaseEntryEntity
+import com.example.ui.components.CompactSearchBar
 import com.example.ui.components.StatusBadge
 import com.example.ui.components.SupplierTypeBadge
 import com.example.ui.theme.GoldAccent
@@ -148,16 +149,16 @@ fun CustomerOrderReportScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(20.dp))
+                        IconButton(onClick = onBack, modifier = Modifier.size(34.dp)) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(18.dp))
                         }
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Customer Order Reports", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                            Text("Select a retailer to view all orders of all time", color = GoldAccent, fontSize = 11.sp)
+                            Text("Customer Order Reports", color = Color.White, fontSize = 14.5.sp, fontWeight = FontWeight.Bold)
+                            Text("Select a retailer to view all orders of all time", color = GoldAccent, fontSize = 10.5.sp)
                         }
                     }
                 }
@@ -169,32 +170,17 @@ fun CustomerOrderReportScreen(
                     .padding(paddingValues)
                     .background(MaterialTheme.colorScheme.background)
             ) {
-                // Search Field
+                // Compact Search Field
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.surface)
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
-                    OutlinedTextField(
-                        value = customerSearchQuery,
-                        onValueChange = { customerSearchQuery = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("Search customer by firm name, phone or city...", fontSize = 12.5.sp) },
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                        trailingIcon = {
-                            if (customerSearchQuery.isNotBlank()) {
-                                IconButton(onClick = { customerSearchQuery = "" }) {
-                                    Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.size(18.dp))
-                                }
-                            }
-                        },
-                        singleLine = true,
-                        shape = RoundedCornerShape(10.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color(0xFFF8FAFC),
-                            unfocusedContainerColor = Color(0xFFF8FAFC)
-                        )
+                    CompactSearchBar(
+                        query = customerSearchQuery,
+                        onQueryChange = { customerSearchQuery = it },
+                        placeholder = "Search customer by firm name, phone or city..."
                     )
                 }
 
@@ -211,8 +197,8 @@ fun CustomerOrderReportScreen(
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         items(filteredCustomers, key = { it.id }) { customer ->
                             val customerVisits = remember(allVisits, customer.id) {
@@ -230,29 +216,29 @@ fun CustomerOrderReportScreen(
                                         selectedCustomer = customer
                                         currentPage = 1
                                     },
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(10.dp),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp)
+                                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                             ) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         modifier = Modifier.weight(1f)
                                     ) {
                                         Surface(
                                             shape = CircleShape,
                                             color = Color(0xFF9F1239).copy(alpha = 0.1f),
-                                            modifier = Modifier.size(40.dp)
+                                            modifier = Modifier.size(34.dp)
                                         ) {
                                             Box(contentAlignment = Alignment.Center) {
-                                                Icon(Icons.Default.Storefront, contentDescription = null, tint = Color(0xFF9F1239), modifier = Modifier.size(20.dp))
+                                                Icon(Icons.Default.Storefront, contentDescription = null, tint = Color(0xFF9F1239), modifier = Modifier.size(18.dp))
                                             }
                                         }
 
@@ -260,14 +246,14 @@ fun CustomerOrderReportScreen(
                                             Text(
                                                 text = customer.firmName.ifBlank { customer.name },
                                                 fontWeight = FontWeight.Bold,
-                                                fontSize = 14.sp,
+                                                fontSize = 13.5.sp,
                                                 color = TextPrimary,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
                                             )
                                             Text(
                                                 text = "${customer.city} • ${customer.phone}",
-                                                fontSize = 11.5.sp,
+                                                fontSize = 10.5.sp,
                                                 color = TextSecondary
                                             )
                                         }
@@ -275,14 +261,14 @@ fun CustomerOrderReportScreen(
 
                                     Surface(
                                         color = NavyPrimary.copy(alpha = 0.1f),
-                                        shape = RoundedCornerShape(6.dp)
+                                        shape = RoundedCornerShape(5.dp)
                                     ) {
                                         Text(
                                             text = "$customerOrdersCount Orders",
                                             fontWeight = FontWeight.Bold,
-                                            fontSize = 11.sp,
+                                            fontSize = 10.5.sp,
                                             color = NavyPrimary,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
                                         )
                                     }
                                 }
@@ -391,28 +377,29 @@ fun CustomerOrderReportScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { selectedCustomer = null }, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(20.dp))
+                    IconButton(onClick = { selectedCustomer = null }, modifier = Modifier.size(34.dp)) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(18.dp))
                     }
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(customer.firmName.ifBlank { customer.name }, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("${customer.city} • $totalOrders orders of all time", color = GoldAccent, fontSize = 11.sp)
+                        Text(customer.firmName.ifBlank { customer.name }, color = Color.White, fontSize = 14.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("${customer.city} • $totalOrders orders of all time", color = GoldAccent, fontSize = 10.5.sp, maxLines = 1)
                     }
 
                     // Change Customer button
                     Button(
                         onClick = { selectedCustomer = null },
                         colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.2f)),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.height(30.dp)
                     ) {
-                        Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                        Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
                         Spacer(modifier = Modifier.width(3.dp))
-                        Text("Switch", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("Switch", color = Color.White, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -426,7 +413,7 @@ fun CustomerOrderReportScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = safeBottomPadding)
+                        .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = safeBottomPadding)
                 ) {
                     // Pagination Row
                     Row(
@@ -438,7 +425,8 @@ fun CustomerOrderReportScreen(
                             onClick = { if (currentPage > 1) currentPage-- },
                             enabled = safePage > 1,
                             shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier.height(32.dp)
                         ) {
                             Icon(Icons.Default.ChevronLeft, contentDescription = "Previous", modifier = Modifier.size(16.dp))
                             Text("Prev", fontSize = 11.5.sp)
@@ -450,14 +438,15 @@ fun CustomerOrderReportScreen(
                             onClick = { if (currentPage < totalPages) currentPage++ },
                             enabled = safePage < totalPages,
                             shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier.height(32.dp)
                         ) {
                             Text("Next", fontSize = 11.5.sp)
                             Icon(Icons.Default.ChevronRight, contentDescription = "Next", modifier = Modifier.size(16.dp))
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(5.dp))
 
                     // PDF Statement Generation Actions
                     Row(
@@ -491,16 +480,16 @@ fun CustomerOrderReportScreen(
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9F1239)),
                             shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.fillMaxWidth().height(34.dp),
                             enabled = !isGeneratingPdf,
-                            contentPadding = PaddingValues(vertical = 8.dp)
+                            contentPadding = PaddingValues(vertical = 4.dp)
                         ) {
                             if (isGeneratingPdf) {
-                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                                CircularProgressIndicator(modifier = Modifier.size(14.dp), color = Color.White, strokeWidth = 2.dp)
                             } else {
-                                Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Generate PDF Statement", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                                Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text("Generate PDF Statement", fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = Color.White)
                             }
                         }
                     }
@@ -514,72 +503,58 @@ fun CustomerOrderReportScreen(
                 .padding(innerPadding)
                 .background(MaterialTheme.colorScheme.background)
         ) {
-            // KPI Summary Strip
+            // Compact KPI Summary Strip
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.surface)
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("Total Orders", fontSize = 11.sp, color = TextSecondary)
-                    Text("$totalOrders", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF9F1239))
+                    Text("Total Orders", fontSize = 9.5.sp, color = TextSecondary)
+                    Text("$totalOrders", fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = Color(0xFF9F1239))
                 }
                 Column {
-                    Text("Total Pieces", fontSize = 11.sp, color = TextSecondary)
-                    Text("$totalPieces pcs", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = NavyPrimary)
+                    Text("Total Pieces", fontSize = 9.5.sp, color = TextSecondary)
+                    Text("$totalPieces pcs", fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = NavyPrimary)
                 }
                 Column {
-                    Text("Total Cases", fontSize = 11.sp, color = TextSecondary)
-                    Text("$totalCases cases", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF047857))
+                    Text("Total Cases", fontSize = 9.5.sp, color = TextSecondary)
+                    Text("$totalCases cases", fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = Color(0xFF047857))
                 }
                 Column {
-                    Text("Total Billed", fontSize = 11.sp, color = TextSecondary)
-                    Text(PdfGenerator.formatInr(totalAmount), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFFC2410C))
+                    Text("Total Billed", fontSize = 9.5.sp, color = TextSecondary)
+                    Text(PdfGenerator.formatInr(totalAmount), fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = Color(0xFFC2410C))
                 }
             }
 
             HorizontalDivider(color = Color(0xFFE2E8F0))
 
-            // Filter Bar
+            // Compact Filter Bar
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.surface)
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
             ) {
-                OutlinedTextField(
-                    value = orderSearchQuery,
-                    onValueChange = {
+                CompactSearchBar(
+                    query = orderSearchQuery,
+                    onQueryChange = {
                         orderSearchQuery = it
                         currentPage = 1
                     },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Filter customer orders by Order #, Mill, or Item...", fontSize = 12.sp) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                    trailingIcon = {
-                        if (orderSearchQuery.isNotBlank()) {
-                            IconButton(onClick = { orderSearchQuery = ""; currentPage = 1 }) {
-                                Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.size(18.dp))
-                            }
-                        }
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color(0xFFF8FAFC),
-                        unfocusedContainerColor = Color(0xFFF8FAFC)
-                    )
+                    placeholder = "Filter customer orders by Order #, Mill, or Item..."
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     listOf("All Time", "Today", "Yesterday", "This Week", "This Month").forEach { range ->
@@ -589,7 +564,8 @@ fun CustomerOrderReportScreen(
                                 selectedDateRange = range
                                 currentPage = 1
                             },
-                            label = { Text(range, fontSize = 11.sp) },
+                            label = { Text(range, fontSize = 10.5.sp) },
+                            modifier = Modifier.height(28.dp),
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = NavyPrimary,
                                 selectedLabelColor = Color.White
@@ -602,13 +578,14 @@ fun CustomerOrderReportScreen(
                         FilterChip(
                             selected = selectedSupplierName != null,
                             onClick = { isSupplierDropdownExpanded = true },
-                            label = { Text(selectedSupplierName ?: "All Suppliers", fontSize = 11.sp) },
+                            label = { Text(selectedSupplierName ?: "All Suppliers", fontSize = 10.5.sp) },
+                            modifier = Modifier.height(28.dp),
                             trailingIcon = {
                                 if (selectedSupplierName != null) {
                                     Icon(
                                         Icons.Default.Clear,
                                         contentDescription = "Clear",
-                                        modifier = Modifier.size(14.dp).clickable { selectedSupplierName = null; currentPage = 1 }
+                                        modifier = Modifier.size(13.dp).clickable { selectedSupplierName = null; currentPage = 1 }
                                     )
                                 }
                             },
@@ -623,7 +600,7 @@ fun CustomerOrderReportScreen(
                             onDismissRequest = { isSupplierDropdownExpanded = false }
                         ) {
                             DropdownMenuItem(
-                                text = { Text("All Suppliers (Show All)", fontWeight = FontWeight.Bold) },
+                                text = { Text("All Suppliers (Show All)", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
                                 onClick = {
                                     selectedSupplierName = null
                                     currentPage = 1
@@ -632,7 +609,7 @@ fun CustomerOrderReportScreen(
                             )
                             allCustomerEntries.map { it.supplierName }.distinct().sorted().forEach { supName ->
                                 DropdownMenuItem(
-                                    text = { Text(supName) },
+                                    text = { Text(supName, fontSize = 12.sp) },
                                     onClick = {
                                         selectedSupplierName = supName
                                         currentPage = 1
@@ -650,7 +627,8 @@ fun CustomerOrderReportScreen(
                                 selectedStatus = st
                                 currentPage = 1
                             },
-                            label = { Text("Status: $st", fontSize = 11.sp) },
+                            label = { Text(if (st == "All") "All Status" else st, fontSize = 10.5.sp) },
+                            modifier = Modifier.height(28.dp),
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = Color(0xFF9F1239),
                                 selectedLabelColor = Color.White
@@ -687,26 +665,27 @@ fun CustomerOrderReportScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { onOpenOrder(entry) },
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(10.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp)
+                            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                         ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
+                            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Surface(color = Color(0xFF9F1239).copy(alpha = 0.1f), shape = RoundedCornerShape(5.dp)) {
+                                        Surface(color = Color(0xFF9F1239).copy(alpha = 0.1f), shape = RoundedCornerShape(4.dp)) {
                                             Text(
                                                 text = entry.orderNo.ifBlank { "PO-${entry.id}" },
                                                 fontWeight = FontWeight.Bold,
-                                                fontSize = 11.sp,
+                                                fontSize = 10.5.sp,
                                                 color = Color(0xFF9F1239),
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                                             )
                                         }
+                                        Text(text = entry.supplierName, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimary)
                                         if (entry.supplierType.isNotBlank()) {
                                             SupplierTypeBadge(entry.supplierType)
                                         }
@@ -715,16 +694,13 @@ fun CustomerOrderReportScreen(
                                     StatusBadge(status = entry.deliveryStatus)
                                 }
 
-                                Spacer(modifier = Modifier.height(6.dp))
-
-                                Text(text = entry.supplierName, fontWeight = FontWeight.Bold, fontSize = 13.5.sp, color = TextPrimary)
                                 Spacer(modifier = Modifier.height(4.dp))
 
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .background(Color(0xFFF8FAFC), shape = RoundedCornerShape(8.dp))
-                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                        .background(Color(0xFFF8FAFC), shape = RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 8.dp, vertical = 5.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -744,9 +720,9 @@ fun CustomerOrderReportScreen(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text(text = "Order Date: $formattedDate", fontSize = 10.sp, color = TextSecondary.copy(alpha = 0.8f))
+                                    Text(text = "Date: $formattedDate", fontSize = 9.5.sp, color = TextSecondary.copy(alpha = 0.8f))
                                     if (entry.transporter.isNotBlank()) {
-                                        Text(text = "Transport: ${entry.transporter}", fontSize = 10.sp, color = TextSecondary.copy(alpha = 0.8f))
+                                        Text(text = "Transport: ${entry.transporter}", fontSize = 9.5.sp, color = TextSecondary.copy(alpha = 0.8f))
                                     }
                                 }
                             }

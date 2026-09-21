@@ -76,6 +76,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.data.local.entity.PurchaseEntryEntity
 import com.example.data.local.entity.VisitEntity
+import com.example.ui.components.CompactSearchBar
 import com.example.ui.components.StatusBadge
 import com.example.ui.components.SupplierTypeBadge
 import com.example.ui.dialogs.FullScreenImageViewerDialog
@@ -216,29 +217,32 @@ fun PurchaseOrdersScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
+                    IconButton(onClick = onBack, modifier = Modifier.size(34.dp)) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
                             tint = Color.White,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "Purchase Orders & Invoices",
                             color = Color.White,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold
+                            fontSize = 14.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "$totalRecords total orders • $totalPieces pcs of all time",
+                            text = "$totalRecords orders • $totalPieces pcs of all time",
                             color = GoldAccent,
-                            fontSize = 11.sp
+                            fontSize = 10.5.sp,
+                            maxLines = 1
                         )
                     }
 
@@ -269,15 +273,16 @@ fun PurchaseOrdersScreen(
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC2410C)),
                         shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.height(32.dp),
                         enabled = !isGeneratingPdf
                     ) {
                         if (isGeneratingPdf) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                            CircularProgressIndicator(modifier = Modifier.size(14.dp), color = Color.White, strokeWidth = 2.dp)
                         } else {
-                            Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Bulk PDF", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.5.sp)
+                            Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text("Bulk PDF", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                         }
                     }
                 }
@@ -293,7 +298,7 @@ fun PurchaseOrdersScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = safeBottomPadding),
+                        .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = safeBottomPadding),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -301,16 +306,17 @@ fun PurchaseOrdersScreen(
                         onClick = { if (currentPage > 1) currentPage-- },
                         enabled = safePage > 1,
                         shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(32.dp)
                     ) {
-                        Icon(Icons.Default.ChevronLeft, contentDescription = "Previous", modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.ChevronLeft, contentDescription = "Previous", modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(2.dp))
-                        Text("Previous", fontSize = 12.sp)
+                        Text("Prev", fontSize = 11.5.sp)
                     }
 
                     Text(
                         text = "Page $safePage of $totalPages ($totalRecords total)",
-                        fontSize = 12.sp,
+                        fontSize = 11.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
                     )
@@ -319,11 +325,12 @@ fun PurchaseOrdersScreen(
                         onClick = { if (currentPage < totalPages) currentPage++ },
                         enabled = safePage < totalPages,
                         shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(32.dp)
                     ) {
-                        Text("Next", fontSize = 12.sp)
+                        Text("Next", fontSize = 11.5.sp)
                         Spacer(modifier = Modifier.width(2.dp))
-                        Icon(Icons.Default.ChevronRight, contentDescription = "Next", modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.ChevronRight, contentDescription = "Next", modifier = Modifier.size(16.dp))
                     }
                 }
             }
@@ -335,47 +342,48 @@ fun PurchaseOrdersScreen(
                 .padding(innerPadding)
                 .background(MaterialTheme.colorScheme.background)
         ) {
-            // KPI Summary Strip
+            // Compact KPI Summary Strip
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.surface)
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("Total Billed", fontSize = 11.sp, color = TextSecondary)
+                    Text("Total Billed", fontSize = 9.5.sp, color = TextSecondary)
                     Text(
                         text = PdfGenerator.formatInr(totalAmount),
                         fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
+                        fontSize = 12.5.sp,
                         color = Color(0xFFC2410C)
                     )
                 }
                 Column {
-                    Text("Total Pieces", fontSize = 11.sp, color = TextSecondary)
+                    Text("Total Pieces", fontSize = 9.5.sp, color = TextSecondary)
                     Text(
                         text = "$totalPieces pcs",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
+                        fontSize = 12.5.sp,
                         color = NavyPrimary
                     )
                 }
                 Column {
-                    Text("Total Cases", fontSize = 11.sp, color = TextSecondary)
+                    Text("Total Cases", fontSize = 9.5.sp, color = TextSecondary)
                     Text(
                         text = "$totalCases cases",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
+                        fontSize = 12.5.sp,
                         color = Color(0xFF047857)
                     )
                 }
                 Column {
-                    Text("GST Included", fontSize = 11.sp, color = TextSecondary)
+                    Text("GST Included", fontSize = 9.5.sp, color = TextSecondary)
                     Text(
                         text = PdfGenerator.formatInr(totalGst),
                         fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
+                        fontSize = 12.5.sp,
                         color = TextPrimary
                     )
                 }
@@ -383,45 +391,30 @@ fun PurchaseOrdersScreen(
 
             HorizontalDivider(color = Color(0xFFE2E8F0))
 
-            // Search Bar & Filter Strip
+            // Compact Search Bar & Filter Strip
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.surface)
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
             ) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = {
+                CompactSearchBar(
+                    query = searchQuery,
+                    onQueryChange = {
                         searchQuery = it
                         currentPage = 1
                     },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Search by Order #, Supplier, Item code, or Retailer...", fontSize = 12.sp) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                    trailingIcon = {
-                        if (searchQuery.isNotBlank()) {
-                            IconButton(onClick = { searchQuery = ""; currentPage = 1 }) {
-                                Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.size(18.dp))
-                            }
-                        }
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color(0xFFF8FAFC),
-                        unfocusedContainerColor = Color(0xFFF8FAFC)
-                    )
+                    placeholder = "Search by Order #, Supplier, Item code, or Retailer..."
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
                 // Scrollable Filter Chips Row
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Date Filter Chips
@@ -432,7 +425,8 @@ fun PurchaseOrdersScreen(
                                 selectedDateRange = range
                                 currentPage = 1
                             },
-                            label = { Text(range, fontSize = 11.sp) },
+                            label = { Text(range, fontSize = 10.5.sp) },
+                            modifier = Modifier.height(28.dp),
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = NavyPrimary,
                                 selectedLabelColor = Color.White
@@ -448,18 +442,19 @@ fun PurchaseOrdersScreen(
                             label = {
                                 Text(
                                     text = selectedSupplierName ?: "All Suppliers",
-                                    fontSize = 11.sp,
+                                    fontSize = 10.5.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             },
+                            modifier = Modifier.height(28.dp),
                             trailingIcon = {
                                 if (selectedSupplierName != null) {
                                     Icon(
                                         Icons.Default.Clear,
                                         contentDescription = "Clear",
                                         modifier = Modifier
-                                            .size(14.dp)
+                                            .size(13.dp)
                                             .clickable {
                                                 selectedSupplierName = null
                                                 currentPage = 1
@@ -478,7 +473,7 @@ fun PurchaseOrdersScreen(
                             onDismissRequest = { isSupplierDropdownExpanded = false }
                         ) {
                             DropdownMenuItem(
-                                text = { Text("All Suppliers (Show All)", fontWeight = FontWeight.Bold) },
+                                text = { Text("All Suppliers (Show All)", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
                                 onClick = {
                                     selectedSupplierName = null
                                     currentPage = 1
@@ -487,7 +482,7 @@ fun PurchaseOrdersScreen(
                             )
                             suppliers.map { it.firmName.ifBlank { it.name } }.distinct().sorted().forEach { supName ->
                                 DropdownMenuItem(
-                                    text = { Text(supName) },
+                                    text = { Text(supName, fontSize = 12.sp) },
                                     onClick = {
                                         selectedSupplierName = supName
                                         currentPage = 1
@@ -506,7 +501,8 @@ fun PurchaseOrdersScreen(
                                 selectedStatus = st
                                 currentPage = 1
                             },
-                            label = { Text("Status: $st", fontSize = 11.sp) },
+                            label = { Text(if (st == "All") "All Status" else st, fontSize = 10.5.sp) },
+                            modifier = Modifier.height(28.dp),
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = Color(0xFFC2410C),
                                 selectedLabelColor = Color.White
@@ -571,12 +567,12 @@ fun PurchaseOrdersScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { onOpenOrder(entry) },
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(10.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                            elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp)
                         ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                // Top Row: Order # & Badges
+                            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                // Top Row: Order #, Supplier Mill & Status
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -584,20 +580,30 @@ fun PurchaseOrdersScreen(
                                 ) {
                                     Row(
                                         horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.weight(1f, fill = false)
                                     ) {
                                         Surface(
                                             color = Color(0xFFC2410C).copy(alpha = 0.1f),
-                                            shape = RoundedCornerShape(5.dp)
+                                            shape = RoundedCornerShape(4.dp)
                                         ) {
                                             Text(
                                                 text = entry.orderNo.ifBlank { "PO-${entry.id}" },
                                                 fontWeight = FontWeight.Bold,
-                                                fontSize = 11.sp,
+                                                fontSize = 10.5.sp,
                                                 color = Color(0xFFC2410C),
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                                             )
                                         }
+
+                                        Text(
+                                            text = entry.supplierName,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.5.sp,
+                                            color = TextPrimary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
 
                                         if (entry.supplierType.isNotBlank()) {
                                             SupplierTypeBadge(entry.supplierType)
@@ -607,32 +613,25 @@ fun PurchaseOrdersScreen(
                                     StatusBadge(status = entry.deliveryStatus)
                                 }
 
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                // Supplier Mill & Retailer Link
-                                Text(
-                                    text = entry.supplierName,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
-                                    color = TextPrimary
-                                )
-
                                 if (visit != null) {
+                                    Spacer(modifier = Modifier.height(2.dp))
                                     Text(
                                         text = "Trip: ${visit.customerName} (${visit.visitCode})",
-                                        fontSize = 11.5.sp,
-                                        color = TextSecondary
+                                        fontSize = 11.sp,
+                                        color = TextSecondary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
 
-                                Spacer(modifier = Modifier.height(6.dp))
+                                Spacer(modifier = Modifier.height(5.dp))
 
                                 // Commercial / Goods Breakdown
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .background(Color(0xFFF8FAFC), shape = RoundedCornerShape(8.dp))
-                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                        .background(Color(0xFFF8FAFC), shape = RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 8.dp, vertical = 5.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -640,12 +639,12 @@ fun PurchaseOrdersScreen(
                                         Text(
                                             text = "Item: ${entry.itemCode.ifBlank { "Standard Apparel" }}",
                                             fontWeight = FontWeight.SemiBold,
-                                            fontSize = 12.sp,
+                                            fontSize = 11.5.sp,
                                             color = TextPrimary
                                         )
                                         Text(
                                             text = "${entry.pieces} pcs • ${entry.caseCount} cases (${entry.loosePieces} loose)",
-                                            fontSize = 11.sp,
+                                            fontSize = 10.5.sp,
                                             color = TextSecondary
                                         )
                                     }
@@ -654,18 +653,18 @@ fun PurchaseOrdersScreen(
                                         Text(
                                             text = PdfGenerator.formatInr(entry.grandTotalWithGst),
                                             fontWeight = FontWeight.Bold,
-                                            fontSize = 13.5.sp,
+                                            fontSize = 13.sp,
                                             color = Color(0xFF047857)
                                         )
                                         Text(
                                             text = "@ ₹${entry.rate}/pc + GST",
-                                            fontSize = 10.5.sp,
+                                            fontSize = 10.sp,
                                             color = TextSecondary
                                         )
                                     }
                                 }
 
-                                Spacer(modifier = Modifier.height(6.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
 
                                 // Footer: Date & Invoice Photo Attachment
                                 Row(
@@ -675,7 +674,7 @@ fun PurchaseOrdersScreen(
                                 ) {
                                     Text(
                                         text = formattedDate,
-                                        fontSize = 10.sp,
+                                        fontSize = 9.5.sp,
                                         color = TextSecondary.copy(alpha = 0.8f)
                                     )
 
@@ -684,13 +683,13 @@ fun PurchaseOrdersScreen(
                                     if (!invoiceUri.isNullOrBlank()) {
                                         Row(
                                             modifier = Modifier
-                                                .clip(RoundedCornerShape(6.dp))
+                                                .clip(RoundedCornerShape(4.dp))
                                                 .background(Color(0xFF2563EB).copy(alpha = 0.1f))
                                                 .clickable {
                                                     fullscreenImageUrl = invoiceUri
                                                     fullscreenImageTitle = "Invoice for ${entry.orderNo} (${entry.supplierName})"
                                                 }
-                                                .padding(horizontal = 6.dp, vertical = 3.dp),
+                                                .padding(horizontal = 5.dp, vertical = 2.dp),
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(3.dp)
                                         ) {
@@ -698,11 +697,11 @@ fun PurchaseOrdersScreen(
                                                 Icons.Default.Image,
                                                 contentDescription = "View Invoice",
                                                 tint = Color(0xFF2563EB),
-                                                modifier = Modifier.size(13.dp)
+                                                modifier = Modifier.size(12.dp)
                                             )
                                             Text(
                                                 text = "View Invoice",
-                                                fontSize = 10.sp,
+                                                fontSize = 9.5.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = Color(0xFF2563EB)
                                             )
