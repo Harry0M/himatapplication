@@ -469,7 +469,7 @@ export function SupplierRegistrationView() {
     const cleanGst = formData.gstin.trim().toUpperCase()
     const cleanPhone = formData.phone.replace(/\D/g, "").slice(-10)
     const primaryKeyDisplay = cleanGst ? `${cleanGst} (GSTIN)` : `+91 ${cleanPhone} (Mobile)`
-    const shareMessage = `Namaste! We have submitted our supplier registration with Himat Textile.%0A%0A*Mill / Firm:* ${encodeURIComponent(formData.firmName)}%0A*Contact:* ${encodeURIComponent(formData.contactPerson)} (+91 ${cleanPhone})%0A*Primary Key:* ${encodeURIComponent(primaryKeyDisplay)}%0A*Type:* ${formData.type}%0A*Market:* ${encodeURIComponent(formData.marketArea)}%0A*Ref ID:* ${submittedRequestId}`
+    const shareMessage = `Namaste! We have submitted our supplier registration with Himat Textile.%0A%0A*Mill / Firm:* ${encodeURIComponent(formData.firmName)}%0A*Contact:* ${encodeURIComponent(formData.contactPerson)} (+91 ${cleanPhone})%0A${cleanGst ? `*GSTIN:* ${encodeURIComponent(cleanGst)}%0A` : `*Mobile:* +91 ${cleanPhone}%0A`}*Type:* ${formData.type}%0A*Market:* ${encodeURIComponent(formData.marketArea)}%0A*Ref ID:* ${submittedRequestId}`
 
     return (
       <div className="min-h-screen bg-gradient-to-b from-zinc-50 to-zinc-100 dark:from-zinc-950 dark:to-zinc-900 py-10 px-4 sm:px-6">
@@ -487,9 +487,9 @@ export function SupplierRegistrationView() {
 
           <div className="mt-6 p-4 bg-zinc-50 dark:bg-zinc-800/60 rounded-xl border border-zinc-200 dark:border-zinc-700 text-left space-y-2">
             <div className="flex justify-between text-xs">
-              <span className="text-zinc-500">Primary Account Key:</span>
-              <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                {formData.gstin ? `${formData.gstin} (GSTIN)` : `+91 ${formData.phone.replace(/\D/g, "").slice(-10)} (Mobile)`}
+              <span className="text-zinc-500">{formData.gstin ? "GSTIN:" : "Mobile:"}</span>
+              <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">
+                {formData.gstin || `+91 ${formData.phone.replace(/\D/g, "").slice(-10)}`}
               </span>
             </div>
             <div className="flex justify-between text-xs">
@@ -664,98 +664,68 @@ export function SupplierRegistrationView() {
                 </p>
               </div>
 
-              {/* GSTIN First with Auto-Fetch Option */}
-              <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-50/70 via-teal-50/40 to-emerald-50/70 dark:from-emerald-950/40 dark:via-zinc-800/50 dark:to-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/80 space-y-2.5">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <label className="font-bold text-xs text-emerald-950 dark:text-emerald-200 flex items-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                    <span>
-                      {lang === "hi"
-                        ? "जीएसटी नंबर (GSTIN - वैकल्पिक / स्वतः विवरण भरें)"
-                        : "GSTIN Number (Optional - Auto-Fetch Details)"}
-                    </span>
+              {/* GSTIN (Auto-Fetch) */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                    {lang === "hi"
+                      ? "जीएसटी नंबर (वैकल्पिक)"
+                      : lang === "gu"
+                      ? "GST નંબર (વૈકલ્પિક)"
+                      : "GSTIN Number (Optional)"}
                   </label>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                      {lang === "hi" ? "वैकल्पिक • मुख्य पहचान" : "Optional • Primary Key"}
-                    </span>
-                    {formData.gstin && (
-                      <button
-                        type="button"
-                        onClick={handleClearGst}
-                        className="text-[11px] text-zinc-500 hover:text-red-600 dark:hover:text-red-400 underline ml-1"
-                      >
-                        {lang === "hi" ? "हटाएं" : "Clear"}
-                      </button>
-                    )}
-                  </div>
+                  {formData.gstin && (
+                    <button
+                      type="button"
+                      onClick={handleClearGst}
+                      className="text-[11px] text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                    >
+                      {lang === "hi" ? "साफ़ करें" : lang === "gu" ? "સાફ કરો" : "Clear"}
+                    </button>
+                  )}
                 </div>
-
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <div className="relative flex-1">
-                    <input
-                      type="text"
-                      maxLength={15}
-                      placeholder="24AAAAA0000A1Z5 (15 Characters)"
-                      value={formData.gstin}
-                      onChange={(e) => {
-                        const val = e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "")
-                        handleInputChange("gstin", val)
-                        if (val.length === 15 && isValidGstin(val)) {
-                          handleGstLookup(val)
-                        } else if (val.length === 0) {
-                          setGstFeedback({ type: null, message: "" })
-                        }
-                      }}
-                      className="w-full h-10 px-3.5 rounded-xl border border-emerald-300 dark:border-emerald-700/80 bg-white dark:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-sm tracking-wider uppercase text-zinc-900 dark:text-zinc-100"
-                    />
-                    {formData.gstin.length === 15 && isValidGstin(formData.gstin) && (
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      </div>
-                    )}
-                  </div>
-
-                  <button
-                    type="button"
-                    disabled={isFetchingGst || !formData.gstin.trim()}
-                    onClick={() => handleGstLookup()}
-                    className="h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition-all shadow-xs disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shrink-0"
-                  >
+                <div className="relative">
+                  <input
+                    type="text"
+                    maxLength={15}
+                    placeholder="24AAAAA0000A1Z5"
+                    value={formData.gstin}
+                    onChange={(e) => {
+                      const val = e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "")
+                      handleInputChange("gstin", val)
+                      if (val.length === 15 && isValidGstin(val)) {
+                        handleGstLookup(val)
+                      } else if (val.length === 0) {
+                        setGstFeedback({ type: null, message: "" })
+                      } else if (val.length < 15 && gstFeedback.type) {
+                        setGstFeedback({ type: null, message: "" })
+                      }
+                    }}
+                    onBlur={() => {
+                      if (formData.gstin.length === 15 && isValidGstin(formData.gstin) && !isFetchingGst && !gstFeedback.type) {
+                        handleGstLookup(formData.gstin)
+                      }
+                    }}
+                    className="w-full h-10 px-3.5 pr-10 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 uppercase font-mono"
+                  />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
                     {isFetchingGst ? (
-                      <>
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        <span>{lang === "hi" ? "डेटा लोड हो रहा है..." : "Fetching..."}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>{lang === "hi" ? "विवरण प्राप्त करें" : "Fetch Details"}</span>
-                      </>
-                    )}
-                  </button>
+                      <RefreshCw className="w-4 h-4 text-emerald-600 animate-spin" />
+                    ) : formData.gstin.length === 15 && isValidGstin(formData.gstin) ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    ) : null}
+                  </div>
                 </div>
-
-                {gstFeedback.message ? (
-                  <div
-                    className={`text-[11px] p-2 rounded-xl flex items-start gap-1.5 font-medium ${
-                      gstFeedback.type === "success"
-                        ? "bg-emerald-100/70 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800"
-                        : gstFeedback.type === "offline"
-                        ? "bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
-                        : "bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
+                {gstFeedback.message && (
+                  <p
+                    className={`text-[11px] mt-1 flex items-center gap-1 ${
+                      gstFeedback.type === "success" || gstFeedback.type === "offline"
+                        ? "text-emerald-600 dark:text-emerald-400 font-medium"
+                        : "text-amber-600 dark:text-amber-400"
                     }`}
                   >
-                    <span className="shrink-0">
-                      {gstFeedback.type === "success" ? "✓" : gstFeedback.type === "offline" ? "ℹ" : "⚠"}
-                    </span>
-                    <span className="leading-tight">{gstFeedback.message}</span>
-                  </div>
-                ) : (
-                  <p className="text-[11px] text-emerald-900/70 dark:text-emerald-300/70">
-                    {lang === "hi"
-                      ? "जीएसटी नंबर दर्ज करने से राज्य, पैन नंबर, मिल का नाम और पता स्वतः भर जाएगा। यदि जीएसटी नहीं है तो खाली छोड़ें।"
-                      : "Enter 15-digit GSTIN to auto-fetch mill name, address, state & PAN. If unregistered, leave blank."}
+                    <span>{gstFeedback.type === "success" ? "✓" : "ℹ"}</span>
+                    <span>{gstFeedback.message}</span>
                   </p>
                 )}
               </div>
@@ -1102,16 +1072,9 @@ export function SupplierRegistrationView() {
                 </div>
 
                 <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                      GSTIN Number (Optional)
-                    </label>
-                    {formData.gstin && (
-                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
-                        ✓ Primary Key
-                      </span>
-                    )}
-                  </div>
+                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                    GSTIN Number (Optional)
+                  </label>
                   <input
                     type="text"
                     maxLength={15}
@@ -1246,9 +1209,9 @@ export function SupplierRegistrationView() {
                   <span className="font-bold text-zinc-900 dark:text-zinc-100">{formData.firmName}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-zinc-500">Primary Key:</span>
-                  <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                    {formData.gstin ? `${formData.gstin} (GSTIN)` : `+91 ${formData.phone.replace(/\D/g, "").slice(-10)} (Mobile)`}
+                  <span className="text-zinc-500">{formData.gstin ? "GSTIN:" : "Mobile:"}</span>
+                  <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">
+                    {formData.gstin || `+91 ${formData.phone.replace(/\D/g, "").slice(-10)}`}
                   </span>
                 </div>
                 <div className="flex justify-between text-xs">
