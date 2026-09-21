@@ -51,11 +51,13 @@ import com.example.ui.screens.AddStopScreen
 import com.example.ui.screens.CustomerDetailScreen
 import com.example.ui.screens.BrandDetailScreen
 import com.example.ui.screens.CustomerReportScreen
+import com.example.ui.screens.CustomerOrderReportScreen
 import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.DeliveriesScreen
 import com.example.ui.screens.EmployeeDetailScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.LeadsScreen
+import com.example.ui.screens.PurchaseOrdersScreen
 import com.example.ui.screens.MainScreen
 import com.example.ui.screens.LoginScreen
 import com.example.ui.screens.MarketDetailScreen
@@ -840,6 +842,31 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
                     LeadsScreen(
                         viewModel = viewModel,
                         onBack = { viewModel.navigateTo(AppScreen.DASHBOARD) }
+                    )
+                }
+
+                AppScreen.PURCHASE_ORDERS -> {
+                    PurchaseOrdersScreen(
+                        viewModel = viewModel,
+                        onBack = { viewModel.navigateTo(AppScreen.DASHBOARD) },
+                        onOpenOrder = { entry ->
+                            viewModel.openOrderDetail(entry, returnScreen = AppScreen.PURCHASE_ORDERS)
+                        },
+                        onOpenVisit = { visit ->
+                            viewModel.openVisitDetail(visit, returnScreen = AppScreen.PURCHASE_ORDERS)
+                        }
+                    )
+                }
+
+                AppScreen.CUSTOMER_ORDERS_REPORT -> {
+                    val customerForReport by viewModel.selectedCustomerForReport.collectAsStateWithLifecycle()
+                    CustomerOrderReportScreen(
+                        viewModel = viewModel,
+                        initialCustomer = customerForReport,
+                        onBack = { viewModel.navigateTo(AppScreen.DASHBOARD) },
+                        onOpenOrder = { entry ->
+                            viewModel.openOrderDetail(entry, returnScreen = AppScreen.CUSTOMER_ORDERS_REPORT)
+                        }
                     )
                 }
             }

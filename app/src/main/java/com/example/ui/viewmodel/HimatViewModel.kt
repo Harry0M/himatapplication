@@ -80,7 +80,9 @@ enum class AppScreen {
     PAYMENTS,
     PENDINGS,
     PROFILE,
-    LEADS
+    LEADS,
+    PURCHASE_ORDERS,
+    CUSTOMER_ORDERS_REPORT
 }
 
 enum class MasterTab {
@@ -159,6 +161,9 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _selectedCustomer = MutableStateFlow<CustomerEntity?>(null)
     val selectedCustomer: StateFlow<CustomerEntity?> = _selectedCustomer.asStateFlow()
+
+    private val _selectedCustomerForReport = MutableStateFlow<CustomerEntity?>(null)
+    val selectedCustomerForReport: StateFlow<CustomerEntity?> = _selectedCustomerForReport.asStateFlow()
 
     private val _selectedSupplier = MutableStateFlow<SupplierEntity?>(null)
     val selectedSupplier: StateFlow<SupplierEntity?> = _selectedSupplier.asStateFlow()
@@ -649,6 +654,15 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
     fun openCustomerDetail(customer: CustomerEntity) {
         _selectedCustomer.value = customer
         _currentScreen.value = AppScreen.CUSTOMER_DETAIL
+    }
+
+    fun openCustomerOrdersReport(customer: CustomerEntity? = null) {
+        _selectedCustomerForReport.value = customer
+        _currentScreen.value = AppScreen.CUSTOMER_ORDERS_REPORT
+    }
+
+    fun openPurchaseOrders() {
+        _currentScreen.value = AppScreen.PURCHASE_ORDERS
     }
 
     fun openSupplierDetail(supplier: SupplierEntity) {

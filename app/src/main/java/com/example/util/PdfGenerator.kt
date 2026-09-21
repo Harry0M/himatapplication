@@ -1598,4 +1598,272 @@ object PdfGenerator {
         pdfDocument.close()
         return file
     }
+
+    // =========================================================================
+    // 6. ALL PURCHASE ORDERS & SUPPLIER INVOICES BULK PDF (MULTI-PAGE)
+    // =========================================================================
+    fun generatePurchaseOrdersBulkPdf(
+        context: Context,
+        entries: List<PurchaseEntryEntity>,
+        dateFilterLabel: String = "All Time",
+        supplierFilterLabel: String = "All Suppliers",
+        statusFilterLabel: String = "All Status"
+    ): File {
+        val pdfDocument = PdfDocument()
+        var pageNum = 1
+        var pageInfo = PdfDocument.PageInfo.Builder(595, 842, pageNum).create()
+        var page = pdfDocument.startPage(pageInfo)
+        var canvas: Canvas = page.canvas
+
+        val paint = Paint().apply { isAntiAlias = true }
+        val primaryColor = Color.rgb(19, 35, 56)
+        val ochreColor = Color.rgb(194, 65, 12)
+        val textDark = Color.rgb(20, 25, 35)
+        val textGray = Color.rgb(100, 110, 125)
+        val lightBg = Color.rgb(245, 247, 250)
+        val tableBorder = Color.rgb(215, 222, 230)
+
+        fun drawPurchaseOrdersHeader() {
+            paint.color = primaryColor
+            canvas.drawRect(0f, 0f, 595f, 95f, paint)
+
+            val logoBitmap = try {
+                BitmapFactory.decodeResource(context.resources, R.drawable.himat_logo)
+            } catch (_: Exception) {
+                null
+            }
+
+            val logoHeight = 60f
+            val logoWidth = if (logoBitmap != null) logoHeight * (logoBitmap.width.toFloat() / logoBitmap.height.toFloat()) else 0f
+            val logoLeft = 30f
+            val logoTop = 18f
+            if (logoBitmap != null) {
+                canvas.drawBitmap(logoBitmap, null, RectF(logoLeft, logoTop, logoLeft + logoWidth, logoTop + logoHeight), paint)
+            }
+            val textStartX = if (logoBitmap != null) (logoLeft + logoWidth + 12f) else 30f
+
+            paint.color = Color.WHITE
+            paint.textSize = 17f
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            canvas.drawText("HIMAT TEXTILE", textStartX, 35f, paint)
+
+            paint.textSize = 9.5f
+            paint.color = Color.rgb(254, 215, 170) // Warm ochre light
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            canvas.drawText("PURCHASE ORDERS & SUPPLIERS INVOICES STATEMENT", textStartX, 50f, paint)
+
+            paint.textSize = 7.5f
+            paint.color = Color.rgb(203, 213, 225)
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            canvas.drawText("Wholesale Textile Market, Maskati & New Cloth Market, Ahmedabad - 380002", textStartX, 63f, paint)
+            canvas.drawText("Phone: +91 98250 00000 • Email: info@himattextile.com", textStartX, 74f, paint)
+
+            paint.color = Color.rgb(254, 243, 199)
+            paint.textSize = 8f
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            val pageStr = "Page $pageNum"
+            canvas.drawText(pageStr, 565f - paint.measureText(pageStr), 25f, paint)
+
+            val nowStr = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault()).format(Date())
+            paint.color = Color.rgb(203, 213, 225)
+            paint.textSize = 7f
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            canvas.drawText("Generated: $nowStr", 565f - paint.measureText("Generated: $nowStr"), 38f, paint)
+        }
+
+        drawPurchaseOrdersHeader()
+
+        var y = 110f
+
+        // Filter / Scope Info Card
+        paint.color = lightBg
+        canvas.drawRoundRect(30f, y, 565f, y + 36f, 6f, 6f, paint)
+        paint.style = Paint.Style.STROKE
+        paint.color = tableBorder
+        canvas.drawRoundRect(30f, y, 565f, y + 36f, 6f, 6f, paint)
+        paint.style = Paint.Style.FILL
+
+        paint.color = textDark
+        paint.textSize = 8.5f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText("Period / Date:", 42f, y + 15f, paint)
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        paint.color = textGray
+        canvas.drawText(dateFilterLabel, 106f, y + 15f, paint)
+
+        paint.color = textDark
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText("Supplier Filter:", 235f, y + 15f, paint)
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        paint.color = textGray
+        canvas.drawText(supplierFilterLabel, 305f, y + 15f, paint)
+
+        paint.color = textDark
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText("Status Filter:", 430f, y + 15f, paint)
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        paint.color = textGray
+        canvas.drawText(statusFilterLabel, 490f, y + 15f, paint)
+
+        paint.color = textDark
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText("Total Purchase Orders:", 42f, y + 28f, paint)
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        paint.color = ochreColor
+        canvas.drawText("${entries.size} Records Listed", 145f, y + 28f, paint)
+
+        y += 48f
+
+        // Table Header function
+        fun drawTableHeader() {
+            paint.color = primaryColor
+            canvas.drawRect(30f, y, 565f, y + 20f, paint)
+
+            paint.color = Color.WHITE
+            paint.textSize = 7.5f
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+
+            canvas.drawText("#", 35f, y + 13f, paint)
+            canvas.drawText("Order No", 50f, y + 13f, paint)
+            canvas.drawText("Supplier Mill", 115f, y + 13f, paint)
+            canvas.drawText("Item / Fabric", 225f, y + 13f, paint)
+            canvas.drawText("Cases", 310f, y + 13f, paint)
+            canvas.drawText("Pieces", 350f, y + 13f, paint)
+            canvas.drawText("Rate", 390f, y + 13f, paint)
+            canvas.drawText("Taxable", 430f, y + 13f, paint)
+            canvas.drawText("Total+GST", 480f, y + 13f, paint)
+            canvas.drawText("Status", 535f, y + 13f, paint)
+
+            y += 20f
+        }
+
+        drawTableHeader()
+
+        val totalPieces = entries.sumOf { it.pieces }
+        val totalCases = entries.sumOf { it.caseCount }
+        val totalTaxable = entries.sumOf { it.totalAmount }
+        val totalGst = entries.sumOf { it.gstAmount }
+        val grandTotal = entries.sumOf { it.grandTotalWithGst }
+
+        entries.forEachIndexed { index, entry ->
+            if (y > 770f) {
+                pdfDocument.finishPage(page)
+                pageNum++
+                pageInfo = PdfDocument.PageInfo.Builder(595, 842, pageNum).create()
+                page = pdfDocument.startPage(pageInfo)
+                canvas = page.canvas
+                drawPurchaseOrdersHeader()
+                y = 110f
+                drawTableHeader()
+            }
+
+            if (index % 2 == 1) {
+                paint.color = Color.rgb(250, 250, 252)
+                canvas.drawRect(30f, y, 565f, y + 21f, paint)
+            }
+
+            paint.color = tableBorder
+            canvas.drawLine(30f, y + 21f, 565f, y + 21f, paint)
+
+            paint.color = textDark
+            paint.textSize = 7.5f
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+
+            canvas.drawText("${index + 1}", 35f, y + 14f, paint)
+
+            val orderCode = entry.orderNo.ifBlank { "PO-${entry.id}" }
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            canvas.drawText(orderCode, 50f, y + 14f, paint)
+
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            val supDisplay = entry.supplierName.take(18)
+            canvas.drawText(supDisplay, 115f, y + 14f, paint)
+
+            val itemDisplay = entry.itemCode.ifBlank { "Garments" }.take(14)
+            canvas.drawText(itemDisplay, 225f, y + 14f, paint)
+
+            canvas.drawText("${entry.caseCount}", 315f, y + 14f, paint)
+            canvas.drawText("${entry.pieces}", 352f, y + 14f, paint)
+            canvas.drawText("₹${entry.rate.toInt()}", 390f, y + 14f, paint)
+            canvas.drawText("₹${entry.totalAmount.toInt()}", 430f, y + 14f, paint)
+
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            canvas.drawText("₹${entry.grandTotalWithGst.toInt()}", 480f, y + 14f, paint)
+
+            // Status indicator
+            val isDelivered = entry.deliveryStatus.equals("Delivered", ignoreCase = true)
+            paint.color = if (isDelivered) Color.rgb(22, 163, 74) else Color.rgb(217, 119, 6)
+            paint.textSize = 6.5f
+            canvas.drawText(entry.deliveryStatus.take(8), 535f, y + 14f, paint)
+
+            y += 21f
+        }
+
+        y += 14f
+
+        if (y > 720f) {
+            pdfDocument.finishPage(page)
+            pageNum++
+            pageInfo = PdfDocument.PageInfo.Builder(595, 842, pageNum).create()
+            page = pdfDocument.startPage(pageInfo)
+            canvas = page.canvas
+            drawPurchaseOrdersHeader()
+            y = 110f
+        }
+
+        // Summary Card
+        paint.color = lightBg
+        canvas.drawRoundRect(280f, y, 565f, y + 68f, 4f, 4f, paint)
+        paint.style = Paint.Style.STROKE
+        paint.color = tableBorder
+        canvas.drawRoundRect(280f, y, 565f, y + 68f, 4f, 4f, paint)
+        paint.style = Paint.Style.FILL
+
+        paint.color = textDark
+        paint.textSize = 8.5f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText("Total Items / Pieces:", 295f, y + 16f, paint)
+        canvas.drawText("${entries.size} Orders / $totalPieces Pcs ($totalCases Cases)", 415f, y + 16f, paint)
+
+        canvas.drawText("Taxable + GST Amount:", 295f, y + 32f, paint)
+        canvas.drawText("${formatInr(totalTaxable)} + ${formatInr(totalGst)}", 415f, y + 32f, paint)
+
+        paint.color = primaryColor
+        canvas.drawRect(280f, y + 42f, 565f, y + 68f, paint)
+        paint.color = Color.WHITE
+        paint.textSize = 9.5f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText("GRAND TOTAL VALUE:", 295f, y + 58f, paint)
+        canvas.drawText(formatInr(grandTotal), 465f, y + 58f, paint)
+
+        y += 88f
+
+        // Footer
+        paint.color = textGray
+        paint.textSize = 7.5f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        canvas.drawText("• This report is a consolidated statement of purchase orders and supplier invoices.", 30f, y, paint)
+        canvas.drawText("• Generated securely by Himat Textile Application system.", 30f, y + 11f, paint)
+
+        y += 35f
+        paint.color = textDark
+        paint.textSize = 8.5f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawLine(50f, y, 190f, y, paint)
+        canvas.drawText("Prepared By", 85f, y + 14f, paint)
+
+        canvas.drawLine(405f, y, 545f, y, paint)
+        canvas.drawText("For HIMAT TEXTILE", 430f, y + 14f, paint)
+
+        pdfDocument.finishPage(page)
+
+        val outputDir = File(context.cacheDir, "reports")
+        if (!outputDir.exists()) outputDir.mkdirs()
+        val file = File(outputDir, "Purchase_Orders_Statement_${System.currentTimeMillis()}.pdf")
+        FileOutputStream(file).use { out ->
+            pdfDocument.writeTo(out)
+        }
+        pdfDocument.close()
+        return file
+    }
 }

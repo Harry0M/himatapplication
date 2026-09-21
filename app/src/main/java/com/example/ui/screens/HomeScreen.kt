@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.PendingActions
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Search
@@ -220,22 +221,128 @@ fun HomeScreen(
     }
 
     // Option Tiles Definition - Every feature has its own distinct tile
+    // Option Tiles Definition - Every feature has its own distinct tile
     val allTiles = remember(
-        visits.size, activeVisits.size, customers.size, suppliers.size,
+        visits.size, activeVisits.size, customers.size, suppliers.size, entries.size,
         employees.size, pendingDeliveries, totalLoosePcs, totalPendingDues, totalPendingTasks, isSuperAdmin
     ) {
         buildList {
+            // 1. Dashboard (sabse pahle dashboard rakho)
+            add(
+                HomeTileItem(
+                    id = "dashboard",
+                    title = "Dashboard",
+                    subtitle = "Operations & analytics",
+                    icon = Icons.Default.Dashboard,
+                    accentColor = Color(0xFF3730A3), // Royal Indigo
+                    onClick = { onNavigate(AppScreen.ANALYTICS_DASHBOARD) }
+                )
+            )
+
+            // 2. New Visit (then new visit)
             add(
                 HomeTileItem(
                     id = "new_visit",
                     title = "New Visit",
                     subtitle = "Start market trip",
                     icon = Icons.Default.AddCircle,
-                    accentColor = Color(0xFF059669), // Emerald Green
+                    accentColor = Color(0xFF047857), // Deep Emerald Forest
                     isPrimaryAction = true,
                     onClick = onOpenNewVisit
                 )
             )
+
+            // 3. All Trips (all trips)
+            add(
+                HomeTileItem(
+                    id = "visits",
+                    title = "All Trips",
+                    subtitle = if (activeVisits.isNotEmpty()) "${activeVisits.size} active ongoing" else "${visits.size} total trips",
+                    statusBadge = if (activeVisits.isNotEmpty()) "${activeVisits.size} Active" else null,
+                    icon = Icons.AutoMirrored.Filled.Assignment,
+                    accentColor = Color(0xFF1E3A8A), // Deep Sapphire Blue
+                    onClick = { onNavigate(AppScreen.VISITS) }
+                )
+            )
+
+            // 4. Leads (leads)
+            add(
+                HomeTileItem(
+                    id = "leads",
+                    title = "Leads",
+                    subtitle = "${allLeads.size} prospects met",
+                    statusBadge = if (allLeads.isNotEmpty()) "${allLeads.size} Leads" else null,
+                    icon = Icons.Default.People,
+                    accentColor = Color(0xFF0F766E), // Deep Ocean Teal
+                    onClick = { onNavigate(AppScreen.LEADS) }
+                )
+            )
+
+            // 5. Deliveries (deliveries)
+            add(
+                HomeTileItem(
+                    id = "deliveries",
+                    title = "Deliveries",
+                    subtitle = if (pendingDeliveries > 0) "$pendingDeliveries in transit" else "All orders cleared",
+                    statusBadge = if (pendingDeliveries > 0) "$pendingDeliveries Transit" else null,
+                    icon = Icons.Default.LocalShipping,
+                    accentColor = Color(0xFF475569), // Slate Blue
+                    onClick = { onNavigate(AppScreen.DELIVERIES) }
+                )
+            )
+
+            // 6. All Purchase Orders (all purchase orders that means suppliers invoices)
+            add(
+                HomeTileItem(
+                    id = "purchase_orders",
+                    title = "Purchase Orders",
+                    subtitle = "${entries.size} supplier invoices",
+                    statusBadge = if (entries.isNotEmpty()) "${entries.size} Orders" else null,
+                    icon = Icons.Default.Receipt,
+                    accentColor = Color(0xFFC2410C), // Rich Ochre Orange
+                    onClick = { onNavigate(AppScreen.PURCHASE_ORDERS) }
+                )
+            )
+
+            // 7. Customer Report (customer report screen)
+            add(
+                HomeTileItem(
+                    id = "customer_report",
+                    title = "Customer Report",
+                    subtitle = "Order statements & history",
+                    icon = Icons.Default.Assessment,
+                    accentColor = Color(0xFF9F1239), // Rich Crimson Wine
+                    onClick = { onNavigate(AppScreen.CUSTOMER_ORDERS_REPORT) }
+                )
+            )
+
+            // 8. Payments & Bills
+            add(
+                HomeTileItem(
+                    id = "payments",
+                    title = "Payments & Bills",
+                    subtitle = if (totalPendingDues > 0) "₹${PdfGenerator.formatInr(totalPendingDues)} balance" else "All bills cleared",
+                    statusBadge = if (totalPendingDues > 0) "₹${PdfGenerator.formatInr(totalPendingDues)}" else "Cleared ✓",
+                    icon = Icons.Default.Payments,
+                    accentColor = Color(0xFF059669), // Emerald
+                    onClick = { onNavigate(AppScreen.PAYMENTS) }
+                )
+            )
+
+            // 9. Loose Packing
+            add(
+                HomeTileItem(
+                    id = "mixed_pack",
+                    title = "Loose Packing",
+                    subtitle = if (totalLoosePcs > 0) "$totalLoosePcs loose pieces" else "All cases packed",
+                    statusBadge = if (totalLoosePcs > 0) "$totalLoosePcs Pcs" else null,
+                    icon = Icons.AutoMirrored.Filled.FactCheck,
+                    accentColor = Color(0xFFEA580C), // Orange / Coral
+                    onClick = onOpenMixedPack
+                )
+            )
+
+            // 10. Pending Hub
             add(
                 HomeTileItem(
                     id = "pendings",
@@ -243,62 +350,38 @@ fun HomeScreen(
                     subtitle = if (totalPendingTasks > 0) "$totalPendingTasks tasks need action" else "All operations cleared",
                     statusBadge = if (totalPendingTasks > 0) "$totalPendingTasks Pending" else "All Clear ✓",
                     icon = Icons.Default.PendingActions,
-                    accentColor = Color(0xFFDC2626), // Crimson Red
+                    accentColor = Color(0xFFB91C1C), // Crimson Red
                     onClick = { onNavigate(AppScreen.PENDINGS) }
                 )
             )
+
+            // 11. Wholesale Hub
             add(
                 HomeTileItem(
-                    id = "dashboard",
-                    title = "Dashboard",
-                    subtitle = "Operations & analytics",
-                    icon = Icons.Default.Dashboard,
-                    accentColor = Color(0xFF4F46E5), // Royal Indigo
-                    onClick = { onNavigate(AppScreen.ANALYTICS_DASHBOARD) }
+                    id = "trading_hub",
+                    title = "Wholesale Hub",
+                    subtitle = "Direct mill deals",
+                    icon = Icons.Default.Storefront,
+                    accentColor = Color(0xFF1E293B), // Dark Slate
+                    onClick = { onNavigate(AppScreen.SUPPLIER_HUB) }
                 )
             )
-            add(
-                HomeTileItem(
-                    id = "visits",
-                    title = "Market Trips",
-                    subtitle = if (activeVisits.isNotEmpty()) "${activeVisits.size} active ongoing" else "${visits.size} total trips",
-                    statusBadge = if (activeVisits.isNotEmpty()) "${activeVisits.size} Active" else null,
-                    icon = Icons.AutoMirrored.Filled.Assignment,
-                    accentColor = Color(0xFF1E40AF), // Deep Sapphire
-                    onClick = { onNavigate(AppScreen.VISITS) }
+
+            // 12. Staff & Agents (Admin only)
+            if (isSuperAdmin) {
+                add(
+                    HomeTileItem(
+                        id = "employees",
+                        title = "Staff & Agents",
+                        subtitle = "${employees.size} active agents",
+                        icon = Icons.Default.Badge,
+                        accentColor = Color(0xFFB45309), // Warm Amber
+                        onClick = { onNavigate(AppScreen.EMPLOYEE_MASTER) }
+                    )
                 )
-            )
-            add(
-                HomeTileItem(
-                    id = "customers",
-                    title = "Customers",
-                    subtitle = "${customers.size} registered retailers",
-                    icon = Icons.Default.People,
-                    accentColor = Color(0xFF0284C7), // Sky Blue
-                    onClick = { onNavigate(AppScreen.CUSTOMER_MASTER) }
-                )
-            )
-            add(
-                HomeTileItem(
-                    id = "suppliers",
-                    title = "Suppliers",
-                    subtitle = "${suppliers.size} wholesale suppliers",
-                    icon = Icons.Default.Store,
-                    accentColor = Color(0xFF7C3AED), // Rich Purple
-                    onClick = { onNavigate(AppScreen.SUPPLIER_MASTER) }
-                )
-            )
-            add(
-                HomeTileItem(
-                    id = "leads",
-                    title = "Leads & Prospects",
-                    subtitle = "${allLeads.size} market contacts",
-                    statusBadge = if (allLeads.isNotEmpty()) "${allLeads.size} Leads" else null,
-                    icon = Icons.Default.People,
-                    accentColor = Color(0xFF0D9488), // Teal
-                    onClick = { onNavigate(AppScreen.LEADS) }
-                )
-            )
+            }
+
+            // 13. User Requests (Admin only)
             if (isSuperAdmin) {
                 add(
                     HomeTileItem(
@@ -312,71 +395,6 @@ fun HomeScreen(
                     )
                 )
             }
-            if (isSuperAdmin) {
-                add(
-                    HomeTileItem(
-                        id = "employees",
-                        title = "Staff & Agents",
-                        subtitle = "${employees.size} active agents",
-                        icon = Icons.Default.Badge,
-                        accentColor = Color(0xFFD97706), // Warm Amber
-                        onClick = { onNavigate(AppScreen.EMPLOYEE_MASTER) }
-                    )
-                )
-            }
-            add(
-                HomeTileItem(
-                    id = "deliveries",
-                    title = "Deliveries",
-                    subtitle = if (pendingDeliveries > 0) "$pendingDeliveries in transit" else "All orders cleared",
-                    statusBadge = if (pendingDeliveries > 0) "$pendingDeliveries Transit" else null,
-                    icon = Icons.Default.LocalShipping,
-                    accentColor = Color(0xFF0D9488), // Teal
-                    onClick = { onNavigate(AppScreen.DELIVERIES) }
-                )
-            )
-            add(
-                HomeTileItem(
-                    id = "payments",
-                    title = "Payments & Bills",
-                    subtitle = if (totalPendingDues > 0) "₹${PdfGenerator.formatInr(totalPendingDues)} balance due" else "All bills cleared",
-                    statusBadge = if (totalPendingDues > 0) "₹${PdfGenerator.formatInr(totalPendingDues)}" else "Cleared ✓",
-                    icon = Icons.Default.Payments,
-                    accentColor = Color(0xFF059669), // Emerald Green
-                    onClick = { onNavigate(AppScreen.PAYMENTS) }
-                )
-            )
-            add(
-                HomeTileItem(
-                    id = "mixed_pack",
-                    title = "Loose Packing",
-                    subtitle = if (totalLoosePcs > 0) "$totalLoosePcs loose pieces" else "All cases packed",
-                    statusBadge = if (totalLoosePcs > 0) "$totalLoosePcs Pcs" else null,
-                    icon = Icons.AutoMirrored.Filled.FactCheck,
-                    accentColor = Color(0xFFEA580C), // Orange / Coral
-                    onClick = onOpenMixedPack
-                )
-            )
-            add(
-                HomeTileItem(
-                    id = "reports",
-                    title = "Reports",
-                    subtitle = "Day summary & billing",
-                    icon = Icons.Default.Assessment,
-                    accentColor = Color(0xFFE11D48), // Rose Crimson
-                    onClick = { onNavigate(AppScreen.REPORTS) }
-                )
-            )
-            add(
-                HomeTileItem(
-                    id = "trading_hub",
-                    title = "Wholesale Hub",
-                    subtitle = "Direct supplier deals",
-                    icon = Icons.Default.Storefront,
-                    accentColor = Color(0xFF334155), // Dark Slate
-                    onClick = { onNavigate(AppScreen.SUPPLIER_HUB) }
-                )
-            )
         }
     }
 
@@ -1006,85 +1024,83 @@ fun HomeOptionTile(
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = tile.accentColor
         ),
         elevation = CardDefaults.cardElevation(
-            defaultElevation = if (tile.isPrimaryAction) 3.dp else 1.5.dp
+            defaultElevation = if (tile.isPrimaryAction) 4.dp else 2.dp
         ),
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
             .clickable { tile.onClick() }
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.SpaceBetween
+                .defaultMinSize(minHeight = 135.dp)
+                .padding(horizontal = 10.dp, vertical = 14.dp)
         ) {
-            // Top Row: Icon Container & Status pill / Chevron
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            // Top-right status badge (if available)
+            if (tile.statusBadge != null) {
+                Surface(
+                    color = Color.White.copy(alpha = 0.22f),
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier.align(Alignment.TopEnd)
+                ) {
+                    Text(
+                        text = tile.statusBadge,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 10.sp,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
+                    )
+                }
+            }
+
+            // Centered content: Icon + Title + Subtitle
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.Center),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
+                // Centered circular icon container
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(11.dp))
-                        .background(
-                            if (tile.isPrimaryAction) Color(0xFF059669)
-                            else tile.accentColor.copy(alpha = 0.12f)
-                        ),
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.2f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = tile.icon,
                         contentDescription = tile.title,
-                        tint = if (tile.isPrimaryAction) Color.White else tile.accentColor,
-                        modifier = Modifier.size(22.dp)
+                        tint = Color.White,
+                        modifier = Modifier.size(26.dp)
                     )
                 }
 
-                if (tile.statusBadge != null) {
-                    Surface(
-                        color = tile.accentColor.copy(alpha = 0.12f),
-                        shape = RoundedCornerShape(6.dp)
-                    ) {
-                        Text(
-                            text = tile.statusBadge,
-                            color = tile.accentColor,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
-                        )
-                    }
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
+                Spacer(modifier = Modifier.height(10.dp))
 
-            Spacer(modifier = Modifier.height(14.dp))
-
-            Column {
+                // Centered Main Title
                 Text(
                     text = tile.title,
-                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 14.5.sp,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+
                 Spacer(modifier = Modifier.height(2.dp))
+
+                // Centered Subtitle
                 Text(
                     text = tile.subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 12.sp,
+                    color = Color.White.copy(alpha = 0.88f),
+                    fontSize = 11.sp,
+                    textAlign = TextAlign.Center,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
