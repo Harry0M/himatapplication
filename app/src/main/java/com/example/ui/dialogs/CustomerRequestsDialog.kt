@@ -93,6 +93,7 @@ import com.example.ui.theme.GoldAccent
 import com.example.ui.theme.NavyPrimary
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import com.example.util.rememberDialogBottomPadding
 import com.example.ui.viewmodel.HimatViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -996,18 +997,19 @@ private fun CustomerRequestInspectorDialog(
 
                 // Action Bar at Bottom (If PENDING)
                 if (request.status.equals("PENDING", ignoreCase = true)) {
+                    val safeBottomPadding = rememberDialogBottomPadding(extraPadding = 14.dp, fallbackNavHeight = 48.dp)
+
                     Surface(
                         color = MaterialTheme.colorScheme.surface,
-                        shadowElevation = 6.dp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .navigationBarsPadding()
+                        shadowElevation = 8.dp,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = safeBottomPadding),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             OutlinedButton(
                                 onClick = { showRejectDialog = true },

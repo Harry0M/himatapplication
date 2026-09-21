@@ -107,6 +107,7 @@ import com.example.ui.theme.NavyPrimary
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 import com.example.ui.viewmodel.HimatViewModel
+import com.example.util.rememberDialogBottomPadding
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -1062,26 +1063,30 @@ private fun AddEditLeadDialog(
                     }
                 }
 
+                val safeBottomPadding = rememberDialogBottomPadding(extraPadding = 14.dp, fallbackNavHeight = 48.dp)
+
                 // Save Action Bar at bottom
                 Surface(
                     color = MaterialTheme.colorScheme.surface,
-                    shadowElevation = 6.dp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
+                    shadowElevation = 8.dp,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = safeBottomPadding),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         OutlinedButton(
                             onClick = onDismiss,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp),
+                            shape = RoundedCornerShape(8.dp),
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                         ) {
-                            Text("Cancel", fontSize = 11.5.sp)
+                            Text("Cancel", fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
                         }
 
                         Button(
@@ -1117,11 +1122,14 @@ private fun AddEditLeadDialog(
                                     onSaved()
                                 }
                             },
-                            modifier = Modifier.weight(2f),
+                            modifier = Modifier
+                                .weight(2f)
+                                .height(44.dp),
+                            shape = RoundedCornerShape(8.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                         ) {
-                            Text("Save Lead", fontWeight = FontWeight.Bold, fontSize = 11.5.sp)
+                            Text("Save Lead", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
                     }
                 }

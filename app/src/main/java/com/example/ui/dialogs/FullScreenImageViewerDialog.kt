@@ -59,6 +59,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.example.util.ImageDownloadHelper
+import com.example.util.rememberDialogBottomPadding
 import kotlinx.coroutines.launch
 
 @Composable
@@ -236,18 +237,19 @@ fun FullScreenImageViewerDialog(
                 }
             }
 
+            val safeBottomPadding = rememberDialogBottomPadding(extraPadding = 16.dp, fallbackNavHeight = 48.dp)
+
             // Bottom Action Bar (Download, Share, Open in Browser)
             Surface(
                 color = Color(0xCC000000),
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = safeBottomPadding),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
