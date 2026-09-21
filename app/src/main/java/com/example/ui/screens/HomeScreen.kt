@@ -8,8 +8,11 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -31,8 +35,10 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Assignment
@@ -85,13 +91,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -468,53 +478,65 @@ fun HomeScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 14.dp, vertical = 10.dp)
                 ) {
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        placeholder = {
-                            Text(
-                                text = "Search trips or suppliers by name...",
-                                fontSize = 13.5.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        },
-                        leadingIcon = {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(40.dp)
+                            .background(Color(0xFFF1F5F9), RoundedCornerShape(20.dp))
+                            .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(20.dp))
+                            .padding(horizontal = 12.dp)
+                            .testTag("home_top_search_bar"),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.Search,
                                 contentDescription = "Search",
                                 tint = NavyPrimary,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(18.dp)
                             )
-                        },
-                        trailingIcon = {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Box(modifier = Modifier.weight(1f)) {
+                                if (searchQuery.isEmpty()) {
+                                    Text(
+                                        text = "Search trips, suppliers by name...",
+                                        fontSize = 13.sp,
+                                        color = TextSecondary.copy(alpha = 0.7f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                BasicTextField(
+                                    value = searchQuery,
+                                    onValueChange = { searchQuery = it },
+                                    singleLine = true,
+                                    textStyle = TextStyle(
+                                        fontSize = 13.sp,
+                                        color = TextPrimary,
+                                        fontWeight = FontWeight.Medium
+                                    ),
+                                    cursorBrush = SolidColor(NavyPrimary),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
                             if (searchQuery.isNotEmpty()) {
                                 IconButton(
                                     onClick = { searchQuery = "" },
-                                    modifier = Modifier.size(36.dp)
+                                    modifier = Modifier.size(28.dp)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Clear,
                                         contentDescription = "Clear Search",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(18.dp)
+                                        tint = TextSecondary,
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
                             }
-                        },
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
-                            focusedBorderColor = Color.Transparent,
-                            unfocusedBorderColor = Color.Transparent
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .defaultMinSize(minHeight = 46.dp)
-                            .testTag("home_top_search_bar")
-                    )
+                        }
+                    }
 
                     if (searchQuery.isNotBlank()) {
                         Spacer(modifier = Modifier.height(8.dp))
@@ -894,7 +916,49 @@ fun HomeScreen(
                 }
             } else {
                 // ==================== DEFAULT HOME VIEW ====================
-                // 1. Active Market Visit Strip (Quick Action if ongoing)
+                // 1. Quick Operations Snapshot Strip
+                item(span = { GridItemSpan(2) }) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        HomeMetricPill(
+                            label = "Active Trips",
+                            value = "${activeVisits.size}",
+                            dotColor = Color(0xFF059669),
+                            onClick = { onNavigate(AppScreen.VISITS) }
+                        )
+                        HomeMetricPill(
+                            label = "Invoices",
+                            value = "${entries.size}",
+                            dotColor = Color(0xFFC2410C),
+                            onClick = { onNavigate(AppScreen.PURCHASE_ORDERS) }
+                        )
+                        HomeMetricPill(
+                            label = "In Transit",
+                            value = "$pendingDeliveries",
+                            dotColor = Color(0xFF2563EB),
+                            onClick = { onNavigate(AppScreen.DELIVERIES) }
+                        )
+                        HomeMetricPill(
+                            label = "Leads",
+                            value = "${allLeads.size}",
+                            dotColor = Color(0xFF0F766E),
+                            onClick = { onNavigate(AppScreen.LEADS) }
+                        )
+                        HomeMetricPill(
+                            label = "Pending Dues",
+                            value = if (totalPendingDues > 0) "₹${PdfGenerator.formatInr(totalPendingDues)}" else "₹0",
+                            dotColor = Color(0xFFDC2626),
+                            onClick = { onNavigate(AppScreen.PAYMENTS) }
+                        )
+                    }
+                }
+
+                // 2. Active Market Visit Strip (Quick Action if ongoing)
                 if (activeVisits.isNotEmpty()) {
                     item(span = { GridItemSpan(2) }) {
                         val currentActive = activeVisits.first()
@@ -903,16 +967,23 @@ fun HomeScreen(
 
                         Card(
                             shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFECFDF5)),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF065F46)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
                                 .clickable { onOpenVisit(currentActive) }
                                 .testTag("home_active_visit_banner")
                         ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .background(
+                                        Brush.linearGradient(
+                                            listOf(Color(0xFF064E3B), Color(0xFF065F46), Color(0xFF047857))
+                                        )
+                                    )
                                     .padding(horizontal = 14.dp, vertical = 12.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
@@ -924,9 +995,10 @@ fun HomeScreen(
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .size(38.dp)
+                                            .size(40.dp)
                                             .clip(CircleShape)
-                                            .background(Color(0xFF059669)),
+                                            .background(Color.White.copy(alpha = 0.2f))
+                                            .border(1.dp, Color.White.copy(alpha = 0.35f), CircleShape),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
@@ -937,42 +1009,74 @@ fun HomeScreen(
                                         )
                                     }
                                     Column {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(6.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color(0xFFA7F3D0))
+                                            )
+                                            Text(
+                                                text = "ONGOING TRIP",
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFFA7F3D0),
+                                                letterSpacing = 0.6.sp
+                                            )
+                                        }
                                         Text(
-                                            text = "Active Trip: ${currentActive.customerName}",
+                                            text = currentActive.customerName,
                                             fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp,
-                                            color = Color(0xFF065F46),
+                                            fontSize = 14.5.sp,
+                                            color = Color.White,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
                                         Text(
                                             text = "${currentVisitEntries.size} stops • $currentPcs pcs • Agent: ${currentActive.employeeName}",
                                             fontSize = 11.5.sp,
-                                            color = Color(0xFF047857),
-                                            fontWeight = FontWeight.Medium
+                                            color = Color.White.copy(alpha = 0.85f),
+                                            fontWeight = FontWeight.Normal
                                         )
                                     }
                                 }
 
-                                Button(
-                                    onClick = { onOpenVisit(currentActive) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                    modifier = Modifier.defaultMinSize(minHeight = 32.dp)
+                                Surface(
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = Color.White,
+                                    shadowElevation = 2.dp,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .clickable { onOpenVisit(currentActive) }
                                 ) {
-                                    Text(
-                                        text = "Resume",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = "Resume",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF065F46)
+                                        )
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                            contentDescription = null,
+                                            tint = Color(0xFF065F46),
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
                 }
 
-                // 2. Market Modules Header
+                // 3. Operations Header
                 item(span = { GridItemSpan(2) }) {
                     Row(
                         modifier = Modifier
@@ -981,21 +1085,40 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "Operations",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        Text(
-                            text = "${allTiles.size} Actions",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(3.5.dp)
+                                    .height(16.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(NavyPrimary)
+                            )
+                            Text(
+                                text = "Operations",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                        ) {
+                            Text(
+                                text = "${allTiles.size} Modules",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
                     }
                 }
 
-                // 3. THE OPTION TILES GRID
+                // 4. THE OPTION TILES GRID
                 items(allTiles, key = { it.id }) { tile ->
                     HomeOptionTile(
                         tile = tile,
@@ -1029,6 +1152,7 @@ fun HomeOptionTile(
         elevation = CardDefaults.cardElevation(
             defaultElevation = if (tile.isPrimaryAction) 4.dp else 2.dp
         ),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.20f)),
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
             .clickable { tile.onClick() }
@@ -1036,21 +1160,46 @@ fun HomeOptionTile(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .defaultMinSize(minHeight = 135.dp)
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            tile.accentColor,
+                            tile.accentColor.copy(alpha = 0.88f),
+                            tile.accentColor.copy(alpha = 0.76f)
+                        ),
+                        start = Offset(0f, 0f),
+                        end = Offset(400f, 400f)
+                    )
+                )
+                .clipToBounds()
+                .defaultMinSize(minHeight = 138.dp)
                 .padding(horizontal = 10.dp, vertical = 14.dp)
         ) {
+            // Subtle watermark icon in bottom-right corner for visual depth
+            Icon(
+                imageVector = tile.icon,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.09f),
+                modifier = Modifier
+                    .size(68.dp)
+                    .align(Alignment.BottomEnd)
+                    .offset(x = 10.dp, y = 12.dp)
+            )
+
             // Top-right status badge (if available)
             if (tile.statusBadge != null) {
                 Surface(
-                    color = Color.White.copy(alpha = 0.22f),
-                    shape = RoundedCornerShape(6.dp),
+                    color = Color.White.copy(alpha = 0.24f),
+                    border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.38f)),
+                    shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.align(Alignment.TopEnd)
                 ) {
                     Text(
                         text = tile.statusBadge,
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 10.sp,
+                        fontSize = 9.5.sp,
+                        letterSpacing = 0.2.sp,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
                     )
                 }
@@ -1064,19 +1213,20 @@ fun HomeOptionTile(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                // Centered circular icon container
+                // Centered frosted glass circular icon container
                 Box(
                     modifier = Modifier
-                        .size(46.dp)
+                        .size(48.dp)
                         .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.2f)),
+                        .background(Color.White.copy(alpha = 0.22f))
+                        .border(1.2.dp, Color.White.copy(alpha = 0.38f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = tile.icon,
                         contentDescription = tile.title,
                         tint = Color.White,
-                        modifier = Modifier.size(26.dp)
+                        modifier = Modifier.size(25.dp)
                     )
                 }
 
@@ -1088,12 +1238,13 @@ fun HomeOptionTile(
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.5.sp,
                     color = Color.White,
+                    letterSpacing = 0.2.sp,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
 
-                Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.height(2.5.dp))
 
                 // Centered Subtitle
                 Text(
@@ -1103,6 +1254,51 @@ fun HomeOptionTile(
                     textAlign = TextAlign.Center,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeMetricPill(
+    label: String,
+    value: String,
+    dotColor: Color,
+    onClick: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        shadowElevation = 1.dp,
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(dotColor)
+            )
+            Column {
+                Text(
+                    text = label,
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = value,
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
         }
