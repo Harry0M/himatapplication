@@ -128,7 +128,11 @@ class HimatRepository(private val database: AppDatabase) {
             market.id
         }
     }
-    suspend fun deleteMarket(market: MarketEntity) = marketDao.deleteMarket(market)
+
+    suspend fun deleteMarket(market: MarketEntity) {
+        marketDao.deleteMarketById(market.id)
+        marketDao.deleteMarket(market)
+    }
 
 
     // Products
@@ -257,7 +261,11 @@ class HimatRepository(private val database: AppDatabase) {
             visit.id
         }
     }
-    suspend fun deleteVisit(visit: VisitEntity) = visitDao.deleteVisit(visit)
+    suspend fun deleteVisit(visit: VisitEntity) {
+        visitDao.deleteVisit(visit)
+        purchaseEntryDao.deleteEntriesByVisit(visit.id)
+        packGroupDao.deletePackGroupsByVisit(visit.id)
+    }
 
     // Purchase Entries
     val allEntries: Flow<List<PurchaseEntryEntity>> = purchaseEntryDao.getAllEntries()
@@ -379,6 +387,17 @@ class HimatRepository(private val database: AppDatabase) {
 
     suspend fun deletePurchaseEntry(entry: PurchaseEntryEntity) = purchaseEntryDao.deleteEntry(entry)
 
+    suspend fun cleanupOrphanEntries(): List<PurchaseEntryEntity> {
+        val allVisits = visitDao.getAllVisits().first()
+        val validVisitIds = allVisits.map { it.id }.toSet()
+        val allEntries = purchaseEntryDao.getAllEntries().first()
+        val orphans = allEntries.filter { it.visitId !in validVisitIds }
+        orphans.forEach { orphan ->
+            purchaseEntryDao.deleteEntry(orphan)
+        }
+        return orphans
+    }
+
     // Mixed Case Packing
     val allPackGroups: Flow<List<PackGroupEntity>> = packGroupDao.getAllPackGroups()
     fun getPackGroupsByVisit(visitId: Long): Flow<List<PackGroupEntity>> = packGroupDao.getPackGroupsByVisit(visitId)
@@ -445,33 +464,48 @@ class HimatRepository(private val database: AppDatabase) {
 
     // Cloud Sync Ingestion Operations
     suspend fun syncEmployeesFromCloud(employees: List<EmployeeEntity>) {
-        val valid = employees.filter { it.id > 0L && it.name.isNotBlank() }
+        val valid = employees.filter { it.id > 0L && it.name.isNotBlank() && !it.isDeleted }
             .distinctBy { it.id }
         if (valid.isNotEmpty()) {
             employeeDao.insertAll(valid)
         }
+        val cloudIds = valid.map { it.id }.toSet()
+        val localRecords = employeeDao.getAllEmployees().first()
+        localRecords.filter { it.id > 0L && it.id !in cloudIds }.forEach {
+            employeeDao.deleteEmployeeById(it.id)
+        }
     }
 
     suspend fun syncCustomersFromCloud(customers: List<CustomerEntity>) {
-        val valid = customers.filter { it.id > 0L && it.name.isNotBlank() }
+        val valid = customers.filter { it.id > 0L && it.name.isNotBlank() && !it.isDeleted }
             .distinctBy { it.id }
             .distinctBy { "${it.name.trim().lowercase()}_${it.phone.trim()}" }
         if (valid.isNotEmpty()) {
             customerDao.insertAll(valid)
         }
+        val cloudIds = valid.map { it.id }.toSet()
+        val localRecords = customerDao.getAllCustomers().first()
+        localRecords.filter { it.id > 0L && it.id !in cloudIds }.forEach {
+            customerDao.deleteCustomerById(it.id)
+        }
     }
 
     suspend fun syncSuppliersFromCloud(suppliers: List<SupplierEntity>) {
-        val valid = suppliers.filter { it.id > 0L && it.name.isNotBlank() }
+        val valid = suppliers.filter { it.id > 0L && it.name.isNotBlank() && !it.isDeleted }
             .distinctBy { it.id }
             .distinctBy { "${it.name.trim().lowercase()}_${it.brand.trim().lowercase()}_${it.phone.trim()}" }
         if (valid.isNotEmpty()) {
             supplierDao.insertAll(valid)
         }
+        val cloudIds = valid.map { it.id }.toSet()
+        val localRecords = supplierDao.getAllSuppliers().first()
+        localRecords.filter { it.id > 0L && it.id !in cloudIds }.forEach {
+            supplierDao.deleteSupplierById(it.id)
+        }
     }
 
     suspend fun syncProductsFromCloud(products: List<ProductEntity>) {
-        val valid = products.filter { it.id > 0L && it.name.isNotBlank() }
+        val valid = products.filter { it.id > 0L && it.name.isNotBlank() && !it.isDeleted }
             .distinctBy { it.id }
             .distinctBy {
                 if (it.productCode.isNotBlank()) it.productCode.trim().lowercase()
@@ -480,19 +514,34 @@ class HimatRepository(private val database: AppDatabase) {
         if (valid.isNotEmpty()) {
             productDao.insertAll(valid)
         }
+        val cloudIds = valid.map { it.id }.toSet()
+        val localRecords = productDao.getAllProducts().first()
+        localRecords.filter { it.id > 0L && it.id !in cloudIds }.forEach {
+            productDao.deleteProductById(it.id)
+        }
     }
 
     suspend fun syncVisitsFromCloud(visits: List<VisitEntity>) {
-        val valid = visits.filter { it.id > 0L }.distinctBy { it.id }
+        val valid = visits.filter { it.id > 0L && !it.isDeleted }.distinctBy { it.id }
         if (valid.isNotEmpty()) {
             visitDao.insertAll(valid)
+        }
+        val cloudIds = valid.map { it.id }.toSet()
+        val localRecords = visitDao.getAllVisits().first()
+        localRecords.filter { it.id > 0L && it.id !in cloudIds }.forEach {
+            visitDao.deleteVisitById(it.id)
         }
     }
 
     suspend fun syncEntriesFromCloud(entries: List<PurchaseEntryEntity>) {
-        val valid = entries.filter { it.id > 0L }.distinctBy { it.id }
+        val valid = entries.filter { it.id > 0L && !it.isDeleted }.distinctBy { it.id }
         if (valid.isNotEmpty()) {
             purchaseEntryDao.insertAll(valid)
+        }
+        val cloudIds = valid.map { it.id }.toSet()
+        val localRecords = purchaseEntryDao.getAllEntries().first()
+        localRecords.filter { it.id > 0L && it.id !in cloudIds }.forEach {
+            purchaseEntryDao.deleteEntryById(it.id)
         }
     }
 
@@ -501,6 +550,11 @@ class HimatRepository(private val database: AppDatabase) {
         if (valid.isNotEmpty()) {
             transactionDao.insertAll(valid)
         }
+        val cloudIds = valid.map { it.id }.toSet()
+        val localRecords = transactionDao.getAllTransactions().first()
+        localRecords.filter { it.id > 0L && it.id !in cloudIds }.forEach {
+            transactionDao.deleteTransaction(it)
+        }
     }
 
     suspend fun syncPackGroupsFromCloud(packGroups: List<PackGroupEntity>) {
@@ -508,26 +562,46 @@ class HimatRepository(private val database: AppDatabase) {
         valid.forEach {
             packGroupDao.insertPackGroup(it)
         }
+        val cloudIds = valid.map { it.id }.toSet()
+        val localRecords = packGroupDao.getAllPackGroups().first()
+        localRecords.filter { it.id > 0L && it.id !in cloudIds }.forEach {
+            packGroupDao.deletePackGroup(it)
+        }
     }
 
     suspend fun syncBrandsFromCloud(brands: List<BrandEntity>) {
-        val valid = brands.filter { it.id > 0L && it.brandName.isNotBlank() }.distinctBy { it.id }
+        val valid = brands.filter { it.id > 0L && it.brandName.isNotBlank() && !it.isDeleted }.distinctBy { it.id }
         if (valid.isNotEmpty()) {
             brandDao.insertAll(valid)
+        }
+        val cloudIds = valid.map { it.id }.toSet()
+        val localRecords = brandDao.getAllBrands().first()
+        localRecords.filter { it.id > 0L && it.id !in cloudIds }.forEach {
+            brandDao.deleteBrandById(it.id)
         }
     }
 
     suspend fun syncTransportersFromCloud(transporters: List<TransporterEntity>) {
-        val valid = transporters.filter { it.id > 0L && it.transporterName.isNotBlank() }.distinctBy { it.id }
+        val valid = transporters.filter { it.id > 0L && it.transporterName.isNotBlank() && !it.isDeleted }.distinctBy { it.id }
         if (valid.isNotEmpty()) {
             transporterDao.insertAll(valid)
+        }
+        val cloudIds = valid.map { it.id }.toSet()
+        val localRecords = transporterDao.getAllTransporters().first()
+        localRecords.filter { it.id > 0L && it.id !in cloudIds }.forEach {
+            transporterDao.deleteTransporterById(it.id)
         }
     }
 
     suspend fun syncMarketsFromCloud(markets: List<MarketEntity>) {
-        val valid = markets.filter { it.id > 0L && it.marketName.isNotBlank() }.distinctBy { it.id }
+        val valid = markets.filter { it.id > 0L && it.marketName.isNotBlank() && !it.isDeleted }.distinctBy { it.id }
         if (valid.isNotEmpty()) {
             marketDao.insertAll(valid)
+        }
+        val cloudIds = valid.map { it.id }.toSet()
+        val localRecords = marketDao.getAllMarkets().first()
+        localRecords.filter { it.id > 0L && it.id !in cloudIds }.forEach {
+            marketDao.deleteMarketById(it.id)
         }
     }
 
@@ -540,6 +614,11 @@ class HimatRepository(private val database: AppDatabase) {
             } else {
                 leadDao.insertLead(cloudLead)
             }
+        }
+        val cloudLeadIds = valid.map { it.leadId }.toSet()
+        val localLeads = leadDao.getAllLeads().first()
+        localLeads.filter { it.leadId.isNotBlank() && it.leadId !in cloudLeadIds }.forEach {
+            leadDao.deleteLead(it)
         }
     }
 

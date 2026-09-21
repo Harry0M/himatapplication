@@ -80,15 +80,23 @@ export function DeletionsView() {
   const getEntityBadge = (type: string) => {
     switch (type) {
       case "Visit":
-        return <Badge variant="outline" className="bg-zinc-100 text-zinc-900 border-zinc-200">Visit</Badge>
+        return <Badge variant="outline" className="bg-zinc-100 text-zinc-900 border-zinc-200">Visit / Trip</Badge>
       case "Purchase Entry":
-        return <Badge variant="outline" className="bg-zinc-900 text-white border-zinc-900">Order Entry</Badge>
+        return <Badge variant="outline" className="bg-zinc-900 text-white border-zinc-900">Order / Delivery</Badge>
       case "Customer":
         return <Badge variant="outline" className="bg-zinc-200 text-zinc-800 border-zinc-300">Customer</Badge>
       case "Supplier":
         return <Badge variant="outline" className="bg-zinc-800 text-zinc-100 border-zinc-700">Supplier</Badge>
       case "Product":
         return <Badge variant="outline" className="bg-zinc-100 text-zinc-800 border-zinc-300">Product</Badge>
+      case "Employee":
+        return <Badge variant="outline" className="bg-purple-100 text-purple-900 border-purple-200">Staff</Badge>
+      case "Brand":
+        return <Badge variant="outline" className="bg-blue-100 text-blue-900 border-blue-200">Brand</Badge>
+      case "Transporter":
+        return <Badge variant="outline" className="bg-amber-100 text-amber-900 border-amber-200">Transporter</Badge>
+      case "Market":
+        return <Badge variant="outline" className="bg-emerald-100 text-emerald-900 border-emerald-200">Market</Badge>
       default:
         return <Badge variant="outline">{type}</Badge>
     }
@@ -139,10 +147,10 @@ export function DeletionsView() {
         <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1">
           {[
             { id: "all", label: "All Records", count: deletedItems.length },
-            { id: "visits", label: "Visits", count: deletedItems.filter((i) => i.collection === "visits").length },
+            { id: "visits", label: "Visits / Trips", count: deletedItems.filter((i) => i.collection === "visits").length },
             {
               id: "purchase_entries",
-              label: "Orders",
+              label: "Orders / Deliveries",
               count: deletedItems.filter((i) => i.collection === "purchase_entries").length,
             },
             {
@@ -156,7 +164,18 @@ export function DeletionsView() {
               count: deletedItems.filter((i) => i.collection === "suppliers").length,
             },
             { id: "products", label: "Products", count: deletedItems.filter((i) => i.collection === "products").length },
-          ].map((tab) => (
+            { id: "employees", label: "Staff", count: deletedItems.filter((i) => i.collection === "employees").length },
+            { id: "brands", label: "Brands", count: deletedItems.filter((i) => i.collection === "brands").length },
+            { id: "transporters", label: "Transporters", count: deletedItems.filter((i) => i.collection === "transporters").length },
+            { id: "markets", label: "Markets", count: deletedItems.filter((i) => i.collection === "markets").length },
+          ]
+            .filter(
+              (tab) =>
+                tab.id === "all" ||
+                tab.count > 0 ||
+                ["visits", "purchase_entries", "customers", "suppliers", "products"].includes(tab.id)
+            )
+            .map((tab) => (
             <button
               key={tab.id}
               onClick={() => setSelectedType(tab.id)}

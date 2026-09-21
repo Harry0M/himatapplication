@@ -21,8 +21,10 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -176,7 +178,9 @@ fun CustomerRequestsDialog(
                 // Header
                 Surface(
                     color = NavyPrimary,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
                 ) {
                     Row(
                         modifier = Modifier
@@ -282,6 +286,7 @@ fun CustomerRequestsDialog(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
+                            .navigationBarsPadding()
                             .padding(20.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -310,6 +315,7 @@ fun CustomerRequestsDialog(
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxSize()
+                            .navigationBarsPadding()
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -548,7 +554,12 @@ private fun CustomerRequestInspectorDialog(
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // Top Bar
-                Surface(color = NavyPrimary, modifier = Modifier.fillMaxWidth()) {
+                Surface(
+                    color = NavyPrimary,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -582,7 +593,12 @@ private fun CustomerRequestInspectorDialog(
                     modifier = Modifier
                         .weight(1f)
                         .verticalScroll(rememberScrollState())
-                        .padding(12.dp),
+                        .padding(12.dp)
+                        .then(
+                            if (!request.status.equals("PENDING", ignoreCase = true)) {
+                                Modifier.navigationBarsPadding()
+                            } else Modifier
+                        ),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     // Contact Card
@@ -983,7 +999,9 @@ private fun CustomerRequestInspectorDialog(
                     Surface(
                         color = MaterialTheme.colorScheme.surface,
                         shadowElevation = 6.dp,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
                     ) {
                         Row(
                             modifier = Modifier
@@ -1075,21 +1093,23 @@ private fun InspectorRow(label: String, value: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 2.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+            .padding(vertical = 3.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top
     ) {
         Text(
             text = label,
-            fontSize = 10.sp,
+            fontSize = 10.5.sp,
             color = TextSecondary,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(0.85f)
         )
+        Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = value,
-            fontSize = 10.5.sp,
+            fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
             color = TextPrimary,
-            modifier = Modifier.weight(1.5f),
+            modifier = Modifier.weight(1.65f),
             textAlign = androidx.compose.ui.text.style.TextAlign.End
         )
     }

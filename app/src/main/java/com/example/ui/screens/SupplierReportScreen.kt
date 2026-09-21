@@ -115,50 +115,72 @@ fun SupplierReportScreen(
                 shadowElevation = 8.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // WhatsApp Share
-                    Button(
-                        onClick = { viewModel.shareSupplierCopyWhatsApp(visit, selectedSupplier) },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366)),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
-                        modifier = Modifier.weight(1.1f)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("WhatsApp", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                        // WhatsApp Share
+                        Button(
+                            onClick = { viewModel.shareSupplierCopyWhatsApp(visit, selectedSupplier) },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 9.dp),
+                            modifier = Modifier.weight(1.2f)
+                        ) {
+                            Text("Share WhatsApp", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                        }
+
+                        // Copy Text
+                        OutlinedButton(
+                            onClick = {
+                                val text = ShareUtil.buildSupplierCopyText(visit, selectedSupplier, customer, supplierEntries)
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("Supplier Copy", text))
+                                Toast.makeText(context, "Supplier bill copied to clipboard", Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 9.dp),
+                            modifier = Modifier.weight(0.6f)
+                        ) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = NavyPrimary, modifier = Modifier.size(16.dp))
+                        }
                     }
 
-                    // PDF Export & Share
-                    Button(
-                        onClick = { viewModel.shareSupplierCopyPdf(visit, selectedSupplier) },
-                        colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
-                        modifier = Modifier.weight(1.1f)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = GoldAccent, modifier = Modifier.size(15.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("PDF Bill", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
-                    }
+                        // Standard Supplier Voucher PDF
+                        Button(
+                            onClick = { viewModel.shareSupplierCopyPdf(visit, selectedSupplier) },
+                            colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 9.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = GoldAccent, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Supplier Voucher", fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = Color.White)
+                        }
 
-                    // Copy Text
-                    OutlinedButton(
-                        onClick = {
-                            val text = ShareUtil.buildSupplierCopyText(visit, selectedSupplier, customer, supplierEntries)
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("Supplier Copy", text))
-                            Toast.makeText(context, "Supplier bill copied to clipboard", Toast.LENGTH_SHORT).show()
-                        },
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
-                        modifier = Modifier.weight(0.6f)
-                    ) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = NavyPrimary, modifier = Modifier.size(16.dp))
+                        // GST Purchase Order / Invoice PDF
+                        Button(
+                            onClick = { viewModel.shareSupplierGstInvoicePdf(visit, selectedSupplier) },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F766E)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 9.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = Color(0xFFFDE047), modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("GST PO / Invoice", fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = Color.White)
+                        }
                     }
                 }
             }

@@ -87,46 +87,72 @@ fun CustomerReportScreen(
                 shadowElevation = 8.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // WhatsApp Share
-                    Button(
-                        onClick = { viewModel.shareCustomerReportWhatsApp(visit) },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366)),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.weight(1.2f)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("Share WhatsApp", fontWeight = FontWeight.Bold, color = Color.White)
+                        // WhatsApp Share
+                        Button(
+                            onClick = { viewModel.shareCustomerReportWhatsApp(visit) },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 9.dp),
+                            modifier = Modifier.weight(1.2f)
+                        ) {
+                            Text("Share WhatsApp", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                        }
+
+                        // Copy Text
+                        OutlinedButton(
+                            onClick = {
+                                val text = ShareUtil.buildCustomerReportText(visit, customer, entries)
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("Customer Report", text))
+                                Toast.makeText(context, "Summary copied to clipboard", Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 9.dp),
+                            modifier = Modifier.weight(0.6f)
+                        ) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = NavyPrimary, modifier = Modifier.size(16.dp))
+                        }
                     }
 
-                    // PDF Export & Share
-                    Button(
-                        onClick = { viewModel.shareCustomerDayReportPdf(visit) },
-                        colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.weight(1.2f)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = GoldAccent, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("PDF Export", fontWeight = FontWeight.Bold, color = Color.White)
-                    }
+                        // Standard Day Report PDF
+                        Button(
+                            onClick = { viewModel.shareCustomerDayReportPdf(visit) },
+                            colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 9.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = GoldAccent, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Day Report PDF", fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = Color.White)
+                        }
 
-                    // Copy Text
-                    OutlinedButton(
-                        onClick = {
-                            val text = ShareUtil.buildCustomerReportText(visit, customer, entries)
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("Customer Report", text))
-                            Toast.makeText(context, "Summary copied to clipboard", Toast.LENGTH_SHORT).show()
-                        },
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.weight(0.8f)
-                    ) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = NavyPrimary, modifier = Modifier.size(16.dp))
+                        // GST Tax Invoice PDF
+                        Button(
+                            onClick = { viewModel.shareCustomerGstInvoicePdf(visit) },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F766E)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 9.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = Color(0xFFFDE047), modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("GST Invoice PDF", fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = Color.White)
+                        }
                     }
                 }
             }

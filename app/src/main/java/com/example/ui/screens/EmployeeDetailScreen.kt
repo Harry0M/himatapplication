@@ -9,6 +9,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -93,7 +94,7 @@ import com.example.ui.components.DeliveryStatusBadge
 import com.example.ui.components.SupplierTypeBadge
 import com.example.ui.viewmodel.HimatViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun EmployeeDetailScreen(
     viewModel: HimatViewModel,
@@ -110,36 +111,6 @@ fun EmployeeDetailScreen(
     var selectedFilterTab by remember { mutableStateOf("ALL") } // "ALL", "PENDING", "CLEARED", "VISITS"
 
     val listState = rememberLazyListState()
-    var isProfileExpanded by remember { mutableStateOf(true) }
-
-    val nestedScrollConnection = remember {
-        object : NestedScrollConnection {
-            private var accumulatedDelta = 0f
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (source == NestedScrollSource.UserInput) {
-                    val delta = available.y
-                    if (delta < -15f) {
-                        if (accumulatedDelta > 0) accumulatedDelta = 0f
-                        accumulatedDelta += delta
-                        if (accumulatedDelta < -25f) isProfileExpanded = false
-                    } else if (delta > 15f) {
-                        if (accumulatedDelta < 0) accumulatedDelta = 0f
-                        accumulatedDelta += delta
-                        if (accumulatedDelta > 20f) isProfileExpanded = true
-                    }
-                }
-                return Offset.Zero
-            }
-        }
-    }
-
-    LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, searchQuery) {
-        if (searchQuery.isNotBlank()) {
-            // Keep pinned
-        } else if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset <= 10) {
-            isProfileExpanded = true
-        }
-    }
 
     // All visits handled or assisted by this employee/agent
     val employeeVisits = remember(allVisits, employee.id, employee.name) {
@@ -255,20 +226,18 @@ fun EmployeeDetailScreen(
             )
         }
     ) { paddingValues ->
-        Column(
+        LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xFFF6F8FB))
-                .nestedScroll(nestedScrollConnection)
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = 16.dp),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // 1. Collapsible Profile Details (above Search Bar)
-            AnimatedVisibility(
-                visible = isProfileExpanded && searchQuery.isBlank(),
-                enter = expandVertically(tween(240, easing = FastOutSlowInEasing)) + fadeIn(tween(200)),
-                exit = shrinkVertically(tween(220, easing = FastOutSlowInEasing)) + fadeOut(tween(180))
-            ) {
+            // 1. Profile Details (above Search Bar)
+            item {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -546,11 +515,18 @@ fun EmployeeDetailScreen(
                                 }
                             }
                         }
-                    }
                 }
             }
+        }
 
-            // 2. Compact 36dp Pill Search Bar (Fixed / Pinned directly below Hero)
+    // 2. Compact 36dp Pill Search Bar (Fixed / Pinned directly below Hero)
+    stickyHeader {
+        Surface(
+            color = Color(0xFFF6F8FB),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+        ) {
             Surface(
                 shape = CircleShape,
                 color = Color.White,
@@ -618,23 +594,18 @@ fun EmployeeDetailScreen(
                     }
                 }
             }
+        }
+    }
 
-            // 3. LazyColumn for List items & Filters
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Unboxed Segment Filter Chips
-                item {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+    // Unboxed Segment Filter Chips
+    item {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
                     listOf(
                         "ALL" to "All ($totalEntriesCount)",
                         "PENDING" to "Pending ($pendingCount)",
@@ -762,7 +733,6 @@ fun EmployeeDetailScreen(
             }
         }
     }
-}
 }
 
 @Composable

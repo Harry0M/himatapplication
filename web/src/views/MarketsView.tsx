@@ -39,28 +39,22 @@ export function MarketsView() {
   const [marketType, setMarketType] = useState("Readymade Garments & Wholesale")
   const [description, setDescription] = useState("")
 
-  // Auto-seed Ahmedabad textile markets if RTDB markets node is currently empty
-  useEffect(() => {
-    if (markets.length === 0 && AHMEDABAD_TEXTILE_MARKETS.length > 0) {
-      const seedMarkets = async () => {
-        const topMarkets = AHMEDABAD_TEXTILE_MARKETS.slice(0, 10)
-        for (let i = 0; i < topMarkets.length; i++) {
-          const name = topMarkets[i]
-          if (name.includes("Other")) continue
-          await saveMarket({
-            id: 100 + i + 1,
-            marketName: name,
-            city: name.includes("Surat") ? "Surat" : "Ahmedabad",
-            area: name.includes("(") ? name.substring(name.indexOf("(") + 1, name.indexOf(")")) : "",
-            pincode: "380002",
-            marketType: "Wholesale Textile Cluster",
-            createdAt: Date.now(),
-          })
-        }
-      }
-      seedMarkets()
+  const handleSeedMarkets = async () => {
+    const topMarkets = AHMEDABAD_TEXTILE_MARKETS.slice(0, 10)
+    for (let i = 0; i < topMarkets.length; i++) {
+      const name = topMarkets[i]
+      if (name.includes("Other")) continue
+      await saveMarket({
+        id: Date.now() + i,
+        marketName: name,
+        city: name.includes("Surat") ? "Surat" : "Ahmedabad",
+        area: name.includes("(") ? name.substring(name.indexOf("(") + 1, name.indexOf(")")) : "",
+        pincode: "380002",
+        marketType: "Wholesale Textile Cluster",
+        createdAt: Date.now(),
+      })
     }
-  }, [markets.length])
+  }
 
   const openAddModal = () => {
     setEditingMarket(null)
@@ -233,10 +227,18 @@ export function MarketsView() {
           <p className="text-xs text-zinc-500 max-w-sm mt-1">
             {search ? "No textile markets match your query." : "Register wholesale textile hubs and cloth markets."}
           </p>
-          <Button onClick={openAddModal} variant="outline" className="mt-4 h-8 text-xs gap-1.5">
-            <Plus className="h-3.5 w-3.5" />
-            Register First Market
-          </Button>
+          <div className="flex items-center gap-2 mt-4">
+            <Button onClick={openAddModal} variant="outline" className="h-8 text-xs gap-1.5">
+              <Plus className="h-3.5 w-3.5" />
+              Register First Market
+            </Button>
+            {!search && (
+              <Button onClick={handleSeedMarkets} variant="secondary" className="h-8 text-xs gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                Import Common Markets
+              </Button>
+            )}
+          </div>
         </Card>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xs">

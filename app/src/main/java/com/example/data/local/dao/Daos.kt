@@ -24,7 +24,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface CustomerDao {
-    @Query("SELECT * FROM customers ORDER BY name ASC")
+    @Query("SELECT * FROM customers WHERE isDeleted = 0 ORDER BY name ASC")
     fun getAllCustomers(): Flow<List<CustomerEntity>>
 
     @Query("SELECT * FROM customers WHERE id = :id LIMIT 1")
@@ -41,22 +41,26 @@ interface CustomerDao {
 
     @Delete
     suspend fun deleteCustomer(customer: CustomerEntity)
+
+    @Query("DELETE FROM customers WHERE id = :id")
+    suspend fun deleteCustomerById(id: Long)
 }
 
 @Dao
 interface SupplierDao {
-    @Query("SELECT * FROM suppliers ORDER BY name ASC")
+    @Query("SELECT * FROM suppliers WHERE isDeleted = 0 ORDER BY name ASC")
     fun getAllSuppliers(): Flow<List<SupplierEntity>>
 
-    @Query("SELECT * FROM suppliers WHERE type = :type ORDER BY name ASC")
+    @Query("SELECT * FROM suppliers WHERE isDeleted = 0 AND type = :type ORDER BY name ASC")
     fun getSuppliersByType(type: String): Flow<List<SupplierEntity>>
 
-    @Query("SELECT * FROM suppliers WHERE categories LIKE '%' || :category || '%' ORDER BY name ASC")
+    @Query("SELECT * FROM suppliers WHERE isDeleted = 0 AND categories LIKE '%' || :category || '%' ORDER BY name ASC")
     fun getSuppliersByCategory(category: String): Flow<List<SupplierEntity>>
 
     @Query("""
         SELECT * FROM suppliers 
-        WHERE name LIKE '%' || :query || '%' 
+        WHERE isDeleted = 0 AND (
+           name LIKE '%' || :query || '%' 
            OR brand LIKE '%' || :query || '%' 
            OR contactPerson LIKE '%' || :query || '%' 
            OR phone LIKE '%' || :query || '%' 
@@ -64,6 +68,7 @@ interface SupplierDao {
            OR categories LIKE '%' || :query || '%' 
            OR marketArea LIKE '%' || :query || '%'
            OR address LIKE '%' || :query || '%'
+        )
         ORDER BY name ASC
     """)
     fun searchSuppliers(query: String): Flow<List<SupplierEntity>>
@@ -74,7 +79,7 @@ interface SupplierDao {
     @Query("SELECT * FROM suppliers WHERE id = :id LIMIT 1")
     suspend fun getSupplierById(id: Long): SupplierEntity?
 
-    @Query("SELECT COUNT(*) FROM suppliers")
+    @Query("SELECT COUNT(*) FROM suppliers WHERE isDeleted = 0")
     suspend fun getSuppliersCount(): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -95,7 +100,7 @@ interface SupplierDao {
 
 @Dao
 interface EmployeeDao {
-    @Query("SELECT * FROM employees ORDER BY name ASC")
+    @Query("SELECT * FROM employees WHERE isDeleted = 0 ORDER BY name ASC")
     fun getAllEmployees(): Flow<List<EmployeeEntity>>
 
     @Query("SELECT * FROM employees WHERE id = :id LIMIT 1")
@@ -112,14 +117,17 @@ interface EmployeeDao {
 
     @Delete
     suspend fun deleteEmployee(employee: EmployeeEntity)
+
+    @Query("DELETE FROM employees WHERE id = :id")
+    suspend fun deleteEmployeeById(id: Long)
 }
 
 @Dao
 interface VisitDao {
-    @Query("SELECT * FROM visits ORDER BY id DESC")
+    @Query("SELECT * FROM visits WHERE isDeleted = 0 ORDER BY id DESC")
     fun getAllVisits(): Flow<List<VisitEntity>>
 
-    @Query("SELECT * FROM visits WHERE employeeId = :employeeId ORDER BY id DESC")
+    @Query("SELECT * FROM visits WHERE isDeleted = 0 AND employeeId = :employeeId ORDER BY id DESC")
     fun getVisitsByEmployee(employeeId: Long): Flow<List<VisitEntity>>
 
     @Query("SELECT * FROM visits WHERE id = :id LIMIT 1")
@@ -136,32 +144,35 @@ interface VisitDao {
 
     @Delete
     suspend fun deleteVisit(visit: VisitEntity)
+
+    @Query("DELETE FROM visits WHERE id = :id")
+    suspend fun deleteVisitById(id: Long)
 }
 
 @Dao
 interface PurchaseEntryDao {
-    @Query("SELECT * FROM purchase_entries ORDER BY id DESC")
+    @Query("SELECT * FROM purchase_entries WHERE isDeleted = 0 ORDER BY id DESC")
     fun getAllEntries(): Flow<List<PurchaseEntryEntity>>
 
-    @Query("SELECT * FROM purchase_entries WHERE visitId = :visitId ORDER BY id ASC")
+    @Query("SELECT * FROM purchase_entries WHERE isDeleted = 0 AND visitId = :visitId ORDER BY id ASC")
     fun getEntriesByVisit(visitId: Long): Flow<List<PurchaseEntryEntity>>
 
-    @Query("SELECT * FROM purchase_entries WHERE visitId = :visitId AND supplierId = :supplierId ORDER BY id ASC")
+    @Query("SELECT * FROM purchase_entries WHERE isDeleted = 0 AND visitId = :visitId AND supplierId = :supplierId ORDER BY id ASC")
     fun getEntriesByVisitAndSupplier(visitId: Long, supplierId: Long): Flow<List<PurchaseEntryEntity>>
 
-    @Query("SELECT * FROM purchase_entries WHERE visitId = :visitId AND loosePieces > 0 ORDER BY id ASC")
+    @Query("SELECT * FROM purchase_entries WHERE isDeleted = 0 AND visitId = :visitId AND loosePieces > 0 ORDER BY id ASC")
     fun getIncompleteEntriesByVisit(visitId: Long): Flow<List<PurchaseEntryEntity>>
 
-    @Query("SELECT * FROM purchase_entries WHERE deliveryStatus = :status ORDER BY id DESC")
+    @Query("SELECT * FROM purchase_entries WHERE isDeleted = 0 AND deliveryStatus = :status ORDER BY id DESC")
     fun getEntriesByDeliveryStatus(status: String): Flow<List<PurchaseEntryEntity>>
 
-    @Query("SELECT DISTINCT itemCode FROM purchase_entries ORDER BY itemCode ASC")
+    @Query("SELECT DISTINCT itemCode FROM purchase_entries WHERE isDeleted = 0 ORDER BY itemCode ASC")
     fun getDistinctItemCodes(): Flow<List<String>>
 
     @Query("SELECT * FROM purchase_entries WHERE id = :id LIMIT 1")
     suspend fun getEntryById(id: Long): PurchaseEntryEntity?
 
-    @Query("SELECT COUNT(*) FROM purchase_entries")
+    @Query("SELECT COUNT(*) FROM purchase_entries WHERE isDeleted = 0")
     suspend fun getEntriesCount(): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -191,8 +202,14 @@ interface PurchaseEntryDao {
     @Query("UPDATE purchase_entries SET supplierId = :newSupplierId WHERE supplierId = :oldSupplierId")
     suspend fun repointSupplierId(oldSupplierId: Long, newSupplierId: Long)
 
+    @Query("DELETE FROM purchase_entries WHERE visitId = :visitId")
+    suspend fun deleteEntriesByVisit(visitId: Long)
+
     @Delete
     suspend fun deleteEntry(entry: PurchaseEntryEntity)
+
+    @Query("DELETE FROM purchase_entries WHERE id = :id")
+    suspend fun deleteEntryById(id: Long)
 }
 
 @Dao
@@ -209,19 +226,22 @@ interface PackGroupDao {
     @Query("SELECT * FROM pack_groups WHERE id = :id LIMIT 1")
     suspend fun getPackGroupById(id: Long): PackGroupEntity?
 
+    @Query("DELETE FROM pack_groups WHERE visitId = :visitId")
+    suspend fun deletePackGroupsByVisit(visitId: Long)
+
     @Delete
     suspend fun deletePackGroup(group: PackGroupEntity)
 }
 
 @Dao
 interface ProductDao {
-    @Query("SELECT * FROM products ORDER BY name ASC")
+    @Query("SELECT * FROM products WHERE isDeleted = 0 ORDER BY name ASC")
     fun getAllProducts(): Flow<List<ProductEntity>>
 
-    @Query("SELECT * FROM products WHERE supplierId = :supplierId ORDER BY name ASC")
+    @Query("SELECT * FROM products WHERE isDeleted = 0 AND supplierId = :supplierId ORDER BY name ASC")
     fun getProductsBySupplier(supplierId: Long): Flow<List<ProductEntity>>
 
-    @Query("SELECT * FROM products WHERE category = :category ORDER BY name ASC")
+    @Query("SELECT * FROM products WHERE isDeleted = 0 AND category = :category ORDER BY name ASC")
     fun getProductsByCategory(category: String): Flow<List<ProductEntity>>
 
     @Query("SELECT * FROM products WHERE id = :id LIMIT 1")
@@ -230,7 +250,7 @@ interface ProductDao {
     @Query("SELECT * FROM products WHERE productCode = :code LIMIT 1")
     suspend fun getProductByCode(code: String): ProductEntity?
 
-    @Query("SELECT COUNT(*) FROM products")
+    @Query("SELECT COUNT(*) FROM products WHERE isDeleted = 0")
     suspend fun getProductsCount(): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -244,6 +264,9 @@ interface ProductDao {
 
     @Delete
     suspend fun deleteProduct(product: ProductEntity)
+
+    @Query("DELETE FROM products WHERE id = :id")
+    suspend fun deleteProductById(id: Long)
 }
 
 @Dao
@@ -427,13 +450,13 @@ interface TransactionLogDao {
 
 @Dao
 interface BrandDao {
-    @Query("SELECT * FROM brands ORDER BY brandName ASC")
+    @Query("SELECT * FROM brands WHERE isDeleted = 0 ORDER BY brandName ASC")
     fun getAllBrands(): Flow<List<BrandEntity>>
 
     @Query("SELECT * FROM brands WHERE id = :id LIMIT 1")
     suspend fun getBrandById(id: Long): BrandEntity?
 
-    @Query("SELECT COUNT(*) FROM brands")
+    @Query("SELECT COUNT(*) FROM brands WHERE isDeleted = 0")
     suspend fun getBrandsCount(): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -454,13 +477,13 @@ interface BrandDao {
 
 @Dao
 interface TransporterDao {
-    @Query("SELECT * FROM transporters ORDER BY transporterName ASC")
+    @Query("SELECT * FROM transporters WHERE isDeleted = 0 ORDER BY transporterName ASC")
     fun getAllTransporters(): Flow<List<TransporterEntity>>
 
     @Query("SELECT * FROM transporters WHERE id = :id LIMIT 1")
     suspend fun getTransporterById(id: Long): TransporterEntity?
 
-    @Query("SELECT COUNT(*) FROM transporters")
+    @Query("SELECT COUNT(*) FROM transporters WHERE isDeleted = 0")
     suspend fun getTransportersCount(): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -481,13 +504,13 @@ interface TransporterDao {
 
 @Dao
 interface MarketDao {
-    @Query("SELECT * FROM markets ORDER BY marketName ASC")
+    @Query("SELECT * FROM markets WHERE isDeleted = 0 ORDER BY marketName ASC")
     fun getAllMarkets(): Flow<List<MarketEntity>>
 
     @Query("SELECT * FROM markets WHERE id = :id LIMIT 1")
     suspend fun getMarketById(id: Long): MarketEntity?
 
-    @Query("SELECT COUNT(*) FROM markets")
+    @Query("SELECT COUNT(*) FROM markets WHERE isDeleted = 0")
     suspend fun getMarketsCount(): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

@@ -159,6 +159,7 @@ fun MastersScreen(
     onOpenMarket: (MarketEntity) -> Unit = { viewModel.openMarketDetail(it) }
 ) {
     val isSuperAdmin by viewModel.isSuperAdmin.collectAsStateWithLifecycle()
+    val currentRole by viewModel.currentRole.collectAsStateWithLifecycle()
 
     val customers by viewModel.visibleCustomers.collectAsStateWithLifecycle()
     val suppliers by viewModel.visibleSuppliers.collectAsStateWithLifecycle()
@@ -1211,6 +1212,7 @@ fun MastersScreen(
             // DELETE CONFIRMATION MODAL DIALOG
             // =========================================================================
             deleteConfirmRequest?.let { req ->
+                val isAdminUser = isSuperAdmin || currentRole.equals("Admin", ignoreCase = true)
                 AlertDialog(
                     onDismissRequest = { deleteConfirmRequest = null },
                     icon = {
@@ -1223,14 +1225,18 @@ fun MastersScreen(
                     },
                     title = {
                         Text(
-                            text = "Delete ${req.typeName}?",
+                            text = if (isAdminUser) "Delete ${req.typeName}?" else "Request Deletion?",
                             fontWeight = FontWeight.Bold,
                             color = NavyPrimary
                         )
                     },
                     text = {
                         Text(
-                            text = "Are you sure you want to delete \"${req.itemName}\"? This record will be permanently removed.",
+                            text = if (isAdminUser) {
+                                "Are you sure you want to permanently delete \"${req.itemName}\"? This record will be removed immediately from cloud and app."
+                            } else {
+                                "Are you sure you want to request deletion of \"${req.itemName}\"? This will be sent to Admin for approval."
+                            },
                             fontSize = 13.5.sp,
                             color = TextSecondary
                         )
@@ -1243,7 +1249,11 @@ fun MastersScreen(
                                 act()
                             }
                         ) {
-                            Text("Delete", color = Color(0xFFDC2626), fontWeight = FontWeight.Bold)
+                            Text(
+                                text = if (isAdminUser) "Delete" else "Submit Request",
+                                color = Color(0xFFDC2626),
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     },
                     dismissButton = {

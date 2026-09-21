@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react"
 import { ref, onValue, set, remove, update, get } from "firebase/database"
 import { rtdb } from "../lib/firebase"
+import { useAuth } from "./AuthContext"
 import {
   Visit,
   PurchaseEntry,
@@ -40,6 +41,7 @@ function parseRtdbList<T extends { id?: any }>(val: any): T[] {
           return {
             ...item,
             id,
+            _rtdbKey: String(idx),
             isDeleted,
             isActive,
             isBlocked,
@@ -68,6 +70,7 @@ function parseRtdbList<T extends { id?: any }>(val: any): T[] {
           return {
             ...item,
             id,
+            _rtdbKey: key,
             isDeleted,
             isActive,
             isBlocked,
@@ -246,6 +249,7 @@ interface DataContextType {
 const DataContext = createContext<DataContextType | undefined>(undefined)
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth()
   const [rawVisits, setRawVisits] = useState<Visit[]>([])
   const [rawEntries, setRawEntries] = useState<PurchaseEntry[]>([])
   const [rawCustomers, setRawCustomers] = useState<Customer[]>([])
@@ -260,6 +264,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [rawRegistrationRequests, setRawRegistrationRequests] = useState<CustomerRegistrationRequest[]>([])
   const [rawSupplierRegistrationRequests, setRawSupplierRegistrationRequests] = useState<SupplierRegistrationRequest[]>([])
   const [rawLeads, setRawLeads] = useState<Lead[]>([])
+  const [rawDeletionRequests, setRawDeletionRequests] = useState<any[]>([])
   const [loading, setLoading] = useState<boolean>(true)
 
   // Global employee filter state
@@ -267,8 +272,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Real-time synchronization
   useEffect(() => {
+    if (!user) {
+      setLoading(false)
+      return
+    }
+
+    setLoading(true)
     let activeListeners = 0
-    const totalListeners = 14
+    const totalListeners = 15
 
     const checkLoading = () => {
       activeListeners++
@@ -279,157 +290,273 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // 1. Visits
     const visitsRef = ref(rtdb, "visits")
-    const unsubVisits = onValue(visitsRef, (snapshot) => {
-      if (snapshot.exists()) {
-        setRawVisits(parseRtdbList<Visit>(snapshot.val()))
-      } else {
-        setRawVisits([])
+    const unsubVisits = onValue(
+      visitsRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          setRawVisits(parseRtdbList<Visit>(snapshot.val()))
+        } else {
+          setRawVisits([])
+        }
+        checkLoading()
+      },
+      (error) => {
+        console.error("RTDB error reading visits:", error)
+        checkLoading()
       }
-      checkLoading()
-    })
+    )
 
     // 2. Purchase Entries
     const entriesRef = ref(rtdb, "purchase_entries")
-    const unsubEntries = onValue(entriesRef, (snapshot) => {
-      if (snapshot.exists()) {
-        setRawEntries(parseRtdbList<PurchaseEntry>(snapshot.val()))
-      } else {
-        setRawEntries([])
+    const unsubEntries = onValue(
+      entriesRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          setRawEntries(parseRtdbList<PurchaseEntry>(snapshot.val()))
+        } else {
+          setRawEntries([])
+        }
+        checkLoading()
+      },
+      (error) => {
+        console.error("RTDB error reading purchase_entries:", error)
+        checkLoading()
       }
-      checkLoading()
-    })
+    )
 
     // 3. Customers
     const customersRef = ref(rtdb, "customers")
-    const unsubCustomers = onValue(customersRef, (snapshot) => {
-      if (snapshot.exists()) {
-        setRawCustomers(parseRtdbList<Customer>(snapshot.val()))
-      } else {
-        setRawCustomers([])
+    const unsubCustomers = onValue(
+      customersRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          setRawCustomers(parseRtdbList<Customer>(snapshot.val()))
+        } else {
+          setRawCustomers([])
+        }
+        checkLoading()
+      },
+      (error) => {
+        console.error("RTDB error reading customers:", error)
+        checkLoading()
       }
-      checkLoading()
-    })
+    )
 
     // 4. Suppliers
     const suppliersRef = ref(rtdb, "suppliers")
-    const unsubSuppliers = onValue(suppliersRef, (snapshot) => {
-      if (snapshot.exists()) {
-        setRawSuppliers(parseRtdbList<Supplier>(snapshot.val()))
-      } else {
-        setRawSuppliers([])
+    const unsubSuppliers = onValue(
+      suppliersRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          setRawSuppliers(parseRtdbList<Supplier>(snapshot.val()))
+        } else {
+          setRawSuppliers([])
+        }
+        checkLoading()
+      },
+      (error) => {
+        console.error("RTDB error reading suppliers:", error)
+        checkLoading()
       }
-      checkLoading()
-    })
+    )
 
     // 5. Pack Groups
     const packGroupsRef = ref(rtdb, "pack_groups")
-    const unsubPackGroups = onValue(packGroupsRef, (snapshot) => {
-      if (snapshot.exists()) {
-        setPackGroups(parseRtdbList<PackGroup>(snapshot.val()))
-      } else {
-        setPackGroups([])
+    const unsubPackGroups = onValue(
+      packGroupsRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          setPackGroups(parseRtdbList<PackGroup>(snapshot.val()))
+        } else {
+          setPackGroups([])
+        }
+        checkLoading()
+      },
+      (error) => {
+        console.error("RTDB error reading pack_groups:", error)
+        checkLoading()
       }
-      checkLoading()
-    })
+    )
 
     // 6. Transactions
     const txRef = ref(rtdb, "transactions")
-    const unsubTx = onValue(txRef, (snapshot) => {
-      if (snapshot.exists()) {
-        setTransactions(parseRtdbList<Transaction>(snapshot.val()))
-      } else {
-        setTransactions([])
+    const unsubTx = onValue(
+      txRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          setTransactions(parseRtdbList<Transaction>(snapshot.val()))
+        } else {
+          setTransactions([])
+        }
+        checkLoading()
+      },
+      (error) => {
+        console.error("RTDB error reading transactions:", error)
+        checkLoading()
       }
-      checkLoading()
-    })
+    )
 
     // 7. Employees
     const empRef = ref(rtdb, "employees")
-    const unsubEmp = onValue(empRef, (snapshot) => {
-      if (snapshot.exists()) {
-        setRawEmployees(parseRtdbList<Employee>(snapshot.val()))
-      } else {
-        setRawEmployees([])
+    const unsubEmp = onValue(
+      empRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          setRawEmployees(parseRtdbList<Employee>(snapshot.val()))
+        } else {
+          setRawEmployees([])
+        }
+        checkLoading()
+      },
+      (error) => {
+        console.error("RTDB error reading employees:", error)
+        checkLoading()
       }
-      checkLoading()
-    })
+    )
 
     // 8. Products
     const productsRef = ref(rtdb, "products")
-    const unsubProducts = onValue(productsRef, (snapshot) => {
-      if (snapshot.exists()) {
-        setRawProducts(parseRtdbList<Product>(snapshot.val()))
-      } else {
-        setRawProducts([])
+    const unsubProducts = onValue(
+      productsRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          setRawProducts(parseRtdbList<Product>(snapshot.val()))
+        } else {
+          setRawProducts([])
+        }
+        checkLoading()
+      },
+      (error) => {
+        console.error("RTDB error reading products:", error)
+        checkLoading()
       }
-      checkLoading()
-    })
+    )
 
     // 9. Brands
     const brandsRef = ref(rtdb, "brands")
-    const unsubBrands = onValue(brandsRef, (snapshot) => {
-      if (snapshot.exists()) {
-        setRawBrands(parseRtdbList<Brand>(snapshot.val()))
-      } else {
-        setRawBrands([])
+    const unsubBrands = onValue(
+      brandsRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          setRawBrands(parseRtdbList<Brand>(snapshot.val()))
+        } else {
+          setRawBrands([])
+        }
+        checkLoading()
+      },
+      (error) => {
+        console.error("RTDB error reading brands:", error)
+        checkLoading()
       }
-      checkLoading()
-    })
+    )
 
     // 10. Transporters
     const transportersRef = ref(rtdb, "transporters")
-    const unsubTransporters = onValue(transportersRef, (snapshot) => {
-      if (snapshot.exists()) {
-        setRawTransporters(parseRtdbList<Transporter>(snapshot.val()))
-      } else {
-        setRawTransporters([])
+    const unsubTransporters = onValue(
+      transportersRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          setRawTransporters(parseRtdbList<Transporter>(snapshot.val()))
+        } else {
+          setRawTransporters([])
+        }
+        checkLoading()
+      },
+      (error) => {
+        console.error("RTDB error reading transporters:", error)
+        checkLoading()
       }
-      checkLoading()
-    })
+    )
 
     // 11. Markets
     const marketsRef = ref(rtdb, "markets")
-    const unsubMarkets = onValue(marketsRef, (snapshot) => {
-      if (snapshot.exists()) {
-        setRawMarkets(parseRtdbList<Market>(snapshot.val()))
-      } else {
-        setRawMarkets([])
+    const unsubMarkets = onValue(
+      marketsRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          setRawMarkets(parseRtdbList<Market>(snapshot.val()))
+        } else {
+          setRawMarkets([])
+        }
+        checkLoading()
+      },
+      (error) => {
+        console.error("RTDB error reading markets:", error)
+        checkLoading()
       }
-      checkLoading()
-    })
+    )
 
     // 12. Customer Registration Requests (User Requests)
     const regRequestsRef = ref(rtdb, "customer_registration_requests")
-    const unsubRegRequests = onValue(regRequestsRef, (snapshot) => {
-      if (snapshot.exists()) {
-        setRawRegistrationRequests(parseRtdbList<CustomerRegistrationRequest>(snapshot.val()))
-      } else {
-        setRawRegistrationRequests([])
+    const unsubRegRequests = onValue(
+      regRequestsRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          setRawRegistrationRequests(parseRtdbList<CustomerRegistrationRequest>(snapshot.val()))
+        } else {
+          setRawRegistrationRequests([])
+        }
+        checkLoading()
+      },
+      (error) => {
+        console.error("RTDB error reading customer_registration_requests:", error)
+        checkLoading()
       }
-      checkLoading()
-    })
+    )
 
     // 13. Leads (Customer & Supplier Prospects)
     const leadsRef = ref(rtdb, "leads")
-    const unsubLeads = onValue(leadsRef, (snapshot) => {
-      if (snapshot.exists()) {
-        setRawLeads(parseRtdbList<Lead>(snapshot.val()))
-      } else {
-        setRawLeads([])
+    const unsubLeads = onValue(
+      leadsRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          setRawLeads(parseRtdbList<Lead>(snapshot.val()))
+        } else {
+          setRawLeads([])
+        }
+        checkLoading()
+      },
+      (error) => {
+        console.error("RTDB error reading leads:", error)
+        checkLoading()
       }
-      checkLoading()
-    })
+    )
 
     // 14. Supplier Registration Requests
     const supRegRequestsRef = ref(rtdb, "supplier_registration_requests")
-    const unsubSupRegRequests = onValue(supRegRequestsRef, (snapshot) => {
-      if (snapshot.exists()) {
-        setRawSupplierRegistrationRequests(parseRtdbList<SupplierRegistrationRequest>(snapshot.val()))
-      } else {
-        setRawSupplierRegistrationRequests([])
+    const unsubSupRegRequests = onValue(
+      supRegRequestsRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          setRawSupplierRegistrationRequests(parseRtdbList<SupplierRegistrationRequest>(snapshot.val()))
+        } else {
+          setRawSupplierRegistrationRequests([])
+        }
+        checkLoading()
+      },
+      (error) => {
+        console.error("RTDB error reading supplier_registration_requests:", error)
+        checkLoading()
       }
-      checkLoading()
-    })
+    )
+
+    // 15. Deletion Requests (Staff Deletions Queue from Android & Web)
+    const delRequestsRef = ref(rtdb, "deletion_requests")
+    const unsubDelRequests = onValue(
+      delRequestsRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          setRawDeletionRequests(parseRtdbList<any>(snapshot.val()))
+        } else {
+          setRawDeletionRequests([])
+        }
+        checkLoading()
+      },
+      (error) => {
+        console.error("RTDB error reading deletion_requests:", error)
+        checkLoading()
+      }
+    )
 
     return () => {
       unsubVisits()
@@ -446,8 +573,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       unsubRegRequests()
       unsubSupRegRequests()
       unsubLeads()
+      unsubDelRequests()
     }
-  }, [])
+  }, [user])
 
   // Active filtered datasets (excluding soft-deleted)
   const visits = React.useMemo(() => {
@@ -626,126 +754,366 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return Array.from(map.values())
   }, [rawSuppliers, entries])
 
-  // Collect all soft-deleted items across entities for Admin Deletions view
+  // Collect all soft-deleted items across entities and deletion_requests for Admin Deletions view
   const deletedItems: SoftDeletedItem[] = React.useMemo(() => {
-    const list: SoftDeletedItem[] = []
+    const map = new Map<string, SoftDeletedItem>()
 
+    // 1. Process explicit deletion requests queue from RTDB (from Android mobile and Web)
+    rawDeletionRequests.forEach((req) => {
+      if (!req || req.status === "CONFIRMED" || req.status === "REJECTED") return
+      const rawCollection = (req.collection || "").trim().toLowerCase()
+      const itemId = req.itemId ?? req.id
+      if (!rawCollection || itemId === undefined || itemId === null) return
+
+      let collection: SoftDeletedItem["collection"] = "visits"
+      let entityType: SoftDeletedItem["entityType"] = "Visit"
+
+      if (rawCollection.includes("visit")) {
+        collection = "visits"
+        entityType = "Visit"
+      } else if (rawCollection.includes("entry") || rawCollection.includes("purchase")) {
+        collection = "purchase_entries"
+        entityType = "Purchase Entry"
+      } else if (rawCollection.includes("customer")) {
+        collection = "customers"
+        entityType = "Customer"
+      } else if (rawCollection.includes("supplier")) {
+        collection = "suppliers"
+        entityType = "Supplier"
+      } else if (rawCollection.includes("product")) {
+        collection = "products"
+        entityType = "Product"
+      } else if (rawCollection.includes("employee")) {
+        collection = "employees"
+        entityType = "Employee"
+      } else if (rawCollection.includes("brand")) {
+        collection = "brands"
+        entityType = "Brand"
+      } else if (rawCollection.includes("transporter")) {
+        collection = "transporters"
+        entityType = "Transporter"
+      } else if (rawCollection.includes("market")) {
+        collection = "markets"
+        entityType = "Market"
+      }
+
+      const key = `${collection}_${itemId}`
+      let originalData = req.originalData || null
+      let title = req.itemSummary || `${entityType} #${itemId}`
+      let subtitle = req.deletionReason ? `Reason: ${req.deletionReason}` : undefined
+
+      // Attempt to link to rich entity details if available
+      if (collection === "visits") {
+        const found = rawVisits.find((v) => String(v.id) === String(itemId))
+        if (found) {
+          originalData = found
+          title = `Visit #${found.visitCode || found.id} - ${found.customerName || "Customer"}`
+          subtitle = `Date: ${found.date || "N/A"} • Salesman: ${found.employeeName || req.deletedBy || "N/A"}`
+        }
+      } else if (collection === "purchase_entries") {
+        const found = rawEntries.find((e) => String(e.id) === String(itemId))
+        if (found) {
+          originalData = found
+          title = `Order #${found.orderNo || found.id} - ${found.itemCode}`
+          subtitle = `Supplier: ${found.supplierName || "N/A"} • ${found.pieces} pcs • Total: ₹${found.grandTotalWithGst || found.totalAmount}`
+        }
+      } else if (collection === "customers") {
+        const found = rawCustomers.find((c) => String(c.id) === String(itemId))
+        if (found) {
+          originalData = found
+          title = `${found.firmName || found.name} (${found.customerId || found.id})`
+          subtitle = `City: ${found.city || "Ahmedabad"} • Phone: ${found.phone}`
+        }
+      } else if (collection === "suppliers") {
+        const found = rawSuppliers.find((s) => String(s.id) === String(itemId))
+        if (found) {
+          originalData = found
+          title = `${found.firmName || found.name} (${found.type || "Supplier"})`
+          subtitle = `Market: ${found.marketArea || "N/A"} • Phone: ${found.phone}`
+        }
+      } else if (collection === "products") {
+        const found = rawProducts.find((p) => String(p.id) === String(itemId))
+        if (found) {
+          originalData = found
+          title = `${found.name} (${found.productCode})`
+          subtitle = `Supplier: ${found.supplierName} • Rate: ₹${found.defaultRate}`
+        }
+      } else if (collection === "employees") {
+        const found = rawEmployees.find((emp) => String(emp.id) === String(itemId))
+        if (found) {
+          originalData = found
+          title = `${found.name} (${found.employeeId || `EMP-${found.id}`})`
+          subtitle = `Role: ${found.role} • Phone: ${found.phone || "N/A"}`
+        }
+      } else if (collection === "brands") {
+        const found = rawBrands.find((b) => String(b.id) === String(itemId))
+        if (found) {
+          originalData = found
+          title = `${found.brandName}`
+          subtitle = `Category: ${found.category || "N/A"} • Manufacturer: ${found.manufacturerName || "N/A"}`
+        }
+      } else if (collection === "transporters") {
+        const found = rawTransporters.find((t) => String(t.id) === String(itemId))
+        if (found) {
+          originalData = found
+          title = `${found.transporterName}`
+          subtitle = `Phone: ${found.phone} • City: ${found.city || "N/A"}`
+        }
+      } else if (collection === "markets") {
+        const found = rawMarkets.find((m) => String(m.id) === String(itemId))
+        if (found) {
+          originalData = found
+          title = `${found.marketName}`
+          subtitle = `City: ${found.city} • Area: ${found.area || "N/A"}`
+        }
+      }
+
+      map.set(key, {
+        id: itemId,
+        collection,
+        entityType,
+        title,
+        subtitle,
+        deletedAt: req.deletedAt || Date.now(),
+        deletedBy: req.deletedBy || "Salesman",
+        deletedByEmail: req.deletedByEmail || "",
+        deletedByRole: req.deletedByRole || "Salesman",
+        deletionStatus: req.status || req.deletionStatus || "PENDING_CONFIRMATION",
+        deletionReason: req.deletionReason || "",
+        originalData: originalData || req,
+      })
+    })
+
+    // 2. Scan primary collections for entities marked isDeleted or PENDING_CONFIRMATION
     rawVisits.forEach((v) => {
-      if (v && v.isDeleted) {
-        list.push({
-          id: v.id,
-          collection: "visits",
-          entityType: "Visit",
-          title: `Visit #${v.visitCode || v.id} - ${v.customerName || "Customer"}`,
-          subtitle: `Date: ${v.date || "N/A"} • Salesman: ${v.employeeName || "N/A"}`,
-          deletedAt: v.deletedAt || Date.now(),
-          deletedBy: v.deletedBy || "Salesman",
-          deletedByEmail: v.deletedByEmail || "",
-          deletedByRole: v.deletedByRole || "Salesman",
-          deletionStatus: v.deletionStatus || "PENDING_CONFIRMATION",
-          deletionReason: v.deletionReason || "",
-          originalData: v,
-        })
+      if (v && (v.isDeleted || v.deletionStatus === "PENDING_CONFIRMATION")) {
+        const key = `visits_${v.id}`
+        if (!map.has(key)) {
+          map.set(key, {
+            id: v.id,
+            collection: "visits",
+            entityType: "Visit",
+            title: `Visit #${v.visitCode || v.id} - ${v.customerName || "Customer"}`,
+            subtitle: `Date: ${v.date || "N/A"} • Salesman: ${v.employeeName || "N/A"}`,
+            deletedAt: v.deletedAt || Date.now(),
+            deletedBy: v.deletedBy || "Salesman",
+            deletedByEmail: v.deletedByEmail || "",
+            deletedByRole: v.deletedByRole || "Salesman",
+            deletionStatus: v.deletionStatus || "PENDING_CONFIRMATION",
+            deletionReason: v.deletionReason || "",
+            originalData: v,
+          })
+        } else {
+          const existing = map.get(key)!
+          if (!existing.originalData) existing.originalData = v
+        }
       }
     })
 
     rawEntries.forEach((e) => {
-      if (e && e.isDeleted) {
-        list.push({
-          id: e.id,
-          collection: "purchase_entries",
-          entityType: "Purchase Entry",
-          title: `Order #${e.orderNo || e.id} - ${e.itemCode}`,
-          subtitle: `Supplier: ${e.supplierName || "N/A"} • ${e.pieces} pcs • Total: ₹${e.grandTotalWithGst || e.totalAmount}`,
-          deletedAt: e.deletedAt || Date.now(),
-          deletedBy: e.deletedBy || "Salesman",
-          deletedByEmail: e.deletedByEmail || "",
-          deletedByRole: e.deletedByRole || "Salesman",
-          deletionStatus: e.deletionStatus || "PENDING_CONFIRMATION",
-          deletionReason: e.deletionReason || "",
-          originalData: e,
-        })
+      if (e && (e.isDeleted || e.deletionStatus === "PENDING_CONFIRMATION")) {
+        const key = `purchase_entries_${e.id}`
+        if (!map.has(key)) {
+          map.set(key, {
+            id: e.id,
+            collection: "purchase_entries",
+            entityType: "Purchase Entry",
+            title: `Order #${e.orderNo || e.id} - ${e.itemCode}`,
+            subtitle: `Supplier: ${e.supplierName || "N/A"} • ${e.pieces} pcs • Total: ₹${e.grandTotalWithGst || e.totalAmount}`,
+            deletedAt: e.deletedAt || Date.now(),
+            deletedBy: e.deletedBy || "Salesman",
+            deletedByEmail: e.deletedByEmail || "",
+            deletedByRole: e.deletedByRole || "Salesman",
+            deletionStatus: e.deletionStatus || "PENDING_CONFIRMATION",
+            deletionReason: e.deletionReason || "",
+            originalData: e,
+          })
+        } else {
+          const existing = map.get(key)!
+          if (!existing.originalData) existing.originalData = e
+        }
       }
     })
 
     rawCustomers.forEach((c) => {
-      if (c && c.isDeleted) {
-        list.push({
-          id: c.id,
-          collection: "customers",
-          entityType: "Customer",
-          title: `${c.firmName || c.name} (${c.customerId || c.id})`,
-          subtitle: `City: ${c.city || "Ahmedabad"} • Phone: ${c.phone}`,
-          deletedAt: c.deletedAt || Date.now(),
-          deletedBy: c.deletedBy || "Salesman",
-          deletedByEmail: c.deletedByEmail || "",
-          deletedByRole: c.deletedByRole || "Salesman",
-          deletionStatus: c.deletionStatus || "PENDING_CONFIRMATION",
-          deletionReason: c.deletionReason || "",
-          originalData: c,
-        })
+      if (c && (c.isDeleted || c.deletionStatus === "PENDING_CONFIRMATION")) {
+        const key = `customers_${c.id}`
+        if (!map.has(key)) {
+          map.set(key, {
+            id: c.id,
+            collection: "customers",
+            entityType: "Customer",
+            title: `${c.firmName || c.name} (${c.customerId || c.id})`,
+            subtitle: `City: ${c.city || "Ahmedabad"} • Phone: ${c.phone}`,
+            deletedAt: c.deletedAt || Date.now(),
+            deletedBy: c.deletedBy || "Salesman",
+            deletedByEmail: c.deletedByEmail || "",
+            deletedByRole: c.deletedByRole || "Salesman",
+            deletionStatus: c.deletionStatus || "PENDING_CONFIRMATION",
+            deletionReason: c.deletionReason || "",
+            originalData: c,
+          })
+        } else {
+          const existing = map.get(key)!
+          if (!existing.originalData) existing.originalData = c
+        }
       }
     })
 
     rawSuppliers.forEach((s) => {
-      if (s && s.isDeleted) {
-        list.push({
-          id: s.id,
-          collection: "suppliers",
-          entityType: "Supplier",
-          title: `${s.firmName || s.name} (${s.type || "Supplier"})`,
-          subtitle: `Market: ${s.marketArea || "N/A"} • Phone: ${s.phone}`,
-          deletedAt: s.deletedAt || Date.now(),
-          deletedBy: s.deletedBy || "Salesman",
-          deletedByEmail: s.deletedByEmail || "",
-          deletedByRole: s.deletedByRole || "Salesman",
-          deletionStatus: s.deletionStatus || "PENDING_CONFIRMATION",
-          deletionReason: s.deletionReason || "",
-          originalData: s,
-        })
+      if (s && (s.isDeleted || s.deletionStatus === "PENDING_CONFIRMATION")) {
+        const key = `suppliers_${s.id}`
+        if (!map.has(key)) {
+          map.set(key, {
+            id: s.id,
+            collection: "suppliers",
+            entityType: "Supplier",
+            title: `${s.firmName || s.name} (${s.type || "Supplier"})`,
+            subtitle: `Market: ${s.marketArea || "N/A"} • Phone: ${s.phone}`,
+            deletedAt: s.deletedAt || Date.now(),
+            deletedBy: s.deletedBy || "Salesman",
+            deletedByEmail: s.deletedByEmail || "",
+            deletedByRole: s.deletedByRole || "Salesman",
+            deletionStatus: s.deletionStatus || "PENDING_CONFIRMATION",
+            deletionReason: s.deletionReason || "",
+            originalData: s,
+          })
+        } else {
+          const existing = map.get(key)!
+          if (!existing.originalData) existing.originalData = s
+        }
       }
     })
 
     rawProducts.forEach((p) => {
-      if (p && p.isDeleted) {
-        list.push({
-          id: p.id,
-          collection: "products",
-          entityType: "Product",
-          title: `${p.name} (${p.productCode})`,
-          subtitle: `Supplier: ${p.supplierName} • Rate: ₹${p.defaultRate}`,
-          deletedAt: p.deletedAt || Date.now(),
-          deletedBy: p.deletedBy || "Salesman",
-          deletedByEmail: p.deletedByEmail || "",
-          deletedByRole: p.deletedByRole || "Salesman",
-          deletionStatus: p.deletionStatus || "PENDING_CONFIRMATION",
-          deletionReason: p.deletionReason || "",
-          originalData: p,
-        })
+      if (p && (p.isDeleted || p.deletionStatus === "PENDING_CONFIRMATION")) {
+        const key = `products_${p.id}`
+        if (!map.has(key)) {
+          map.set(key, {
+            id: p.id,
+            collection: "products",
+            entityType: "Product",
+            title: `${p.name} (${p.productCode})`,
+            subtitle: `Supplier: ${p.supplierName} • Rate: ₹${p.defaultRate}`,
+            deletedAt: p.deletedAt || Date.now(),
+            deletedBy: p.deletedBy || "Salesman",
+            deletedByEmail: p.deletedByEmail || "",
+            deletedByRole: p.deletedByRole || "Salesman",
+            deletionStatus: p.deletionStatus || "PENDING_CONFIRMATION",
+            deletionReason: p.deletionReason || "",
+            originalData: p,
+          })
+        } else {
+          const existing = map.get(key)!
+          if (!existing.originalData) existing.originalData = p
+        }
       }
     })
 
     rawEmployees.forEach((emp) => {
-      if (emp && emp.isDeleted) {
-        list.push({
-          id: emp.id,
-          collection: "employees",
-          entityType: "Employee",
-          title: `${emp.name} (${emp.employeeId || `EMP-${emp.id}`})`,
-          subtitle: `Role: ${emp.role} • Phone: ${emp.phone || "N/A"}`,
-          deletedAt: emp.deletedAt || Date.now(),
-          deletedBy: emp.deletedBy || "Admin",
-          deletedByEmail: emp.deletedByEmail || "",
-          deletedByRole: emp.deletedByRole || "Owner",
-          deletionStatus: emp.deletionStatus || "CONFIRMED",
-          deletionReason: emp.deletionReason || "Staff Deactivated",
-          originalData: emp,
-        })
+      if (emp && (emp.isDeleted || emp.status === "Deactivated")) {
+        const key = `employees_${emp.id}`
+        if (!map.has(key)) {
+          map.set(key, {
+            id: emp.id,
+            collection: "employees",
+            entityType: "Employee",
+            title: `${emp.name} (${emp.employeeId || `EMP-${emp.id}`})`,
+            subtitle: `Role: ${emp.role} • Phone: ${emp.phone || "N/A"}`,
+            deletedAt: emp.deletedAt || Date.now(),
+            deletedBy: emp.deletedBy || "Admin",
+            deletedByEmail: emp.deletedByEmail || "",
+            deletedByRole: emp.deletedByRole || "Owner",
+            deletionStatus: emp.deletionStatus || "CONFIRMED",
+            deletionReason: emp.deletionReason || "Staff Deactivated",
+            originalData: emp,
+          })
+        } else {
+          const existing = map.get(key)!
+          if (!existing.originalData) existing.originalData = emp
+        }
       }
     })
 
-    return list.sort((a, b) => (b.deletedAt || 0) - (a.deletedAt || 0))
-  }, [rawVisits, rawEntries, rawCustomers, rawSuppliers, rawProducts, rawEmployees])
+    rawBrands.forEach((b) => {
+      if (b && (b as any).isDeleted) {
+        const key = `brands_${b.id}`
+        if (!map.has(key)) {
+          map.set(key, {
+            id: b.id,
+            collection: "brands",
+            entityType: "Brand",
+            title: `${b.brandName}`,
+            subtitle: `Category: ${b.category || "N/A"} • Manufacturer: ${b.manufacturerName || "N/A"}`,
+            deletedAt: (b as any).deletedAt || Date.now(),
+            deletedBy: (b as any).deletedBy || "Admin",
+            deletedByEmail: (b as any).deletedByEmail || "",
+            deletedByRole: (b as any).deletedByRole || "Admin",
+            deletionStatus: (b as any).deletionStatus || "PENDING_CONFIRMATION",
+            deletionReason: (b as any).deletionReason || "",
+            originalData: b,
+          })
+        }
+      }
+    })
+
+    rawTransporters.forEach((t) => {
+      if (t && (t as any).isDeleted) {
+        const key = `transporters_${t.id}`
+        if (!map.has(key)) {
+          map.set(key, {
+            id: t.id,
+            collection: "transporters",
+            entityType: "Transporter",
+            title: `${t.transporterName}`,
+            subtitle: `Phone: ${t.phone} • City: ${t.city || "N/A"}`,
+            deletedAt: (t as any).deletedAt || Date.now(),
+            deletedBy: (t as any).deletedBy || "Admin",
+            deletedByEmail: (t as any).deletedByEmail || "",
+            deletedByRole: (t as any).deletedByRole || "Admin",
+            deletionStatus: (t as any).deletionStatus || "PENDING_CONFIRMATION",
+            deletionReason: (t as any).deletionReason || "",
+            originalData: t,
+          })
+        }
+      }
+    })
+
+    rawMarkets.forEach((m) => {
+      if (m && (m as any).isDeleted) {
+        const key = `markets_${m.id}`
+        if (!map.has(key)) {
+          map.set(key, {
+            id: m.id,
+            collection: "markets",
+            entityType: "Market",
+            title: `${m.marketName}`,
+            subtitle: `City: ${m.city} • Area: ${m.area || "N/A"}`,
+            deletedAt: (m as any).deletedAt || Date.now(),
+            deletedBy: (m as any).deletedBy || "Admin",
+            deletedByEmail: (m as any).deletedByEmail || "",
+            deletedByRole: (m as any).deletedByRole || "Admin",
+            deletionStatus: (m as any).deletionStatus || "PENDING_CONFIRMATION",
+            deletionReason: (m as any).deletionReason || "",
+            originalData: m,
+          })
+        }
+      }
+    })
+
+    return Array.from(map.values()).sort((a, b) => (b.deletedAt || 0) - (a.deletedAt || 0))
+  }, [
+    rawDeletionRequests,
+    rawVisits,
+    rawEntries,
+    rawCustomers,
+    rawSuppliers,
+    rawProducts,
+    rawEmployees,
+    rawBrands,
+    rawTransporters,
+    rawMarkets,
+  ])
 
   const pendingDeletionsCount = deletedItems.length
 
@@ -908,6 +1276,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const deleteVisit = async (id: number) => {
     const visitRef = ref(rtdb, `visits/${id}`)
     await remove(visitRef)
+    await remove(ref(rtdb, `deletion_requests/visits_${id}`))
+
+    // Cascade delete purchase entries for this visit
+    const entriesToDelete = rawEntries.filter(e => e.visitId === id)
+    for (const entry of entriesToDelete) {
+      await remove(ref(rtdb, `purchase_entries/${entry.id}`))
+      await remove(ref(rtdb, `deletion_requests/purchase_entries_${entry.id}`))
+    }
+
+    // Cascade delete pack groups for this visit
+    const packGroupsToDelete = packGroups.filter(p => p.visitId === id)
+    for (const pg of packGroupsToDelete) {
+      await remove(ref(rtdb, `pack_groups/${pg.id}`))
+      await remove(ref(rtdb, `deletion_requests/pack_groups_${pg.id}`))
+    }
   }
 
   const saveCustomer = async (customer: Customer) => {
@@ -923,9 +1306,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await set(customerRef, sanitizePayload(payload))
   }
 
-  const deleteCustomer = async (id: number) => {
-    const customerRef = ref(rtdb, `customers/${id}`)
-    await remove(customerRef)
+  const deleteCustomer = async (id: number | string) => {
+    const strId = String(id)
+    const found = rawCustomers.find((c) => String(c.id) === strId || (c as any)._rtdbKey === strId)
+    const keys = new Set<string>([strId])
+    if (found) {
+      keys.add(String(found.id))
+      if ((found as any)._rtdbKey) keys.add(String((found as any)._rtdbKey))
+    }
+    for (const k of keys) {
+      await remove(ref(rtdb, `customers/${k}`))
+      await remove(ref(rtdb, `deletion_requests/customers_${k}`))
+    }
   }
 
   const saveSupplier = async (supplier: Supplier) => {
@@ -943,11 +1335,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }
 
-  const deleteSupplier = async (id: number) => {
-    const supplierRef = ref(rtdb, `suppliers/${id}`)
-    await remove(supplierRef)
-    const mfgRef = ref(rtdb, `manufacturers/${id}`)
-    await remove(mfgRef)
+  const deleteSupplier = async (id: number | string) => {
+    const strId = String(id)
+    const found = rawSuppliers.find((s) => String(s.id) === strId || (s as any)._rtdbKey === strId)
+    const keys = new Set<string>([strId])
+    if (found) {
+      keys.add(String(found.id))
+      if ((found as any)._rtdbKey) keys.add(String((found as any)._rtdbKey))
+    }
+    for (const k of keys) {
+      await remove(ref(rtdb, `suppliers/${k}`))
+      await remove(ref(rtdb, `manufacturers/${k}`))
+      await remove(ref(rtdb, `deletion_requests/suppliers_${k}`))
+    }
   }
 
   const saveBrand = async (brand: Brand) => {
@@ -955,9 +1355,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await set(brandRef, sanitizePayload(brand))
   }
 
-  const deleteBrand = async (id: number) => {
-    const brandRef = ref(rtdb, `brands/${id}`)
-    await remove(brandRef)
+  const deleteBrand = async (id: number | string) => {
+    const strId = String(id)
+    const found = rawBrands.find((b) => String(b.id) === strId || (b as any)._rtdbKey === strId)
+    const keys = new Set<string>([strId])
+    if (found) {
+      keys.add(String(found.id))
+      if ((found as any)._rtdbKey) keys.add(String((found as any)._rtdbKey))
+    }
+    for (const k of keys) {
+      await remove(ref(rtdb, `brands/${k}`))
+      await remove(ref(rtdb, `deletion_requests/brands_${k}`))
+    }
   }
 
   const saveTransporter = async (transporter: Transporter) => {
@@ -965,9 +1374,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await set(transporterRef, sanitizePayload(transporter))
   }
 
-  const deleteTransporter = async (id: number) => {
-    const transporterRef = ref(rtdb, `transporters/${id}`)
-    await remove(transporterRef)
+  const deleteTransporter = async (id: number | string) => {
+    const strId = String(id)
+    const found = rawTransporters.find((t) => String(t.id) === strId || (t as any)._rtdbKey === strId)
+    const keys = new Set<string>([strId])
+    if (found) {
+      keys.add(String(found.id))
+      if ((found as any)._rtdbKey) keys.add(String((found as any)._rtdbKey))
+    }
+    for (const k of keys) {
+      await remove(ref(rtdb, `transporters/${k}`))
+      await remove(ref(rtdb, `deletion_requests/transporters_${k}`))
+    }
   }
 
   const saveMarket = async (market: Market) => {
@@ -975,9 +1393,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await set(marketRef, sanitizePayload(market))
   }
 
-  const deleteMarket = async (id: number) => {
-    const marketRef = ref(rtdb, `markets/${id}`)
-    await remove(marketRef)
+  const deleteMarket = async (id: number | string) => {
+    const strId = String(id)
+    const found = rawMarkets.find((m) => String(m.id) === strId || (m as any)._rtdbKey === strId)
+    const keys = new Set<string>([strId])
+    if (found) {
+      keys.add(String(found.id))
+      if ((found as any)._rtdbKey) keys.add(String((found as any)._rtdbKey))
+    }
+    for (const k of keys) {
+      await remove(ref(rtdb, `markets/${k}`))
+      await remove(ref(rtdb, `deletion_requests/markets_${k}`))
+    }
   }
 
   const saveEmployee = async (employee: Employee) => {
@@ -1040,6 +1467,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const deletePurchaseEntry = async (id: number) => {
     const entryRef = ref(rtdb, `purchase_entries/${id}`)
     await remove(entryRef)
+    await remove(ref(rtdb, `deletion_requests/purchase_entries_${id}`))
   }
 
   // Create Mixed Case Pack Group
@@ -1133,6 +1561,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const deleteProduct = async (id: number) => {
     const productRef = ref(rtdb, `products/${id}`)
     await remove(productRef)
+    await remove(ref(rtdb, `deletion_requests/products_${id}`))
   }
 
   // Admin Permanent Delete confirmation
@@ -1147,7 +1576,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await remove(mfgRef)
     }
 
-    // 3. Remove from deletion_requests queue
+    // 3. If visit, cascade hard remove to linked purchase entries
+    if (collection === "visits") {
+      const linkedEntries = rawEntries.filter((e) => String(e.visitId) === String(id))
+      for (const entry of linkedEntries) {
+        await remove(ref(rtdb, `purchase_entries/${entry.id}`))
+        await remove(ref(rtdb, `deletion_requests/purchase_entries_${entry.id}`))
+      }
+    }
+
+    // 4. Remove from deletion_requests queue
     const requestRef = ref(rtdb, `deletion_requests/${collection}_${id}`)
     await remove(requestRef)
   }
@@ -1187,7 +1625,24 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       })
     }
 
-    // 3. Remove from deletion_requests queue
+    // 3. If visit, also restore any linked purchase entries that were soft deleted
+    if (collection === "visits") {
+      const linkedEntries = rawEntries.filter((e) => String(e.visitId) === String(id) && e.isDeleted)
+      for (const entry of linkedEntries) {
+        await update(ref(rtdb, `purchase_entries/${entry.id}`), {
+          isDeleted: false,
+          deletedAt: null,
+          deletedBy: null,
+          deletedByEmail: null,
+          deletedByRole: null,
+          deletionStatus: null,
+          deletionReason: null,
+        })
+        await remove(ref(rtdb, `deletion_requests/purchase_entries_${entry.id}`))
+      }
+    }
+
+    // 4. Remove from deletion_requests queue
     const requestRef = ref(rtdb, `deletion_requests/${collection}_${id}`)
     await remove(requestRef)
   }

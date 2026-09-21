@@ -414,77 +414,79 @@ export function EmployeesView({ onNavigate }: EmployeesViewProps) {
         />
       ) : (
         <>
-          {/* Header with Search, Role Tabs & Add Button */}
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 flex items-center gap-2">
-            <span>Staff & Field Agents Directory</span>
-          </h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {employees.length} team members managing buyer market visits and procurement.
-          </p>
-        </div>
+          {/* Top Header: Title on Left, Action Buttons (Search & Add Staff) on Right */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 flex items-center gap-2">
+                <span>Staff & Field Agents Directory</span>
+              </h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {employees.length} team members managing buyer market visits and procurement.
+              </p>
+            </div>
 
-        <div className="flex items-center gap-2">
-          {/* Search Toggle */}
-          <Button
-            shape="pill"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setShowSearch(!showSearch)
-              if (showSearch) setSearch("")
-            }}
-            className="h-8 px-3 text-xs"
-          >
-            <Search className="h-3.5 w-3.5 mr-1" />
-            <span>Search</span>
-          </Button>
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Search Toggle */}
+              <Button
+                shape="pill"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setShowSearch(!showSearch)
+                  if (showSearch) setSearch("")
+                }}
+                className="h-8 px-3 text-xs"
+              >
+                <Search className="h-3.5 w-3.5 mr-1" />
+                <span>Search</span>
+              </Button>
 
-          {/* Role Filter Tabs */}
-          <Tabs
-            value={roleFilter}
-            onValueChange={setRoleFilter}
-            options={[
-              { value: "all", label: "All Roles", count: employees.length },
-              {
-                value: "salesman",
-                label: "Salesmen",
-                count: employees.filter((e) => e.role?.toLowerCase() === "salesman").length,
-              },
-              {
-                value: "admin",
-                label: "Admins",
-                count: employees.filter((e) => e.role?.toLowerCase() === "admin").length,
-              },
-            ]}
-          />
+              {/* Add Staff Button - Always visible and accessible on Web Admin */}
+              <Button
+                shape="pill"
+                size="sm"
+                onClick={handleOpenAdd}
+                className="h-8 px-3.5 shadow-sm font-semibold text-xs bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200 flex items-center gap-1.5"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Add Staff</span>
+              </Button>
+            </div>
+          </div>
 
-          {/* Status Filter Tabs */}
-          <Tabs
-            value={statusFilter}
-            onValueChange={setStatusFilter}
-            options={[
-              { value: "all", label: "All Status", count: employees.length },
-              { value: "active", label: "Active", count: activeStaffCount },
-              { value: "suspended", label: "Suspended", count: suspendedStaffCount },
-              { value: "deactivated", label: "Deactivated", count: deactivatedStaffCount },
-            ]}
-          />
+          {/* Sub-Header Filter Bar: Dedicated Row for Role & Status Filter Tabs */}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            {/* Role Filter Tabs */}
+            <Tabs
+              value={roleFilter}
+              onValueChange={setRoleFilter}
+              options={[
+                { value: "all", label: "All Roles", count: employees.length },
+                {
+                  value: "salesman",
+                  label: "Salesmen",
+                  count: employees.filter((e) => e.role?.toLowerCase() === "salesman").length,
+                },
+                {
+                  value: "admin",
+                  label: "Admins",
+                  count: employees.filter((e) => e.role?.toLowerCase() === "admin").length,
+                },
+              ]}
+            />
 
-          {isAdmin && (
-            <Button
-              shape="pill"
-              size="sm"
-              onClick={handleOpenAdd}
-              className="h-8 shadow-sm font-semibold text-xs"
-            >
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              Add Staff
-            </Button>
-          )}
-        </div>
-      </div>
+            {/* Status Filter Tabs */}
+            <Tabs
+              value={statusFilter}
+              onValueChange={setStatusFilter}
+              options={[
+                { value: "all", label: "All Status", count: employees.length },
+                { value: "active", label: "Active", count: activeStaffCount },
+                { value: "suspended", label: "Suspended", count: suspendedStaffCount },
+                { value: "deactivated", label: "Deactivated", count: deactivatedStaffCount },
+              ]}
+            />
+          </div>
 
       {/* Expandable Search Input */}
       {showSearch && (
@@ -560,8 +562,17 @@ export function EmployeesView({ onNavigate }: EmployeesViewProps) {
       {/* Grid of Employee Performance Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {filteredStats.length === 0 ? (
-          <div className="col-span-full py-12 text-center text-xs text-muted-foreground">
-            No employees found matching filter.
+          <div className="col-span-full py-12 text-center text-xs text-muted-foreground flex flex-col items-center justify-center gap-3">
+            <p>No employees found matching filter.</p>
+            <Button
+              shape="pill"
+              size="sm"
+              onClick={handleOpenAdd}
+              className="h-8 px-3.5 text-xs font-semibold bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200 flex items-center gap-1.5"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>Add New Staff</span>
+            </Button>
           </div>
         ) : (
           filteredStats.map((stat) => {

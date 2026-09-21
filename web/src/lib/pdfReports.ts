@@ -51,7 +51,7 @@ export function generateCustomerDayReportHtml(data: CustomerReportData): string 
     const supType = supEntries[0]?.supplierType || "Wholesaler"
     supplierRowsHtml += `
       <tr class="supplier-header-row">
-        <td colspan="7">
+        <td colspan="8">
           <span class="supplier-tag">▶ ${supName}</span>
           <span class="supplier-type-badge">(${supType})</span>
         </td>
@@ -64,6 +64,13 @@ export function generateCustomerDayReportHtml(data: CustomerReportData): string 
           : `${item.caseCount} cases`
       const rate = item.rate || item.pricePerPiece || 0
       const itemAmount = Number(item.totalAmount) || 0
+      const statusText = item.deliveryStatus || "Pending"
+      const statusColor =
+        statusText.toLowerCase() === "delivered"
+          ? "#15803d"
+          : statusText.toLowerCase() === "dispatched"
+          ? "#1d4ed8"
+          : "#b45309"
 
       supplierRowsHtml += `
         <tr class="item-row">
@@ -73,6 +80,7 @@ export function generateCustomerDayReportHtml(data: CustomerReportData): string 
           <td class="text-center font-bold">${item.pieces}</td>
           <td class="text-right">₹${formatInr(rate)}</td>
           <td class="text-center">${packDesc}</td>
+          <td class="text-center font-bold" style="color: ${statusColor};">${statusText}</td>
           <td class="text-right font-bold">₹${formatInr(itemAmount)}</td>
         </tr>
       `
@@ -80,7 +88,7 @@ export function generateCustomerDayReportHtml(data: CustomerReportData): string 
         supplierRowsHtml += `
           <tr class="note-row">
             <td></td>
-            <td colspan="6" class="note-text">↳ NOTE: ${item.mixedPackNote}</td>
+            <td colspan="7" class="note-text">↳ NOTE: ${item.mixedPackNote}</td>
           </tr>
         `
       }
@@ -129,123 +137,127 @@ export function generateCustomerDayReportHtml(data: CustomerReportData): string 
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       margin: 0;
       padding: 0;
-      color: #141923;
+      color: #0f172a;
       background: #ffffff;
       font-size: 11px;
       line-height: 1.4;
     }
     .header-banner {
-      background: #132338;
+      background: #0f172a;
       color: #ffffff;
-      padding: 16px 20px;
-      border-radius: 8px 8px 0 0;
+      padding: 14px 18px;
+      border-radius: 6px 6px 0 0;
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
     }
     .company-title {
-      font-size: 20px;
+      font-size: 19px;
       font-weight: 800;
       letter-spacing: 0.5px;
       color: #ffffff;
       margin: 0;
     }
     .company-sub {
-      color: #c89d3c;
-      font-size: 10px;
+      color: #cbd5e1;
+      font-size: 9.5px;
       font-weight: 700;
       letter-spacing: 0.5px;
-      margin-top: 3px;
+      margin-top: 2px;
     }
     .company-desc {
-      color: #c8d2e1;
-      font-size: 9px;
-      margin-top: 3px;
+      color: #94a3b8;
+      font-size: 8.5px;
+      margin-top: 2px;
+      line-height: 1.3;
     }
     .header-right {
       text-align: right;
     }
     .doc-type {
-      font-size: 14px;
+      font-size: 13.5px;
       font-weight: 800;
       color: #ffffff;
       letter-spacing: 0.5px;
     }
     .doc-meta {
-      color: #dce6f5;
-      font-size: 10px;
-      margin-top: 4px;
+      color: #cbd5e1;
+      font-size: 9.5px;
+      margin-top: 3px;
     }
     .info-container {
       background: #f8fafc;
-      border: 1px solid #dce2ea;
+      border: 1px solid #cbd5e1;
       border-top: none;
-      padding: 12px 18px;
+      padding: 10px 16px;
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 16px;
     }
     .info-col h4 {
       margin: 0 0 4px 0;
-      font-size: 10px;
-      color: #64707d;
+      font-size: 9.5px;
+      color: #475569;
       text-transform: uppercase;
       letter-spacing: 0.5px;
       font-weight: 700;
     }
     .info-title {
-      font-size: 13px;
+      font-size: 12.5px;
       font-weight: 700;
-      color: #141923;
+      color: #0f172a;
     }
     .info-sub {
-      font-size: 10px;
-      color: #4b5563;
+      font-size: 9.5px;
+      color: #334155;
       margin-top: 2px;
     }
     table.data-table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 14px;
-      font-size: 10.5px;
+      margin-top: 12px;
+      font-size: 10px;
+      border: 1px solid #94a3b8;
     }
     table.data-table thead tr {
-      background: #132338;
+      background: #0f172a;
       color: #ffffff;
     }
     table.data-table th {
-      padding: 7px 10px;
+      padding: 6px 7px;
       font-weight: 700;
-      font-size: 9.5px;
+      font-size: 9px;
       letter-spacing: 0.3px;
+      border: 1px solid #475569;
+      text-align: left;
     }
     table.data-table td {
-      padding: 7px 10px;
-      border-bottom: 1px solid #e2e8f0;
+      padding: 6px 7px;
+      border: 1px solid #cbd5e1;
     }
     .supplier-header-row td {
-      background: #eef2f8;
-      color: #132338;
+      background: #f1f5f9;
+      color: #0f172a;
       font-weight: 700;
-      padding: 6px 10px;
-      font-size: 10.5px;
-      border-top: 1px solid #cbd5e1;
-      border-bottom: 1px solid #cbd5e1;
+      padding: 5px 8px;
+      font-size: 10px;
+      border: 1px solid #94a3b8;
     }
     .supplier-type-badge {
-      font-size: 9.5px;
+      font-size: 9px;
       font-weight: normal;
       color: #475569;
       margin-left: 6px;
     }
     .note-row td {
-      padding: 2px 10px 6px 10px;
-      border-bottom: 1px solid #e2e8f0;
+      padding: 3px 8px 5px 8px;
+      border: 1px solid #cbd5e1;
+      background: #fafafa;
     }
     .note-text {
-      color: #b45309;
+      color: #475569;
       font-style: italic;
-      font-size: 9.5px;
+      font-size: 9px;
     }
     .text-center { text-align: center; }
     .text-right { text-align: right; }
@@ -260,8 +272,8 @@ export function generateCustomerDayReportHtml(data: CustomerReportData): string 
     }
     .summary-box {
       background: #f8fafc;
-      border: 1px solid #dce2ea;
-      border-radius: 6px;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
       overflow: hidden;
     }
     .summary-content {
@@ -274,10 +286,10 @@ export function generateCustomerDayReportHtml(data: CustomerReportData): string 
       font-size: 10.5px;
     }
     .summary-row.label-sub {
-      color: #64707d;
+      color: #475569;
     }
     .summary-banner {
-      background: #132338;
+      background: #0f172a;
       color: #ffffff;
       padding: 8px 14px;
       display: flex;
@@ -299,33 +311,34 @@ export function generateCustomerDayReportHtml(data: CustomerReportData): string 
       margin-bottom: 3px;
     }
     .mixed-pack-box {
-      background: #fef3c7;
-      border: 1px solid #fde68a;
-      border-radius: 6px;
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
       padding: 8px 12px;
       margin-bottom: 10px;
     }
     .mixed-pack-box h4 {
       margin: 0 0 4px 0;
-      font-size: 10.5px;
-      color: #92400e;
+      font-size: 10px;
+      color: #0f172a;
+      font-weight: 700;
     }
     .pg-item {
-      font-size: 10px;
-      color: #92400e;
+      font-size: 9.5px;
+      color: #334155;
       margin-bottom: 2px;
     }
     .terms-box {
-      font-size: 9px;
-      color: #64707d;
-      line-height: 1.5;
+      font-size: 8.5px;
+      color: #475569;
+      line-height: 1.45;
     }
     .terms-box ul {
-      margin: 4px 0;
-      padding-left: 16px;
+      margin: 3px 0;
+      padding-left: 14px;
     }
     .signatures-box {
-      margin-top: 40px;
+      margin-top: 36px;
       display: flex;
       justify-content: space-between;
       padding: 0 30px;
@@ -333,21 +346,22 @@ export function generateCustomerDayReportHtml(data: CustomerReportData): string 
     .sig-line {
       width: 180px;
       text-align: center;
-      border-top: 1.5px solid #141923;
-      padding-top: 6px;
+      border-top: 1.5px solid #0f172a;
+      padding-top: 5px;
       font-weight: 700;
-      font-size: 10.5px;
+      font-size: 10px;
     }
   </style>
 </head>
 <body>
   <div class="header-banner">
     <div style="display: flex; align-items: center; gap: 14px;">
-      <img src="${HIMAT_LOGO_DATA_URI}" alt="Himat Textile Logo" style="height: 54px; width: auto; object-fit: contain; flex-shrink: 0;" />
+      <img src="${HIMAT_LOGO_DATA_URI}" alt="Himat Textile Logo" style="height: 52px; width: auto; object-fit: contain; flex-shrink: 0;" />
       <div>
         <h1 class="company-title">HIMAT TEXTILE</h1>
-        <div class="company-sub" style="color: #c89d3c; font-weight: 700; letter-spacing: 0.5px;">YOUR BUSINESS GUIDE ACROSS INDIA</div>
-        <div class="company-desc">Garment Sourcing Agency • Wholesale to Retail Facilitator</div>
+        <div class="company-sub">YOUR BUSINESS GUIDE ACROSS INDIA</div>
+        <div class="company-desc">First Floor, Hira Bhai 21, Dayanand Rd, Sarangpur, Sherkotda, Ahmedabad, Gujarat 380022</div>
+        <div class="company-desc"><strong>GSTIN:</strong> 24EASPS6621D1ZG &bull; <strong>Phone:</strong> +91 98739 38095</div>
       </div>
     </div>
     <div class="header-right">
@@ -376,12 +390,13 @@ export function generateCustomerDayReportHtml(data: CustomerReportData): string 
   <table class="data-table">
     <thead>
       <tr>
-        <th style="width: 12%;">ORDER #</th>
-        <th style="width: 25%;">SUPPLIER / MILL</th>
-        <th style="width: 20%;">ITEM / STYLE</th>
-        <th style="width: 8%; text-align: center;">PCS</th>
+        <th style="width: 10%;">ORDER #</th>
+        <th style="width: 20%;">SUPPLIER / MILL</th>
+        <th style="width: 17%;">ITEM / STYLE</th>
+        <th style="width: 7%; text-align: center;">PCS</th>
         <th style="width: 10%; text-align: right;">RATE</th>
         <th style="width: 12%; text-align: center;">PACKING</th>
+        <th style="width: 11%; text-align: center;">STATUS</th>
         <th style="width: 13%; text-align: right;">AMOUNT</th>
       </tr>
     </thead>
@@ -480,6 +495,13 @@ export function generateSupplierInvoiceHtml(data: SupplierInvoiceData): string {
       item.loosePieces > 0
         ? `${item.caseCount} Cases + ${item.loosePieces} Loose`
         : `${item.caseCount} Full Cases`
+    const statusText = item.deliveryStatus || "Pending"
+    const statusColor =
+      statusText.toLowerCase() === "delivered"
+        ? "#15803d"
+        : statusText.toLowerCase() === "dispatched"
+        ? "#1d4ed8"
+        : "#b45309"
 
     itemsHtml += `
       <tr>
@@ -489,6 +511,7 @@ export function generateSupplierInvoiceHtml(data: SupplierInvoiceData): string {
         <td class="text-right">₹${formatInr(rate)}</td>
         <td class="text-center">${item.caseSize || "—"} pcs/cs</td>
         <td class="text-center">${packSplit}</td>
+        <td class="text-center font-bold" style="color: ${statusColor};">${statusText}</td>
         <td class="text-right font-bold">₹${formatInr(Number(item.totalAmount) || 0)}</td>
       </tr>
     `
@@ -496,7 +519,7 @@ export function generateSupplierInvoiceHtml(data: SupplierInvoiceData): string {
       itemsHtml += `
         <tr class="pack-note-row">
           <td></td>
-          <td colspan="6" class="pack-note-text">PACKING INSTRUCTION: ${item.mixedPackNote}</td>
+          <td colspan="7" class="pack-note-text">PACKING INSTRUCTION: ${item.mixedPackNote}</td>
         </tr>
       `
     }
@@ -528,109 +551,114 @@ export function generateSupplierInvoiceHtml(data: SupplierInvoiceData): string {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       margin: 0;
       padding: 0;
-      color: #141923;
+      color: #0f172a;
       background: #ffffff;
       font-size: 11px;
       line-height: 1.4;
     }
     .header-banner {
-      background: #132338;
+      background: #0f172a;
       color: #ffffff;
-      padding: 16px 20px;
-      border-radius: 8px 8px 0 0;
+      padding: 14px 18px;
+      border-radius: 6px 6px 0 0;
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
     }
     .company-title {
-      font-size: 20px;
+      font-size: 19px;
       font-weight: 800;
       letter-spacing: 0.5px;
       color: #ffffff;
       margin: 0;
     }
     .company-sub {
-      color: #c89d3c;
-      font-size: 10px;
+      color: #cbd5e1;
+      font-size: 9.5px;
       font-weight: 700;
       letter-spacing: 0.5px;
-      margin-top: 3px;
+      margin-top: 2px;
     }
     .company-desc {
-      color: #c8d2e1;
-      font-size: 9px;
-      margin-top: 3px;
+      color: #94a3b8;
+      font-size: 8.5px;
+      margin-top: 2px;
+      line-height: 1.3;
     }
     .header-right {
       text-align: right;
     }
     .doc-type {
-      font-size: 14px;
+      font-size: 13.5px;
       font-weight: 800;
       color: #ffffff;
       letter-spacing: 0.5px;
     }
     .doc-meta {
-      color: #dce6f5;
-      font-size: 10px;
-      margin-top: 4px;
+      color: #cbd5e1;
+      font-size: 9.5px;
+      margin-top: 3px;
     }
     .info-container {
       background: #f8fafc;
-      border: 1px solid #dce2ea;
+      border: 1px solid #cbd5e1;
       border-top: none;
-      padding: 12px 18px;
+      padding: 10px 16px;
       display: grid;
       grid-template-columns: 1.2fr 1fr;
       gap: 16px;
     }
     .info-col h4 {
       margin: 0 0 4px 0;
-      font-size: 10px;
-      color: #64707d;
+      font-size: 9.5px;
+      color: #475569;
       text-transform: uppercase;
       letter-spacing: 0.5px;
       font-weight: 700;
     }
     .info-title {
-      font-size: 13px;
+      font-size: 12.5px;
       font-weight: 700;
-      color: #141923;
+      color: #0f172a;
     }
     .info-sub {
-      font-size: 10px;
-      color: #4b5563;
+      font-size: 9.5px;
+      color: #334155;
       margin-top: 2px;
     }
     table.data-table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 14px;
-      font-size: 10.5px;
+      margin-top: 12px;
+      font-size: 10px;
+      border: 1px solid #94a3b8;
     }
     table.data-table thead tr {
-      background: #132338;
+      background: #0f172a;
       color: #ffffff;
     }
     table.data-table th {
-      padding: 7px 10px;
+      padding: 6px 7px;
       font-weight: 700;
-      font-size: 9.5px;
+      font-size: 9px;
       letter-spacing: 0.3px;
+      border: 1px solid #475569;
+      text-align: left;
     }
     table.data-table td {
-      padding: 7px 10px;
-      border-bottom: 1px solid #e2e8f0;
+      padding: 6px 7px;
+      border: 1px solid #cbd5e1;
     }
     .pack-note-row td {
-      padding: 2px 10px 6px 10px;
-      border-bottom: 1px solid #e2e8f0;
+      padding: 3px 8px 5px 8px;
+      border: 1px solid #cbd5e1;
+      background: #fafafa;
     }
     .pack-note-text {
-      color: #b45309;
+      color: #475569;
       font-style: italic;
       font-weight: 600;
-      font-size: 9.5px;
+      font-size: 9px;
     }
     .text-center { text-align: center; }
     .text-right { text-align: right; }
@@ -645,27 +673,27 @@ export function generateSupplierInvoiceHtml(data: SupplierInvoiceData): string {
     }
     .dispatch-box {
       background: #f8fafc;
-      border: 1px solid #dce2ea;
-      border-radius: 6px;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
       padding: 10px 14px;
     }
     .dispatch-box h4 {
       margin: 0 0 8px 0;
       font-size: 10px;
-      color: #132338;
+      color: #0f172a;
       text-transform: uppercase;
       font-weight: 700;
       letter-spacing: 0.5px;
     }
     .dispatch-item {
-      font-size: 10px;
+      font-size: 9.5px;
       margin-bottom: 4px;
       color: #334155;
     }
     .summary-box {
       background: #f8fafc;
-      border: 1px solid #dce2ea;
-      border-radius: 6px;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
       overflow: hidden;
     }
     .summary-content {
@@ -678,10 +706,10 @@ export function generateSupplierInvoiceHtml(data: SupplierInvoiceData): string {
       font-size: 10.5px;
     }
     .summary-row.label-sub {
-      color: #64707d;
+      color: #475569;
     }
     .summary-banner {
-      background: #132338;
+      background: #0f172a;
       color: #ffffff;
       padding: 8px 14px;
       display: flex;
@@ -690,7 +718,7 @@ export function generateSupplierInvoiceHtml(data: SupplierInvoiceData): string {
       font-size: 12px;
     }
     .signatures-box {
-      margin-top: 45px;
+      margin-top: 40px;
       display: flex;
       justify-content: space-between;
       padding: 0 30px;
@@ -698,21 +726,22 @@ export function generateSupplierInvoiceHtml(data: SupplierInvoiceData): string {
     .sig-line {
       width: 190px;
       text-align: center;
-      border-top: 1.5px solid #141923;
-      padding-top: 6px;
+      border-top: 1.5px solid #0f172a;
+      padding-top: 5px;
       font-weight: 700;
-      font-size: 10.5px;
+      font-size: 10px;
     }
   </style>
 </head>
 <body>
   <div class="header-banner">
     <div style="display: flex; align-items: center; gap: 14px;">
-      <img src="${HIMAT_LOGO_DATA_URI}" alt="Himat Textile Logo" style="height: 54px; width: auto; object-fit: contain; flex-shrink: 0;" />
+      <img src="${HIMAT_LOGO_DATA_URI}" alt="Himat Textile Logo" style="height: 52px; width: auto; object-fit: contain; flex-shrink: 0;" />
       <div>
         <h1 class="company-title">HIMAT TEXTILE</h1>
-        <div class="company-sub" style="color: #c89d3c; font-weight: 700; letter-spacing: 0.5px;">YOUR BUSINESS GUIDE ACROSS INDIA</div>
-        <div class="company-desc">Garment Sourcing Agency • Supplier Purchase Order Copy</div>
+        <div class="company-sub">YOUR BUSINESS GUIDE ACROSS INDIA</div>
+        <div class="company-desc">First Floor, Hira Bhai 21, Dayanand Rd, Sarangpur, Sherkotda, Ahmedabad, Gujarat 380022</div>
+        <div class="company-desc"><strong>GSTIN:</strong> 24EASPS6621D1ZG &bull; <strong>Phone:</strong> +91 98739 38095</div>
       </div>
     </div>
     <div class="header-right">
@@ -741,13 +770,14 @@ export function generateSupplierInvoiceHtml(data: SupplierInvoiceData): string {
   <table class="data-table">
     <thead>
       <tr>
-        <th style="width: 12%;">ORDER #</th>
-        <th style="width: 22%;">ITEM / STYLE CODE</th>
-        <th style="width: 8%; text-align: center;">PCS</th>
-        <th style="width: 12%; text-align: right;">RATE</th>
-        <th style="width: 14%; text-align: center;">CASE SIZE</th>
-        <th style="width: 18%; text-align: center;">PACKING</th>
-        <th style="width: 14%; text-align: right;">AMOUNT</th>
+        <th style="width: 10%;">ORDER #</th>
+        <th style="width: 18%;">ITEM / STYLE CODE</th>
+        <th style="width: 7%; text-align: center;">PCS</th>
+        <th style="width: 10%; text-align: right;">RATE</th>
+        <th style="width: 11%; text-align: center;">CASE SIZE</th>
+        <th style="width: 17%; text-align: center;">PACKING</th>
+        <th style="width: 12%; text-align: center;">STATUS</th>
+        <th style="width: 15%; text-align: right;">AMOUNT</th>
       </tr>
     </thead>
     <tbody>
@@ -1046,38 +1076,39 @@ export function generateCustomerStatementHtml(data: CustomerStatementData): stri
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       margin: 0;
       padding: 0;
-      color: #141923;
+      color: #0f172a;
       background: #ffffff;
       font-size: 10.5px;
       line-height: 1.35;
     }
     .header-banner {
-      background: #132338;
+      background: #0f172a;
       color: #ffffff;
-      padding: 16px 20px;
-      border-radius: 8px 8px 0 0;
+      padding: 14px 18px;
+      border-radius: 6px 6px 0 0;
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
     }
     .company-title {
-      font-size: 20px;
+      font-size: 19px;
       font-weight: 800;
       letter-spacing: 0.5px;
       color: #ffffff;
       margin: 0;
     }
     .company-sub {
-      color: #c89d3c;
-      font-size: 10px;
+      color: #cbd5e1;
+      font-size: 9.5px;
       font-weight: 700;
       letter-spacing: 0.5px;
-      margin-top: 3px;
+      margin-top: 2px;
     }
     .company-desc {
-      color: #c8d2e1;
+      color: #94a3b8;
       font-size: 8.5px;
-      margin-top: 3px;
+      margin-top: 2px;
+      line-height: 1.3;
     }
     .header-right {
       text-align: right;
@@ -1089,15 +1120,15 @@ export function generateCustomerStatementHtml(data: CustomerStatementData): stri
       letter-spacing: 0.5px;
     }
     .doc-meta {
-      color: #dce6f5;
+      color: #cbd5e1;
       font-size: 9.5px;
       margin-top: 3px;
     }
     .info-container {
       background: #f8fafc;
-      border: 1px solid #dce2ea;
+      border: 1px solid #cbd5e1;
       border-top: none;
-      padding: 12px 18px;
+      padding: 10px 16px;
       display: grid;
       grid-template-columns: 1.4fr 1fr;
       gap: 16px;
@@ -1105,19 +1136,19 @@ export function generateCustomerStatementHtml(data: CustomerStatementData): stri
     .info-col h4 {
       margin: 0 0 4px 0;
       font-size: 9.5px;
-      color: #64707d;
+      color: #475569;
       text-transform: uppercase;
       letter-spacing: 0.5px;
       font-weight: 700;
     }
     .info-title {
-      font-size: 13px;
+      font-size: 12.5px;
       font-weight: 700;
-      color: #141923;
+      color: #0f172a;
     }
     .info-sub {
       font-size: 9.5px;
-      color: #4b5563;
+      color: #334155;
       margin-top: 2px;
     }
     table.data-table {
@@ -1125,20 +1156,23 @@ export function generateCustomerStatementHtml(data: CustomerStatementData): stri
       border-collapse: collapse;
       margin-top: 12px;
       font-size: 10px;
+      border: 1px solid #94a3b8;
     }
     table.data-table thead tr {
-      background: #132338;
+      background: #0f172a;
       color: #ffffff;
     }
     table.data-table th {
-      padding: 7px 8px;
+      padding: 6px 7px;
       font-weight: 700;
       font-size: 9px;
       letter-spacing: 0.3px;
+      border: 1px solid #475569;
+      text-align: left;
     }
     table.data-table td {
-      padding: 6px 8px;
-      border-bottom: 1px solid #e2e8f0;
+      padding: 6px 7px;
+      border: 1px solid #cbd5e1;
     }
     .status-badge {
       display: inline-block;
@@ -1173,8 +1207,8 @@ export function generateCustomerStatementHtml(data: CustomerStatementData): stri
     }
     .summary-box {
       background: #f8fafc;
-      border: 1px solid #dce2ea;
-      border-radius: 6px;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
       overflow: hidden;
     }
     .summary-content {
@@ -1187,10 +1221,10 @@ export function generateCustomerStatementHtml(data: CustomerStatementData): stri
       font-size: 10px;
     }
     .summary-row.label-sub {
-      color: #64707d;
+      color: #475569;
     }
     .summary-banner {
-      background: #132338;
+      background: #0f172a;
       color: #ffffff;
       padding: 7px 12px;
       display: flex;
@@ -1211,7 +1245,7 @@ export function generateCustomerStatementHtml(data: CustomerStatementData): stri
     }
     .terms-box {
       font-size: 8.5px;
-      color: #64707d;
+      color: #475569;
       line-height: 1.45;
     }
     .terms-box ul {
@@ -1227,7 +1261,7 @@ export function generateCustomerStatementHtml(data: CustomerStatementData): stri
     .sig-line {
       width: 180px;
       text-align: center;
-      border-top: 1.5px solid #141923;
+      border-top: 1.5px solid #0f172a;
       padding-top: 5px;
       font-weight: 700;
       font-size: 10px;
@@ -1237,11 +1271,12 @@ export function generateCustomerStatementHtml(data: CustomerStatementData): stri
 <body>
   <div class="header-banner">
     <div style="display: flex; align-items: center; gap: 14px;">
-      <img src="${HIMAT_LOGO_DATA_URI}" alt="Himat Textile Logo" style="height: 54px; width: auto; object-fit: contain; flex-shrink: 0;" />
+      <img src="${HIMAT_LOGO_DATA_URI}" alt="Himat Textile Logo" style="height: 52px; width: auto; object-fit: contain; flex-shrink: 0;" />
       <div>
         <h1 class="company-title">HIMAT TEXTILE</h1>
-        <div class="company-sub" style="color: #c89d3c; font-weight: 700; letter-spacing: 0.5px;">YOUR BUSINESS GUIDE ACROSS INDIA</div>
-        <div class="company-desc">Consolidated Customer Account Ledger • Purchase Billing & Settlement Statement</div>
+        <div class="company-sub">YOUR BUSINESS GUIDE ACROSS INDIA</div>
+        <div class="company-desc">First Floor, Hira Bhai 21, Dayanand Rd, Sarangpur, Sherkotda, Ahmedabad, Gujarat 380022</div>
+        <div class="company-desc"><strong>GSTIN:</strong> 24EASPS6621D1ZG &bull; <strong>Phone:</strong> +91 98739 38095</div>
       </div>
     </div>
     <div class="header-right">

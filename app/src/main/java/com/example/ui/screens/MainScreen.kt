@@ -115,6 +115,8 @@ fun MainScreen(
     val suppliers by viewModel.allSuppliers.collectAsStateWithLifecycle()
     val transactions by viewModel.allTransactions.collectAsStateWithLifecycle()
     val customers by viewModel.allCustomers.collectAsStateWithLifecycle()
+    val isSuperAdmin by viewModel.isSuperAdmin.collectAsStateWithLifecycle()
+    val currentRole by viewModel.currentRole.collectAsStateWithLifecycle()
 
     var selectedTab by remember { mutableStateOf(MainScreenTab.SUPPLIERS) }
     var selectedSupplierFilterForTransactions by remember { mutableStateOf<String?>(null) }
@@ -405,6 +407,7 @@ fun MainScreen(
 
     // Delete Supplier Confirmation Dialog
     supplierToDelete?.let { supplier ->
+        val isAdminUser = isSuperAdmin || currentRole.equals("Admin", ignoreCase = true)
         Dialog(onDismissRequest = { supplierToDelete = null }) {
             ElevatedCard(
                 colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -413,14 +416,18 @@ fun MainScreen(
             ) {
                 Column(modifier = Modifier.padding(24.dp)) {
                     Text(
-                        text = "Delete Supplier",
+                        text = if (isAdminUser) "Delete Supplier" else "Request Supplier Deletion",
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Are you sure you want to remove '${supplier.name}' from your suppliers directory?",
+                        text = if (isAdminUser) {
+                            "Are you sure you want to permanently delete '${supplier.name}'? This record will be removed immediately from cloud and app."
+                        } else {
+                            "Are you sure you want to request deletion of '${supplier.name}'? This will be sent to Admin for approval."
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -445,7 +452,11 @@ fun MainScreen(
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.defaultMinSize(minHeight = 44.dp)
                         ) {
-                            Text("Delete", color = MaterialTheme.colorScheme.onError, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = if (isAdminUser) "Delete" else "Submit Request",
+                                color = MaterialTheme.colorScheme.onError,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }

@@ -31,10 +31,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenuItem
@@ -80,6 +83,7 @@ fun DeliveriesScreen(
     val entries by viewModel.visibleEntries.collectAsStateWithLifecycle()
     var selectedFilter by remember { mutableStateOf("All") }
     var entryToUpdate by remember { mutableStateOf<PurchaseEntryEntity?>(null) }
+    var entryToDelete by remember { mutableStateOf<PurchaseEntryEntity?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     var isSearchVisible by remember { mutableStateOf(false) }
 
@@ -331,15 +335,32 @@ fun DeliveriesScreen(
                                     )
                                 }
 
-                                FilledTonalButton(
-                                    onClick = { entryToUpdate = entry },
-                                    shape = RoundedCornerShape(10.dp),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                    modifier = Modifier.defaultMinSize(minHeight = 38.dp)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Update Status", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                    IconButton(
+                                        onClick = { entryToDelete = entry },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.DeleteOutline,
+                                            contentDescription = "Delete Order",
+                                            tint = Color(0xFFDC2626),
+                                            modifier = Modifier.size(19.dp)
+                                        )
+                                    }
+
+                                    FilledTonalButton(
+                                        onClick = { entryToUpdate = entry },
+                                        shape = RoundedCornerShape(10.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                        modifier = Modifier.defaultMinSize(minHeight = 38.dp)
+                                    ) {
+                                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Update Status", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                         }
@@ -347,6 +368,61 @@ fun DeliveriesScreen(
                 }
             }
         }
+    }
+
+    // Delete Confirmation Dialog
+    entryToDelete?.let { entry ->
+        AlertDialog(
+            onDismissRequest = { entryToDelete = null },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.DeleteOutline,
+                        contentDescription = null,
+                        tint = Color(0xFFDC2626),
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "Delete Delivery Order?",
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFDC2626),
+                        fontSize = 16.sp
+                    )
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Are you sure you want to delete order ${entry.orderNo} (${entry.itemCode} from ${entry.supplierName})?",
+                        fontSize = 13.5.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "This will permanently remove the order and its delivery tracking record.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val toDelete = entry
+                        entryToDelete = null
+                        viewModel.deletePurchaseEntry(toDelete)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                ) {
+                    Text("Delete Order", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { entryToDelete = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     // Update Status Dialog

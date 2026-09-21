@@ -355,7 +355,7 @@ fun FullScreenImageViewerDialog(
                         }
 
                         // Download / Save Button (Primary Action)
-                        FilledTonalButton(
+                        IconButton(
                             onClick = {
                                 if (!isDownloading) {
                                     isDownloading = true
@@ -365,24 +365,24 @@ fun FullScreenImageViewerDialog(
                                     }
                                 }
                             },
-                            shape = RoundedCornerShape(10.dp)
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
                         ) {
                             if (isDownloading) {
                                 CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
+                                    modifier = Modifier.size(18.dp),
                                     strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                    color = MaterialTheme.colorScheme.onPrimary
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Saving...", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             } else {
                                 Icon(
                                     Icons.Default.Download,
                                     contentDescription = "Download",
-                                    modifier = Modifier.size(16.dp)
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(18.dp)
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Download", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }

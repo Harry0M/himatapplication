@@ -39,6 +39,60 @@ class FirebaseRtdbService(
     private val rootRef: DatabaseReference
         get() = db.reference
 
+    val pendingDeletionKeys: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    fun listenToDeletionRequests(onUpdate: ((Set<String>) -> Unit)? = null): ValueEventListener {
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val set = mutableSetOf<String>()
+                for (child in snapshot.children) {
+                    val status = child.child("status").getValue(String::class.java)
+                    if (status == null || status == "PENDING_CONFIRMATION" || status == "PENDING") {
+                        val key = child.key ?: continue
+                        set.add(key)
+                        val collection = child.child("collection").getValue(String::class.java) ?: ""
+                        val itemId = child.child("itemId").getValue(Long::class.java) ?: 0L
+                        if (collection.isNotBlank() && itemId > 0L) {
+                            set.add("${collection}_$itemId")
+                        }
+                    }
+                }
+                pendingDeletionKeys.clear()
+                pendingDeletionKeys.addAll(set)
+                onUpdate?.invoke(set)
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        }
+        rootRef.child("deletion_requests").addValueEventListener(listener)
+        return listener
+    }
+
+    suspend fun fetchDeletionRequestsKeys(): Set<String> = suspendCancellableCoroutine { cont ->
+        rootRef.child("deletion_requests").addListenerForSingleValueEvent(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val set = mutableSetOf<String>()
+                for (child in snapshot.children) {
+                    val status = child.child("status").getValue(String::class.java)
+                    if (status == null || status == "PENDING_CONFIRMATION" || status == "PENDING") {
+                        val key = child.key ?: continue
+                        set.add(key)
+                        val collection = child.child("collection").getValue(String::class.java) ?: ""
+                        val itemId = child.child("itemId").getValue(Long::class.java) ?: 0L
+                        if (collection.isNotBlank() && itemId > 0L) {
+                            set.add("${collection}_$itemId")
+                        }
+                    }
+                }
+                pendingDeletionKeys.clear()
+                pendingDeletionKeys.addAll(set)
+                if (cont.isActive) cont.resumeWith(Result.success(set))
+            }
+            override fun onCancelled(error: DatabaseError) {
+                if (cont.isActive) cont.resumeWith(Result.success(emptySet()))
+            }
+        })
+    }
+
     fun sanitizeEmail(email: String): String {
         return email.trim().lowercase().replace(".", "_").replace("@", "_at_")
     }
@@ -109,6 +163,7 @@ class FirebaseRtdbService(
     suspend fun deleteVisit(visitId: Long) = withContext(Dispatchers.IO) {
         try {
             rootRef.child("visits").child(visitId.toString()).removeValue()
+            rootRef.child("deletion_requests").child("visits_$visitId").removeValue()
         } catch (e: Exception) {
             // Ignore
         }
@@ -125,6 +180,7 @@ class FirebaseRtdbService(
     suspend fun deletePurchaseEntry(entryId: Long) = withContext(Dispatchers.IO) {
         try {
             rootRef.child("purchase_entries").child(entryId.toString()).removeValue()
+            rootRef.child("deletion_requests").child("purchase_entries_$entryId").removeValue()
         } catch (e: Exception) {
             // Ignore
         }
@@ -141,6 +197,7 @@ class FirebaseRtdbService(
     suspend fun deleteCustomer(customerId: Long) = withContext(Dispatchers.IO) {
         try {
             rootRef.child("customers").child(customerId.toString()).removeValue()
+            rootRef.child("deletion_requests").child("customers_$customerId").removeValue()
         } catch (e: Exception) {
             // Ignore
         }
@@ -166,6 +223,7 @@ class FirebaseRtdbService(
         try {
             rootRef.child("suppliers").child(supplierId.toString()).removeValue()
             rootRef.child("manufacturers").child(supplierId.toString()).removeValue()
+            rootRef.child("deletion_requests").child("suppliers_$supplierId").removeValue()
         } catch (e: Exception) {
             // Ignore
         }
@@ -182,6 +240,7 @@ class FirebaseRtdbService(
     suspend fun deleteProduct(productId: Long) = withContext(Dispatchers.IO) {
         try {
             rootRef.child("products").child(productId.toString()).removeValue()
+            rootRef.child("deletion_requests").child("products_$productId").removeValue()
         } catch (e: Exception) {
             // Ignore
         }
@@ -390,12 +449,37 @@ class FirebaseRtdbService(
         }
     }
 
+    suspend fun removeDeletionRequest(collection: String, itemId: Long) = withContext(Dispatchers.IO) {
+        try {
+            rootRef.child("deletion_requests").child("${collection}_$itemId").removeValue()
+        } catch (_: Exception) {}
+    }
+
     suspend fun deleteBrand(brandId: Long) = withContext(Dispatchers.IO) {
         try {
             rootRef.child("brands").child(brandId.toString()).removeValue()
+            rootRef.child("deletion_requests").child("brands_$brandId").removeValue()
         } catch (e: Exception) {
             // Ignore
         }
+    }
+
+    suspend fun softDeleteBrand(brand: BrandEntity, deletedBy: String, email: String, role: String) = withContext(Dispatchers.IO) {
+        try {
+            val updated = brand.copy(
+                isDeleted = true,
+                deletedAt = System.currentTimeMillis()
+            )
+            syncBrand(updated)
+            recordDeletionRequest(
+                collection = "brands",
+                itemId = brand.id,
+                itemSummary = "Brand: ${brand.brandName}",
+                deletedBy = deletedBy,
+                email = email,
+                role = role
+            )
+        } catch (_: Exception) {}
     }
 
     suspend fun syncTransporter(transporter: TransporterEntity) = withContext(Dispatchers.IO) {
@@ -415,8 +499,8 @@ class FirebaseRtdbService(
                 "gstin" to transporter.gstin,
                 "trackingUrl" to transporter.trackingUrl,
                 "notes" to transporter.notes,
-                "isActive" to true,
-                "active" to true,
+                "isActive" to !transporter.isDeleted,
+                "active" to !transporter.isDeleted,
                 "isDeleted" to transporter.isDeleted,
                 "deleted" to transporter.isDeleted,
                 "createdAt" to transporter.createdAt
@@ -430,9 +514,28 @@ class FirebaseRtdbService(
     suspend fun deleteTransporter(transporterId: Long) = withContext(Dispatchers.IO) {
         try {
             rootRef.child("transporters").child(transporterId.toString()).removeValue()
+            rootRef.child("deletion_requests").child("transporters_$transporterId").removeValue()
         } catch (e: Exception) {
             // Ignore
         }
+    }
+
+    suspend fun softDeleteTransporter(transporter: TransporterEntity, deletedBy: String, email: String, role: String) = withContext(Dispatchers.IO) {
+        try {
+            val updated = transporter.copy(
+                isDeleted = true,
+                deletedAt = System.currentTimeMillis()
+            )
+            syncTransporter(updated)
+            recordDeletionRequest(
+                collection = "transporters",
+                itemId = transporter.id,
+                itemSummary = "Transporter: ${transporter.transporterName}",
+                deletedBy = deletedBy,
+                email = email,
+                role = role
+            )
+        } catch (_: Exception) {}
     }
 
     suspend fun syncMarket(market: MarketEntity) = withContext(Dispatchers.IO) {
@@ -446,8 +549,8 @@ class FirebaseRtdbService(
                 "pincode" to market.pincode,
                 "marketType" to market.marketType,
                 "description" to market.description,
-                "isActive" to true,
-                "active" to true,
+                "isActive" to !market.isDeleted,
+                "active" to !market.isDeleted,
                 "isDeleted" to market.isDeleted,
                 "deleted" to market.isDeleted,
                 "createdAt" to market.createdAt
@@ -461,9 +564,28 @@ class FirebaseRtdbService(
     suspend fun deleteMarket(marketId: Long) = withContext(Dispatchers.IO) {
         try {
             rootRef.child("markets").child(marketId.toString()).removeValue()
+            rootRef.child("deletion_requests").child("markets_$marketId").removeValue()
         } catch (e: Exception) {
             // Ignore
         }
+    }
+
+    suspend fun softDeleteMarket(market: MarketEntity, deletedBy: String, email: String, role: String) = withContext(Dispatchers.IO) {
+        try {
+            val updated = market.copy(
+                isDeleted = true,
+                deletedAt = System.currentTimeMillis()
+            )
+            syncMarket(updated)
+            recordDeletionRequest(
+                collection = "markets",
+                itemId = market.id,
+                itemSummary = "Market: ${market.marketName}",
+                deletedBy = deletedBy,
+                email = email,
+                role = role
+            )
+        } catch (_: Exception) {}
     }
 
     suspend fun syncLead(lead: LeadEntity) = withContext(Dispatchers.IO) {
@@ -558,6 +680,20 @@ class FirebaseRtdbService(
     // Downstream Deserialization Helper
     private inline fun <reified T> DataSnapshot.extractList(): List<T> {
         val list = mutableListOf<T>()
+        val collectionName = when (T::class) {
+            CustomerEntity::class -> "customers"
+            SupplierEntity::class -> "suppliers"
+            ProductEntity::class -> "products"
+            EmployeeEntity::class -> "employees"
+            VisitEntity::class -> "visits"
+            PurchaseEntryEntity::class -> "purchase_entries"
+            TransactionEntity::class -> "transactions"
+            PackGroupEntity::class -> "pack_groups"
+            BrandEntity::class -> "brands"
+            TransporterEntity::class -> "transporters"
+            MarketEntity::class -> "markets"
+            else -> ""
+        }
         for (child in children) {
             try {
                 if (child.key == "0" || child.key == "null") {
@@ -567,12 +703,35 @@ class FirebaseRtdbService(
                 val item = child.getValue(T::class.java)
                 if (item != null) {
                     val keyLong = child.key?.toLongOrNull() ?: 0L
+                    val rawIsDeleted = child.child("isDeleted").getValue(Boolean::class.java)
+                        ?: child.child("deleted").getValue(Boolean::class.java)
+                        ?: (child.child("deletionStatus").getValue(String::class.java)?.let { it == "PENDING_CONFIRMATION" || it == "CONFIRMED" } ?: false)
+                    val isPendingInQueue = if (collectionName.isNotBlank() && keyLong > 0L) {
+                        pendingDeletionKeys.contains("${collectionName}_$keyLong")
+                    } else false
+                    val effectivelyDeleted = rawIsDeleted || isPendingInQueue
+
                     val fixedItem = when (item) {
-                        is CustomerEntity -> if (item.id <= 0L && keyLong > 0L) item.copy(id = keyLong) else item
-                        is SupplierEntity -> if (item.id <= 0L && keyLong > 0L) item.copy(id = keyLong) else item
-                        is ProductEntity -> if (item.id <= 0L && keyLong > 0L) item.copy(id = keyLong) else item
-                        is EmployeeEntity -> if (item.id <= 0L && keyLong > 0L) item.copy(id = keyLong) else item
-                        is VisitEntity -> if (item.id <= 0L && keyLong > 0L) item.copy(id = keyLong) else item
+                        is CustomerEntity -> item.copy(
+                            id = if (item.id <= 0L && keyLong > 0L) keyLong else item.id,
+                            isDeleted = effectivelyDeleted || item.isDeleted
+                        )
+                        is SupplierEntity -> item.copy(
+                            id = if (item.id <= 0L && keyLong > 0L) keyLong else item.id,
+                            isDeleted = effectivelyDeleted || item.isDeleted
+                        )
+                        is ProductEntity -> item.copy(
+                            id = if (item.id <= 0L && keyLong > 0L) keyLong else item.id,
+                            isDeleted = effectivelyDeleted || item.isDeleted
+                        )
+                        is EmployeeEntity -> item.copy(
+                            id = if (item.id <= 0L && keyLong > 0L) keyLong else item.id,
+                            isDeleted = effectivelyDeleted || item.isDeleted
+                        )
+                        is VisitEntity -> item.copy(
+                            id = if (item.id <= 0L && keyLong > 0L) keyLong else item.id,
+                            isDeleted = effectivelyDeleted || item.isDeleted
+                        )
                         is PurchaseEntryEntity -> {
                             val packGroupId = child.child("packGroupId").getValue(Long::class.java)
                                 ?: item.packGroupId
@@ -581,14 +740,24 @@ class FirebaseRtdbService(
                             item.copy(
                                 id = if (item.id <= 0L && keyLong > 0L) keyLong else item.id,
                                 packGroupId = packGroupId,
-                                mixedPackNote = mixedPackNote
+                                mixedPackNote = mixedPackNote,
+                                isDeleted = effectivelyDeleted || item.isDeleted
                             )
                         }
                         is TransactionEntity -> if (item.id <= 0L && keyLong > 0L) item.copy(id = keyLong) else item
                         is PackGroupEntity -> if (item.id <= 0L && keyLong > 0L) item.copy(id = keyLong) else item
-                        is BrandEntity -> if (item.id <= 0L && keyLong > 0L) item.copy(id = keyLong) else item
-                        is TransporterEntity -> if (item.id <= 0L && keyLong > 0L) item.copy(id = keyLong) else item
-                        is MarketEntity -> if (item.id <= 0L && keyLong > 0L) item.copy(id = keyLong) else item
+                        is BrandEntity -> item.copy(
+                            id = if (item.id <= 0L && keyLong > 0L) keyLong else item.id,
+                            isDeleted = effectivelyDeleted || item.isDeleted
+                        )
+                        is TransporterEntity -> item.copy(
+                            id = if (item.id <= 0L && keyLong > 0L) keyLong else item.id,
+                            isDeleted = effectivelyDeleted || item.isDeleted
+                        )
+                        is MarketEntity -> item.copy(
+                            id = if (item.id <= 0L && keyLong > 0L) keyLong else item.id,
+                            isDeleted = effectivelyDeleted || item.isDeleted
+                        )
                         else -> item
                     }
                     val isValidId = when (fixedItem) {

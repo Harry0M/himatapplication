@@ -10,6 +10,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -41,6 +42,7 @@ import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.ExpandLess
@@ -54,10 +56,17 @@ import androidx.compose.material.icons.filled.ShoppingBag
 import android.widget.Toast
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Store
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
+import com.example.util.PdfGenerator
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -76,6 +85,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -106,7 +116,7 @@ import com.example.ui.components.DeliveryStatusBadge
 import com.example.ui.components.SupplierTypeBadge
 import com.example.ui.viewmodel.HimatViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun CustomerDetailScreen(
     viewModel: HimatViewModel,
@@ -217,41 +227,7 @@ fun CustomerDetailScreen(
     }
 
     val listState = rememberLazyListState()
-    var isProfileExpanded by remember { mutableStateOf(true) }
-
-    val nestedScrollConnection = remember {
-        object : NestedScrollConnection {
-            private var accumulatedDelta = 0f
-
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (source == NestedScrollSource.UserInput) {
-                    val delta = available.y
-                    if (delta < -15f) {
-                        if (accumulatedDelta > 0) accumulatedDelta = 0f
-                        accumulatedDelta += delta
-                        if (accumulatedDelta < -25f) {
-                            isProfileExpanded = false
-                        }
-                    } else if (delta > 15f) {
-                        if (accumulatedDelta < 0) accumulatedDelta = 0f
-                        accumulatedDelta += delta
-                        if (accumulatedDelta > 20f) {
-                            isProfileExpanded = true
-                        }
-                    }
-                }
-                return Offset.Zero
-            }
-        }
-    }
-
-    LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, searchQuery) {
-        if (searchQuery.isNotBlank()) {
-            // Keep search bar visible
-        } else if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset <= 10) {
-            isProfileExpanded = true
-        }
-    }
+    var showDateRangeDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -281,6 +257,21 @@ fun CustomerDetailScreen(
                     }
                 },
                 actions = {
+                    FilledTonalIconButton(
+                        onClick = { showDateRangeDialog = true },
+                        modifier = Modifier
+                            .size(38.dp)
+                            .minimumInteractiveComponentSize()
+                    ) {
+                        Icon(
+                            Icons.Default.PictureAsPdf,
+                            contentDescription = "Customer Statement PDF",
+                            tint = Color(0xFF1D4ED8),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+
                     if (customer.phone.isNotBlank()) {
                         FilledTonalIconButton(
                             onClick = {
@@ -307,20 +298,18 @@ fun CustomerDetailScreen(
             )
         }
     ) { paddingValues ->
-        Column(
+        LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xFFF6F8FB))
-                .nestedScroll(nestedScrollConnection)
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = 16.dp),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // 1. Collapsible Profile Details (above Search Bar)
-            AnimatedVisibility(
-                visible = isProfileExpanded && searchQuery.isBlank(),
-                enter = expandVertically(tween(240, easing = FastOutSlowInEasing)) + fadeIn(tween(200)),
-                exit = shrinkVertically(tween(220, easing = FastOutSlowInEasing)) + fadeOut(tween(180))
-            ) {
+            // 1. Profile Details (above Search Bar)
+            item {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -334,537 +323,553 @@ fun CustomerDetailScreen(
                         .padding(vertical = 4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // 1. Hero Centered Profile Picture in Circle
-                    val avatarPhoto = customer.purchaserPhotoUri.ifBlank { customer.shopPhotoUri }
+                    // 68dp Circular Avatar with Initial fallback
+                    val custAvatarPhoto = customer.purchaserPhotoUri.ifBlank { customer.shopPhotoUri }
                     Surface(
                         shape = CircleShape,
                         color = Color(0xFFEFF6FF),
                         border = BorderStroke(2.dp, Color(0xFFBFDBFE)),
-                        shadowElevation = 2.dp,
-                        modifier = Modifier
-                            .size(66.dp)
-                            .clip(CircleShape)
+                        modifier = Modifier.size(68.dp)
                     ) {
-                        if (avatarPhoto.isNotBlank()) {
+                        if (custAvatarPhoto.isNotBlank()) {
                             AsyncImage(
-                                model = avatarPhoto,
+                                model = custAvatarPhoto,
                                 contentDescription = customer.name,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()
                             )
                         } else {
                             Box(contentAlignment = Alignment.Center) {
-                                val initials = (customer.firmName.ifBlank { customer.name }).take(2).uppercase()
                                 Text(
-                                    text = if (initials.isNotBlank()) initials else "CU",
-                                    fontSize = 20.sp,
+                                    text = (customer.firmName.ifBlank { customer.name }).take(2).uppercase(),
                                     fontWeight = FontWeight.Bold,
+                                    fontSize = 22.sp,
                                     color = Color(0xFF1D4ED8)
                                 )
                             }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(7.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
-                    // Firm Name / Shop Name
+                    // Primary Display Name: Firm Name
+                    val primaryName = customer.firmName.ifBlank { customer.name }
                     Text(
-                        text = customer.firmName.ifBlank { customer.name },
-                        fontSize = 16.5.sp,
+                        text = primaryName,
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF0F172A),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        maxLines = 2,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
 
-                    // Owner Name & Customer ID
-                    val ownerSubtitle = buildString {
-                        if (customer.name.isNotBlank() && customer.name != customer.firmName) {
-                            append("Prop: ${customer.name}")
-                        }
-                        if (customer.customerId.isNotBlank()) {
-                            if (isNotEmpty()) append(" • ")
-                            append("ID: ${customer.customerId}")
-                        }
-                        if (customer.city.isNotBlank()) {
-                            if (isNotEmpty()) append(" • ")
-                            append(customer.city)
-                        }
-                    }
-                    if (ownerSubtitle.isNotBlank()) {
+                    // Secondary Subtitle: Contact Person (if firmName differs)
+                    if (customer.firmName.isNotBlank() && customer.name.isNotBlank() && customer.firmName != customer.name) {
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = ownerSubtitle,
-                            fontSize = 11.sp,
+                            text = "Prop: ${customer.name}",
+                            fontSize = 12.5.sp,
                             fontWeight = FontWeight.Medium,
-                            color = Color(0xFF64748B),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            color = Color(0xFF64748B)
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Action Buttons Row: Phone, Direction (Map), Mail
-                    val mapTarget = customer.shopMapLink.ifBlank { customer.shopLocation.ifBlank { customer.address } }
-                    val primaryPhone = customer.phone.ifBlank { customer.phone2 }
-                    val primaryEmail = customer.email.ifBlank { customer.email2 }
-
+                    // Monospace GSTIN & Badges Row
+                    Spacer(modifier = Modifier.height(6.dp))
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (customer.gstin.isNotBlank()) {
+                            Surface(
+                                color = Color(0xFFF1F5F9),
+                                shape = RoundedCornerShape(4.dp),
+                                border = BorderStroke(0.5.dp, Color(0xFFCBD5E1))
+                            ) {
+                                Text(
+                                    text = "GST: ${customer.gstin}",
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF334155),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                        if (customer.religion.isNotBlank()) {
+                            Surface(
+                                color = Color(0xFFEFF6FF),
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = customer.religion,
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF1D4ED8),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                        if (customer.panNumber.isNotBlank()) {
+                            Surface(
+                                color = Color(0xFFF8FAFC),
+                                shape = RoundedCornerShape(4.dp),
+                                border = BorderStroke(0.5.dp, Color(0xFFCBD5E1))
+                            ) {
+                                Text(
+                                    text = "PAN: ${customer.panNumber}",
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color(0xFF475569),
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // Action Pills: Phone, Direction/Map, Email
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Call Button
-                        if (primaryPhone.isNotBlank()) {
+                        if (customer.phone.isNotBlank()) {
                             Surface(
-                                shape = RoundedCornerShape(16.dp),
+                                shape = CircleShape,
                                 color = Color(0xFFF0FDF4),
                                 border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
-                                modifier = Modifier.clickable {
-                                    val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$primaryPhone"))
-                                    context.startActivity(intent)
-                                }
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${customer.phone}"))
+                                        context.startActivity(intent)
+                                    }
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Icon(Icons.Default.Call, contentDescription = "Call", tint = Color(0xFF059669), modifier = Modifier.size(12.dp))
-                                    Text(
-                                        text = primaryPhone,
-                                        fontSize = 10.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF065F46)
-                                    )
+                                    Icon(Icons.Default.Call, contentDescription = "Call", tint = Color(0xFF059669), modifier = Modifier.size(13.dp))
+                                    Text(text = customer.phone, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF065F46))
                                 }
                             }
                         }
 
-                        // Direction Button for Map (if available)
-                        if (mapTarget.isNotBlank()) {
+                        val mapAddress = listOfNotNull(
+                            customer.shopAddress.takeIf { it.isNotBlank() },
+                            customer.address.takeIf { it.isNotBlank() },
+                            customer.marketArea.takeIf { it.isNotBlank() },
+                            customer.city.takeIf { it.isNotBlank() }
+                        ).firstOrNull()
+
+                        if (mapAddress != null) {
                             Surface(
-                                shape = RoundedCornerShape(16.dp),
+                                shape = CircleShape,
                                 color = Color(0xFFEFF6FF),
                                 border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
-                                modifier = Modifier.clickable {
-                                    val uri = if (mapTarget.startsWith("http")) {
-                                        Uri.parse(mapTarget)
-                                    } else {
-                                        Uri.parse("geo:0,0?q=" + Uri.encode(mapTarget))
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        val geoUri = Uri.parse("geo:0,0?q=" + Uri.encode(mapAddress))
+                                        val mapIntent = Intent(Intent.ACTION_VIEW, geoUri)
+                                        context.startActivity(mapIntent)
                                     }
-                                    try {
-                                        context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-                                    } catch (_: Exception) {
-                                        Toast.makeText(context, "Location: $mapTarget", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Icon(Icons.Default.Place, contentDescription = "Directions", tint = Color(0xFF2563EB), modifier = Modifier.size(12.dp))
-                                    Text(
-                                        text = "Directions",
-                                        fontSize = 10.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF1D4ED8)
-                                    )
+                                    Icon(Icons.Default.Place, contentDescription = "Map Directions", tint = Color(0xFF2563EB), modifier = Modifier.size(13.dp))
+                                    Text(text = "Direction", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1D4ED8))
                                 }
                             }
                         }
 
-                        // Mail Button (if available)
-                        if (primaryEmail.isNotBlank()) {
+                        if (customer.email.isNotBlank()) {
                             Surface(
-                                shape = RoundedCornerShape(16.dp),
+                                shape = CircleShape,
                                 color = Color(0xFFF8FAFC),
                                 border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                                modifier = Modifier.clickable {
-                                    val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$primaryEmail"))
-                                    try {
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:${customer.email}"))
                                         context.startActivity(intent)
-                                    } catch (_: Exception) {}
-                                }
+                                    }
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Icon(Icons.Default.Email, contentDescription = "Email", tint = Color(0xFF475569), modifier = Modifier.size(12.dp))
-                                    Text(
-                                        text = "Mail",
-                                        fontSize = 10.5.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = Color(0xFF334155)
-                                    )
+                                    Icon(Icons.Default.Email, contentDescription = "Email", tint = Color(0xFF475569), modifier = Modifier.size(13.dp))
+                                    Text(text = "Email", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
                                 }
                             }
                         }
                     }
+                }
 
-                    // GSTIN below
-                    val gstin = customer.gstin
-                    if (gstin.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(5.dp))
-                        Surface(
-                            color = Color(0xFFF1F5F9),
-                            shape = RoundedCornerShape(6.dp),
-                            border = BorderStroke(0.8.dp, Color(0xFFE2E8F0))
-                        ) {
-                            Text(
-                                text = "GSTIN: $gstin",
-                                fontSize = 10.sp,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF334155),
-                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
-                            )
-                        }
+                // Cardless Inline Stats Row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "$totalVisits",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0F172A)
+                        )
+                        Text(
+                            text = "Visits / Days",
+                            fontSize = 11.sp,
+                            color = Color(0xFF64748B)
+                        )
                     }
 
-                    // Linked references (Clean, normal inline text)
-                    if (customer.referredBy.isNotBlank() || customer.addedByAgentName.isNotBlank() || customer.preferredTransporterName.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .height(24.dp)
+                            .width(1.dp)
+                            .background(Color(0xFFE2E8F0))
+                    )
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = String.format("%,d", totalPieces),
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0F172A)
+                        )
+                        Text(
+                            text = "Total Pieces",
+                            fontSize = 11.sp,
+                            color = Color(0xFF64748B)
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .height(24.dp)
+                            .width(1.dp)
+                            .background(Color(0xFFE2E8F0))
+                    )
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "$deliveredEntriesCount",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF059669)
+                        )
+                        Text(
+                            text = "Delivered",
+                            fontSize = 11.sp,
+                            color = Color(0xFF64748B)
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .height(24.dp)
+                            .width(1.dp)
+                            .background(Color(0xFFE2E8F0))
+                    )
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "$pendingEntriesCount",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (pendingEntriesCount > 0) Color(0xFFDC2626) else Color(0xFF059669)
+                        )
+                        Text(
+                            text = "Pending",
+                            fontSize = 11.sp,
+                            color = Color(0xFF64748B)
+                        )
+                    }
+                }
+
+                // Extended Details (Addresses, Markets, Garments, Transport)
+                val fullAddress = customer.shopAddress.ifBlank { customer.address }
+                val hasExtendedDetails = fullAddress.isNotBlank() ||
+                        customer.marketArea.isNotBlank() ||
+                        customer.city.isNotBlank() ||
+                        customer.garmentTypes.isNotBlank() ||
+                        customer.preferredTransporterName.isNotBlank() ||
+                        customer.referredBy.isNotBlank()
+
+                if (hasExtendedDetails) {
+                    Surface(
+                        color = Color(0xFFF8FAFC),
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            if (fullAddress.isNotBlank()) {
+                                Row(verticalAlignment = Alignment.Top) {
+                                    Text("Address: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                    Text(
+                                        text = listOfNotNull(
+                                            fullAddress.takeIf { it.isNotBlank() },
+                                            customer.city.takeIf { it.isNotBlank() },
+                                            customer.state.takeIf { it.isNotBlank() }
+                                        ).joinToString(", "),
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF1E293B)
+                                    )
+                                }
+                            }
+                            if (customer.marketArea.isNotBlank()) {
+                                Row(verticalAlignment = Alignment.Top) {
+                                    Text("Market: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                    Text(customer.marketArea, fontSize = 11.sp, color = Color(0xFF0F766E), fontWeight = FontWeight.Medium)
+                                }
+                            }
+                            if (customer.garmentTypes.isNotBlank()) {
+                                Row(verticalAlignment = Alignment.Top) {
+                                    Text("Deals In: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                    Text(customer.garmentTypes, fontSize = 11.sp, color = Color(0xFF6366F1), fontWeight = FontWeight.Medium)
+                                }
+                            }
+                            if (customer.preferredTransporterName.isNotBlank()) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Transporter: ", fontSize = 11.sp, color = Color(0xFF64748B))
+                                    Text(
+                                        customer.preferredTransporterName,
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF1E293B),
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
                             if (customer.referredBy.isNotBlank()) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text("Referred by: ", fontSize = 11.sp, color = Color(0xFF64748B))
                                     Text(customer.referredBy, fontSize = 11.sp, color = Color(0xFF1E293B), fontWeight = FontWeight.Medium)
                                 }
                             }
-                            if (customer.addedByAgentName.isNotBlank()) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Agent: ", fontSize = 11.sp, color = Color(0xFF64748B))
-                                    Text(customer.addedByAgentName, fontSize = 11.sp, color = Color(0xFF1E293B), fontWeight = FontWeight.Medium)
-                                }
-                            }
-                            val trans = customer.preferredTransporterName.ifBlank { customer.transportPreference }
-                            if (trans.isNotBlank()) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Transporter: ", fontSize = 11.sp, color = Color(0xFF64748B))
-                                    Text(trans, fontSize = 11.sp, color = Color(0xFF1E293B), fontWeight = FontWeight.Medium)
-                                }
-                            }
                         }
                     }
+                }
 
-                    Spacer(modifier = Modifier.height(9.dp))
+                // Compact "See KYC Documents" Expandable Option
+                val customerDocs = listOfNotNull(
+                    customer.gstCertPhotoUri.takeIf { it.isNotBlank() }?.let { "GST Certificate" to it },
+                    customer.panPhotoUri.takeIf { it.isNotBlank() }?.let { "PAN Card" to it },
+                    customer.shopPhotoUri.takeIf { it.isNotBlank() }?.let { "Shop Front" to it },
+                    customer.purchaserPhotoUri.takeIf { it.isNotBlank() }?.let { "Purchaser / Owner" to it },
+                    customer.cancelChequePhotoUri.takeIf { it.isNotBlank() }?.let { "Cancelled Cheque" to it }
+                )
 
-                    // Cardless Clean Stat Numbers (Inline directly on background, NO cards/surfaces)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = "$totalVisits",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Color(0xFF1E293B)
-                            )
-                            Text(
-                                text = "Total Visits",
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = Color(0xFF64748B)
-                            )
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .width(1.dp)
-                                .height(26.dp)
-                                .background(Color(0xFFCBD5E1))
-                        )
-
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = "$totalEntriesCount",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Color(0xFF0F766E)
-                            )
-                            Text(
-                                text = "Total Orders",
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = Color(0xFF64748B)
-                            )
-                            Text(
-                                text = "${String.format("%,d", totalPieces)} pcs",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF059669)
-                            )
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .width(1.dp)
-                                .height(26.dp)
-                                .background(Color(0xFFCBD5E1))
-                        )
-
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = "$pendingEntriesCount",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Black,
-                                color = if (pendingEntriesCount > 0) Color(0xFFD97706) else Color(0xFF059669)
-                            )
-                            Text(
-                                text = if (pendingEntriesCount > 0) "Pending" else "All Delivered",
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = Color(0xFF64748B)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(9.dp))
-
-                    // Start New Visit Button (compact, 20% smaller height 38dp)
-                    Button(
-                        onClick = onCreateVisit,
+                if (customerDocs.isNotEmpty()) {
+                    var showKycDocs by remember { mutableStateOf(false) }
+                    Surface(
                         shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B)),
+                        color = Color(0xFFF0FDF4),
+                        border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .defaultMinSize(minHeight = 36.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { showKycDocs = !showKycDocs }
                     ) {
-                        Icon(Icons.Default.ShoppingBag, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFFFDE047))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "+ Start New Visit for ${customer.name}",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.5.sp,
-                            color = Color.White
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(
+                                    Icons.Default.CloudDone,
+                                    contentDescription = null,
+                                    tint = Color(0xFF059669),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "See KYC Documents",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF065F46)
+                                )
+                                Surface(
+                                    color = Color(0xFFDCFCE7),
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
+                                    Text(
+                                        text = "${customerDocs.size}",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF065F46),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                    )
+                                }
+                            }
+                            Icon(
+                                imageVector = if (showKycDocs) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = null,
+                                tint = Color(0xFF059669),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
 
-                    // Customer KYC Documents & Cloud Photos
-                    val customerDocs = listOfNotNull(
-                        customer.aadharPhotoUri.takeIf { it.isNotBlank() }?.let { "Aadhaar Card" to it },
-                        customer.gstCertPhotoUri.takeIf { it.isNotBlank() }?.let { "GST Certificate" to it },
-                        customer.panPhotoUri.takeIf { it.isNotBlank() }?.let { "PAN Card" to it },
-                        customer.shopPhotoUri.takeIf { it.isNotBlank() }?.let { "Shop Front" to it },
-                        customer.purchaserPhotoUri.takeIf { it.isNotBlank() }?.let { "Purchaser / Owner" to it },
-                        customer.cancelChequePhotoUri.takeIf { it.isNotBlank() }?.let { "Cancelled Cheque" to it }
-                    )
-
-                    if (customerDocs.isNotEmpty()) {
-                        ElevatedCard(
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
-                            modifier = Modifier.fillMaxWidth()
+                    if (showKycDocs) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            Icons.Default.CloudDone,
-                                            contentDescription = null,
-                                            tint = Color(0xFF059669),
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            text = "KYC Documents & Cloud Photos",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.5.sp,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                    Surface(
-                                        color = Color(0xFFECFDF5),
-                                        shape = RoundedCornerShape(6.dp),
-                                        border = BorderStroke(1.dp, Color(0xFFA7F3D0))
-                                    ) {
-                                        Text(
-                                            text = "${customerDocs.size} Attached",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF065F46),
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        )
-                                    }
-                                }
+                            customerDocs.forEach { (label, url) ->
+                                var showPreview by remember { mutableStateOf(false) }
 
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                Row(
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFF8FAFC),
+                                    border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        .width(130.dp)
+                                        .clickable { showPreview = true }
                                 ) {
-                                    customerDocs.forEach { (label, url) ->
-                                        var showPreview by remember { mutableStateOf(false) }
-
-                                        Surface(
-                                            shape = RoundedCornerShape(10.dp),
-                                            color = Color(0xFFF8FAFC),
-                                            border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                    Column(
+                                        modifier = Modifier.padding(8.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Box(
                                             modifier = Modifier
-                                                .width(130.dp)
-                                                .clickable { showPreview = true }
+                                                .size(114.dp, 80.dp)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(Color(0xFFE2E8F0)),
+                                            contentAlignment = Alignment.Center
                                         ) {
-                                            Column(
-                                                modifier = Modifier.padding(8.dp),
-                                                horizontalAlignment = Alignment.CenterHorizontally
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(114.dp, 80.dp)
-                                                        .clip(RoundedCornerShape(6.dp))
-                                                        .background(Color(0xFFE2E8F0)),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    AsyncImage(
-                                                        model = url,
-                                                        contentDescription = label,
-                                                        contentScale = ContentScale.Crop,
-                                                        modifier = Modifier.fillMaxSize()
-                                                    )
-                                                }
-                                                Spacer(modifier = Modifier.height(6.dp))
-                                                Text(
-                                                    text = label,
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    color = MaterialTheme.colorScheme.onSurface,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                                Text(
-                                                    text = if (url.startsWith("http")) "Firebase Cloud" else "Local File",
-                                                    fontSize = 9.5.sp,
-                                                    color = if (url.startsWith("http")) Color(0xFF059669) else Color(0xFF64748B)
-                                                )
-                                            }
-                                        }
-
-                                        if (showPreview) {
-                                            FullScreenImageViewerDialog(
-                                                imageUrl = url,
-                                                title = "$label • ${customer.firmName.ifBlank { customer.name }}",
-                                                onDismiss = { showPreview = false }
+                                            AsyncImage(
+                                                model = url,
+                                                contentDescription = label,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize()
                                             )
                                         }
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text(
+                                            text = label,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = if (url.startsWith("http")) "Firebase Cloud" else "Local File",
+                                            fontSize = 9.5.sp,
+                                            color = if (url.startsWith("http")) Color(0xFF059669) else Color(0xFF64748B)
+                                        )
                                     }
+                                }
+
+                                if (showPreview) {
+                                    FullScreenImageViewerDialog(
+                                        imageUrl = url,
+                                        title = "$label • ${customer.firmName.ifBlank { customer.name }}",
+                                        onDismiss = { showPreview = false }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                }
+            }
+
+            // 2. Fixed/Pinned Search Bar
+            stickyHeader {
+                Surface(
+                    color = Color(0xFFF6F8FB),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color.White,
+                        border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = Color(0xFF64748B)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Box(
+                                modifier = Modifier.weight(1f),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                if (searchQuery.isEmpty()) {
+                                    Text(
+                                        text = "Search date, order #, item, supplier...",
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF94A3B8),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                BasicTextField(
+                                    value = searchQuery,
+                                    onValueChange = { searchQuery = it },
+                                    singleLine = true,
+                                    textStyle = androidx.compose.ui.text.TextStyle(
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF0F172A),
+                                        fontWeight = FontWeight.Medium
+                                    ),
+                                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Color(0xFF2563EB)),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                            if (searchQuery.isNotEmpty()) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFE2E8F0))
+                                        .clickable { searchQuery = "" },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Clear Search",
+                                        modifier = Modifier.size(11.dp),
+                                        tint = Color(0xFF475569)
+                                    )
                                 }
                             }
                         }
                     }
                 }
             }
-        }
 
-            // 2. Fixed/Pinned Search Bar
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp)
-            ) {
-                Surface(
-                    shape = CircleShape,
-                    color = Color.White,
-                    border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(36.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = Color(0xFF64748B)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Box(
-                            modifier = Modifier.weight(1f),
-                            contentAlignment = Alignment.CenterStart
-                        ) {
-                            if (searchQuery.isEmpty()) {
-                                Text(
-                                    text = "Search date, order #, item, supplier...",
-                                    fontSize = 12.sp,
-                                    color = Color(0xFF94A3B8),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            BasicTextField(
-                                value = searchQuery,
-                                onValueChange = { searchQuery = it },
-                                singleLine = true,
-                                textStyle = androidx.compose.ui.text.TextStyle(
-                                    fontSize = 12.sp,
-                                    color = Color(0xFF0F172A),
-                                    fontWeight = FontWeight.Medium
-                                ),
-                                cursorBrush = androidx.compose.ui.graphics.SolidColor(Color(0xFF2563EB)),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                        if (searchQuery.isNotEmpty()) {
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Box(
-                                modifier = Modifier
-                                    .size(18.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFFE2E8F0))
-                                    .clickable { searchQuery = "" },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Clear Search",
-                                    modifier = Modifier.size(11.dp),
-                                    tint = Color(0xFF475569)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 3. Scrollable List Content
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Cascading Filters (Single-line parent chips -> child chips on tap)
-                item {
+            // Cascading Filters (Single-line parent chips -> child chips on tap)
+            item {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -1163,10 +1168,25 @@ fun CustomerDetailScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Day-by-Day Entries & Reports (${filteredVisits.size} Days)",
+                        text = "Day Reports (${filteredVisits.size})",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
+                    OutlinedButton(
+                        onClick = { showDateRangeDialog = true },
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.defaultMinSize(minHeight = 30.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.PictureAsPdf,
+                            contentDescription = null,
+                            modifier = Modifier.size(13.dp),
+                            tint = Color(0xFF1D4ED8)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("PDF Report", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1D4ED8))
+                    }
                 }
             }
 
@@ -1214,13 +1234,26 @@ fun CustomerDetailScreen(
                         onOpenDayReport = { viewModel.openCustomerReport(visit) },
                         onShareWhatsApp = { viewModel.shareCustomerReportWhatsApp(visit) },
                         onSharePdf = { viewModel.shareCustomerDayReportPdf(visit) },
-                        onAdvanceStatus = { entry: PurchaseEntryEntity -> viewModel.advanceEntryDeliveryStatus(entry) }
+                        onAdvanceStatus = { entry: PurchaseEntryEntity -> viewModel.advanceEntryDeliveryStatus(entry) },
+                        onDeleteVisit = { viewModel.deleteVisit(visit) }
                     )
                 }
             }
         }
     }
-}
+
+    if (showDateRangeDialog) {
+        CustomerDateRangeDialog(
+            customer = customer,
+            entries = customerEntries,
+            allVisits = allVisits,
+            onDismiss = { showDateRangeDialog = false },
+            onGeneratePdf = { sDate: String, eDate: String, sFilter: String ->
+                showDateRangeDialog = false
+                viewModel.shareCustomerDateRangeReportPdf(customer, sDate, eDate, sFilter)
+            }
+        )
+    }
 }
 
 @Composable
@@ -1231,9 +1264,11 @@ fun DayVisitCard(
     onOpenDayReport: () -> Unit,
     onShareWhatsApp: () -> Unit,
     onSharePdf: () -> Unit,
-    onAdvanceStatus: (PurchaseEntryEntity) -> Unit
+    onAdvanceStatus: (PurchaseEntryEntity) -> Unit,
+    onDeleteVisit: () -> Unit = {}
 ) {
     var expanded by remember { mutableStateOf(true) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
     val dayPieces = entries.sumOf { it.pieces }
     val dayAmount = entries.sumOf { it.grandTotalWithGst }
     val pendingCount = entries.count { it.deliveryStatus != "Delivered" }
@@ -1296,6 +1331,18 @@ fun DayVisitCard(
                             imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                             contentDescription = "Open Dedicated Trip Screen",
                             tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = { showDeleteConfirm = true },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = "Delete Visit",
+                            tint = Color(0xFFDC2626),
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -1435,6 +1482,67 @@ fun DayVisitCard(
             }
         }
     }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.DeleteOutline,
+                        contentDescription = null,
+                        tint = Color(0xFFDC2626),
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "Delete Day Visit?",
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFDC2626),
+                        fontSize = 16.sp
+                    )
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Are you sure you want to delete visit ${visit.visitCode} on ${visit.date}?",
+                        fontSize = 13.5.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Surface(
+                        color = Color(0xFFFEF2F2),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, Color(0xFFFECACA))
+                    ) {
+                        Text(
+                            text = "⚠ WARNING: Deleting this trip will also permanently delete all ${entries.size} deliveries/orders recorded on this day.",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFB91C1C),
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteConfirm = false
+                        onDeleteVisit()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                ) {
+                    Text("Delete Trip & Deliveries", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -1486,57 +1594,47 @@ fun CustomerEntryRow(
                 SupplierTypeBadge(type = entry.supplierType)
             }
 
-            Surface(
-                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                shape = RoundedCornerShape(6.dp)
-            ) {
+            Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    text = "${entry.pieces} pcs",
-                    style = MaterialTheme.typography.labelMedium,
+                    text = PdfGenerator.formatInr(entry.grandTotalWithGst),
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                    color = MaterialTheme.colorScheme.primary
                 )
+                Spacer(modifier = Modifier.height(2.dp))
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        text = "${entry.pieces} pcs",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 1.5.dp)
+                    )
+                }
             }
         }
 
-        // Packaging & Case Details
-        Spacer(modifier = Modifier.height(2.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            val packText = if (entry.caseCount > 0 && entry.loosePieces > 0) {
-                "${entry.caseCount} Cases (${entry.caseCount * entry.caseSize} pcs) + ${entry.loosePieces} Loose"
-            } else if (entry.caseCount > 0) {
-                "${entry.caseCount} Cases (${entry.pieces} pcs)"
-            } else {
-                "${entry.loosePieces} Loose pcs"
-            }
-            Text(
-                text = "$packText (Size: ${entry.caseSize})",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            if (entry.transporter.isNotBlank()) {
+        if (entry.transporter.isNotBlank()) {
+            Spacer(modifier = Modifier.height(3.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(
+                    Icons.Default.LocalShipping,
+                    contentDescription = null,
+                    modifier = Modifier.size(12.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Text(
                     text = entry.transporter,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-        }
-
-        if (!entry.mixedPackNote.isNullOrBlank()) {
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = entry.mixedPackNote,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.tertiary,
-                fontWeight = FontWeight.Medium
-            )
         }
 
         // Quick status advance button
@@ -1600,6 +1698,254 @@ fun CustomerSummaryChip(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+        }
+    }
+}
+
+@Composable
+fun CustomerDateRangeDialog(
+    customer: CustomerEntity,
+    entries: List<PurchaseEntryEntity>,
+    allVisits: List<VisitEntity>,
+    onDismiss: () -> Unit,
+    onGeneratePdf: (startDate: String, endDate: String, statusFilter: String) -> Unit
+) {
+    val cal = remember { Calendar.getInstance() }
+    val today = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time) }
+
+    val thisMonthStart = remember {
+        val c = Calendar.getInstance()
+        c.set(Calendar.DAY_OF_MONTH, 1)
+        SimpleDateFormat("yyyy-MM-dd", Locale.US).format(c.time)
+    }
+    val last30DaysStart = remember {
+        val c = Calendar.getInstance()
+        c.add(Calendar.DAY_OF_YEAR, -30)
+        SimpleDateFormat("yyyy-MM-dd", Locale.US).format(c.time)
+    }
+    val last90DaysStart = remember {
+        val c = Calendar.getInstance()
+        c.add(Calendar.DAY_OF_YEAR, -90)
+        SimpleDateFormat("yyyy-MM-dd", Locale.US).format(c.time)
+    }
+
+    var selectedPreset by remember { mutableStateOf("LAST_30") }
+    var startDate by remember { mutableStateOf(last30DaysStart) }
+    var endDate by remember { mutableStateOf(today) }
+    var statusFilter by remember { mutableStateOf("All") }
+
+    val customerVisits = remember(allVisits, customer.id) { allVisits.filter { it.customerId == customer.id } }
+    val visitMap = remember(customerVisits) { customerVisits.associateBy { it.id } }
+
+    val filteredEntries = remember(entries, startDate, endDate, statusFilter) {
+        entries.filter { entry ->
+            val visit = visitMap[entry.visitId]
+            val entryDate = if (visit != null && visit.date.isNotBlank()) visit.date else entry.expectedDeliveryDate
+            val inDateRange = when {
+                startDate.isNotBlank() && endDate.isNotBlank() -> entryDate in startDate..endDate
+                startDate.isNotBlank() -> entryDate >= startDate
+                endDate.isNotBlank() -> entryDate <= endDate
+                else -> true
+            }
+            if (!inDateRange) return@filter false
+
+            when (statusFilter) {
+                "Dispatched" -> entry.deliveryStatus.equals("Dispatched", ignoreCase = true) || entry.deliveryStatus.equals("Delivered", ignoreCase = true)
+                "Pending" -> !entry.deliveryStatus.equals("Dispatched", ignoreCase = true) && !entry.deliveryStatus.equals("Delivered", ignoreCase = true)
+                else -> true
+            }
+        }
+    }
+
+    val matchPieces = filteredEntries.sumOf { it.pieces }
+    val matchAmount = filteredEntries.sumOf { it.grandTotalWithGst }
+    val dispatchedCount = filteredEntries.count { it.deliveryStatus.equals("Dispatched", ignoreCase = true) || it.deliveryStatus.equals("Delivered", ignoreCase = true) }
+    val pendingCount = filteredEntries.size - dispatchedCount
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = Color.White,
+            shadowElevation = 8.dp,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // Title
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Customer Statement PDF",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0F172A)
+                        )
+                        Text(
+                            text = customer.firmName.ifBlank { customer.name },
+                            fontSize = 12.sp,
+                            color = Color(0xFF64748B)
+                        )
+                    }
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color(0xFF64748B))
+                    }
+                }
+
+                HorizontalDivider(color = Color(0xFFE2E8F0))
+
+                // Quick Date Presets
+                Text("Select Period:", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf(
+                        "LAST_30" to "Last 30 Days",
+                        "THIS_MONTH" to "This Month",
+                        "LAST_90" to "Last 90 Days",
+                        "ALL" to "All Time"
+                    ).forEach { (presetKey, label) ->
+                        val isSel = selectedPreset == presetKey
+                        FilterChip(
+                            selected = isSel,
+                            onClick = {
+                                selectedPreset = presetKey
+                                when (presetKey) {
+                                    "LAST_30" -> {
+                                        startDate = last30DaysStart
+                                        endDate = today
+                                    }
+                                    "THIS_MONTH" -> {
+                                        startDate = thisMonthStart
+                                        endDate = today
+                                    }
+                                    "LAST_90" -> {
+                                        startDate = last90DaysStart
+                                        endDate = today
+                                    }
+                                    "ALL" -> {
+                                        startDate = ""
+                                        endDate = ""
+                                    }
+                                }
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            label = { Text(label, fontSize = 11.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal) }
+                        )
+                    }
+                }
+
+                // Custom Date Inputs
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = startDate,
+                        onValueChange = {
+                            startDate = it
+                            selectedPreset = "CUSTOM"
+                        },
+                        label = { Text("From Date", fontSize = 11.sp) },
+                        placeholder = { Text("YYYY-MM-DD", fontSize = 11.sp) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = endDate,
+                        onValueChange = {
+                            endDate = it
+                            selectedPreset = "CUSTOM"
+                        },
+                        label = { Text("To Date", fontSize = 11.sp) },
+                        placeholder = { Text("YYYY-MM-DD", fontSize = 11.sp) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // Status Filter
+                Text("Dispatch Filter:", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf("All" to "All Orders", "Dispatched" to "Dispatched", "Pending" to "Pending").forEach { (filterKey, label) ->
+                        val isSel = statusFilter == filterKey
+                        FilterChip(
+                            selected = isSel,
+                            onClick = { statusFilter = filterKey },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f),
+                            label = { Text(label, fontSize = 10.5.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal) }
+                        )
+                    }
+                }
+
+                // Matching Summary Box
+                Surface(
+                    color = Color(0xFFF1F5F9),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Matching Orders:", fontSize = 11.sp, color = Color(0xFF64748B))
+                            Text("${filteredEntries.size} Orders (${matchPieces} Pcs)", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                        }
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Dispatch Status:", fontSize = 11.sp, color = Color(0xFF64748B))
+                            Text("$dispatchedCount Dispatched • $pendingCount Pending", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = if (pendingCount > 0) Color(0xFFD97706) else Color(0xFF059669))
+                        }
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Total Value:", fontSize = 11.sp, color = Color(0xFF64748B))
+                            Text(PdfGenerator.formatInr(matchAmount), fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E3A8A))
+                        }
+                    }
+                }
+
+                // Actions
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(0.8f)
+                    ) {
+                        Text("Cancel", fontSize = 12.sp)
+                    }
+
+                    Button(
+                        onClick = { onGeneratePdf(startDate, endDate, statusFilter) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A8A)),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1.4f)
+                    ) {
+                        Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = Color(0xFFFDE047), modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Generate PDF", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+            }
         }
     }
 }

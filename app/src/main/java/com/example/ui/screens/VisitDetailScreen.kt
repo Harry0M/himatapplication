@@ -115,6 +115,7 @@ fun VisitDetailScreen(
     var showManagePackSheet by remember { mutableStateOf(false) }
     var entryToDelete by remember { mutableStateOf<PurchaseEntryEntity?>(null) }
     var editingEntry by remember { mutableStateOf<PurchaseEntryEntity?>(null) }
+    var showDeleteTripDialog by remember { mutableStateOf(false) }
 
     val totalPieces = entries.sumOf { it.pieces }
     val totalAmount = entries.sumOf { it.totalAmount }
@@ -268,6 +269,22 @@ fun VisitDetailScreen(
                                 color = if (isActive) Color(0xFF0369A1) else Color(0xFF15803D)
                             )
                         }
+                    }
+
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    IconButton(
+                        onClick = { showDeleteTripDialog = true },
+                        modifier = Modifier
+                            .size(34.dp)
+                            .background(Color(0xFFFEE2E2), CircleShape)
+                    ) {
+                        Icon(
+                            Icons.Default.DeleteOutline,
+                            contentDescription = "Delete Trip",
+                            tint = Color(0xFFDC2626),
+                            modifier = Modifier.size(17.dp)
+                        )
                     }
                 }
             }
@@ -617,6 +634,69 @@ fun VisitDetailScreen(
             }
         )
     }
+
+    if (showDeleteTripDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteTripDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.DeleteOutline,
+                        contentDescription = null,
+                        tint = Color(0xFFDC2626),
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "Delete Trip / Visit?",
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFDC2626),
+                        fontSize = 16.sp
+                    )
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Are you sure you want to delete this trip (${visit.visitCode} • ${visit.customerName})?",
+                        fontSize = 13.5.sp,
+                        color = TextPrimary
+                    )
+                    Surface(
+                        color = Color(0xFFFEF2F2),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, Color(0xFFFECACA))
+                    ) {
+                        Text(
+                            text = "⚠ WARNING: Deleting this trip will also permanently delete all ${entries.size} deliveries/orders associated with it.",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFB91C1C),
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteTripDialog = false
+                        viewModel.deleteVisit(visit) {
+                            onBack()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                ) {
+                    Text("Delete Trip & Deliveries", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteTripDialog = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -701,7 +781,7 @@ fun PurchaseEntryItemCard(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Row 2: Item Code, Pieces, Rate, Amount
+            // Row 2: Item Code, Pieces, Grand Total, Delivery Status
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -717,7 +797,7 @@ fun PurchaseEntryItemCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = "${entry.pieces} Pcs @ ${PdfGenerator.formatInr(entry.rate)}/pc",
+                        text = "${entry.pieces} Pcs",
                         fontSize = 11.5.sp,
                         color = TextSecondary
                     )
@@ -725,93 +805,13 @@ fun PurchaseEntryItemCard(
 
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = PdfGenerator.formatInr(entry.totalAmount),
+                        text = PdfGenerator.formatInr(entry.grandTotalWithGst),
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.5.sp,
                         color = NavyPrimary
                     )
-                    Text(
-                        text = "+ GST 5%: ${PdfGenerator.formatInr(entry.gstAmount)}",
-                        fontSize = 10.sp,
-                        color = TextSecondary
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(7.dp))
-
-            // Row 3: Packing Breakdown Badge & Status Badge
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val isFixedMixedPack = (entry.packGroupId != null && entry.packGroupId != 0L) || isPackedInGroup
-                val hasLoose = entry.loosePieces > 0
-
-                Surface(
-                    color = when {
-                        isFixedMixedPack -> Color(0xFFF0FDF4)
-                        hasLoose -> Color(0xFFFEF3C7)
-                        else -> Color(0xFFF0FDF4)
-                    },
-                    shape = RoundedCornerShape(6.dp),
-                    modifier = Modifier.weight(1f, fill = false)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (isFixedMixedPack) {
-                            Icon(
-                                Icons.Default.CheckCircle,
-                                contentDescription = null,
-                                tint = Color(0xFF15803D),
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                        }
-                        Text(
-                            text = when {
-                                isFixedMixedPack -> "Loose Pack Fixed (${entry.caseCount} Cs + ${entry.loosePieces} Pcs packed)"
-                                hasLoose -> "${entry.caseCount} Cs + ${entry.loosePieces} Loose (${entry.caseSize}/cs)"
-                                else -> "${entry.caseCount} Cases (${entry.caseSize} pcs/cs)"
-                            },
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = when {
-                                isFixedMixedPack -> Color(0xFF15803D)
-                                hasLoose -> Color(0xFF92400E)
-                                else -> Color(0xFF15803D)
-                            },
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                StatusBadge(status = entry.deliveryStatus)
-            }
-
-            // Mixed Packing Note if linked
-            if (!entry.mixedPackNote.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(5.dp))
-                Surface(
-                    color = Color(0xFFF0FDF4),
-                    shape = RoundedCornerShape(6.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "📦 ${entry.mixedPackNote}",
-                        fontSize = 10.5.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFF15803D),
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Spacer(modifier = Modifier.height(3.dp))
+                    StatusBadge(status = entry.deliveryStatus)
                 }
             }
 
@@ -1170,9 +1170,9 @@ fun VisitedSupplierBottomSheet(
                         }
                     }
                 }
-            }
         }
     }
+}
 }
 
 @Composable

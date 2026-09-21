@@ -312,15 +312,11 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Salesman sees only entries from their own visits; Admin sees all entries
+    // Salesman sees only entries from their own visits; Admin sees all entries from active visits
     val visibleEntries: StateFlow<List<PurchaseEntryEntity>> = combine(allEntries, visibleVisits, currentRole, currentEmployee) { entries, visVisits, role, emp ->
         val allowedVisitIds = visVisits.map { it.id }.toSet()
         entries.filter { !it.isDeleted }.filter { entry ->
-            if (role.equals("Admin", ignoreCase = true) || emp == null) {
-                true
-            } else {
-                entry.visitId in allowedVisitIds
-            }
+            entry.visitId in allowedVisitIds
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -395,6 +391,7 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         rtdbService.listenToPurchaseEntries { entries ->
             viewModelScope.launch(Dispatchers.IO) {
                 repository.syncEntriesFromCloud(entries)
+                cleanupOrphanEntries()
             }
         }
 
@@ -448,6 +445,22 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         // Start listening to Supplier Registration Requests
         rtdbService.listenToSupplierRegistrationRequests { reqs ->
             _supplierRegistrationRequests.value = reqs
+        }
+
+        // Start listening to Deletion Requests
+        rtdbService.listenToDeletionRequests {
+            viewModelScope.launch(Dispatchers.IO) {
+                val markets = rtdbService.fetchMarkets()
+                repository.syncMarketsFromCloud(markets)
+                val suppliers = rtdbService.fetchSuppliers()
+                repository.syncSuppliersFromCloud(suppliers)
+                val customers = rtdbService.fetchCustomers()
+                repository.syncCustomersFromCloud(customers)
+                val brands = rtdbService.fetchBrands()
+                repository.syncBrandsFromCloud(brands)
+                val transporters = rtdbService.fetchTransporters()
+                repository.syncTransportersFromCloud(transporters)
+            }
         }
 
         // Full Startup Cloud -> Local Sync
@@ -805,6 +818,7 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         try {
             _isCloudSyncing.value = true
             rtdbService.purgeLegacyZeroKeys()
+            rtdbService.fetchDeletionRequestsKeys()
             val isCloudEmpty = rtdbService.isCloudEmpty()
             if (isCloudEmpty) {
                 // Cloud is completely empty: seed SampleData only if local database is also empty
@@ -834,6 +848,7 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
 
                 val entries = rtdbService.fetchPurchaseEntries()
                 repository.syncEntriesFromCloud(entries)
+                cleanupOrphanEntries()
 
                 val transactions = rtdbService.fetchTransactions()
                 repository.syncTransactionsFromCloud(transactions)
@@ -858,9 +873,6 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
 
                 val supplierReqs = rtdbService.fetchSupplierRegistrationRequests()
                 _supplierRegistrationRequests.value = supplierReqs
-
-                // Sync any local records that aren't yet in RTDB up to the cloud!
-                syncAllLocalMastersToCloud()
             }
 
             // Always run deduplication to ensure any duplicate records are cleaned up
@@ -872,37 +884,47 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // Explicit Pull-to-Refresh & Sync
+    fun refreshAllData(onFinished: (() -> Unit)? = null) {
+        viewModelScope.launch(Dispatchers.IO) {
+            syncCloudToLocal()
+            launch(Dispatchers.Main) {
+                onFinished?.invoke()
+            }
+        }
+    }
+
     // Full Master Cloud Synchronization
     fun syncAllLocalMastersToCloud() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 // Sync all customers
                 val customers = repository.allCustomers.first()
-                customers.filter { it.id > 0L }.forEach { rtdbService.syncCustomer(it) }
+                customers.filter { it.id > 0L && !it.isDeleted }.forEach { rtdbService.syncCustomer(it) }
 
                 // Sync all suppliers & manufacturers
                 val suppliers = repository.allSuppliers.first()
-                suppliers.filter { it.id > 0L }.forEach { rtdbService.syncSupplier(it) }
+                suppliers.filter { it.id > 0L && !it.isDeleted }.forEach { rtdbService.syncSupplier(it) }
 
                 // Sync all brands
                 val brands = repository.allBrands.first()
-                brands.filter { it.id > 0L }.forEach { rtdbService.syncBrand(it) }
+                brands.filter { it.id > 0L && !it.isDeleted }.forEach { rtdbService.syncBrand(it) }
 
                 // Sync all transporters
                 val transporters = repository.allTransporters.first()
-                transporters.filter { it.id > 0L }.forEach { rtdbService.syncTransporter(it) }
+                transporters.filter { it.id > 0L && !it.isDeleted }.forEach { rtdbService.syncTransporter(it) }
 
                 // Sync all markets
                 val markets = repository.allMarkets.first()
-                markets.filter { it.id > 0L }.forEach { rtdbService.syncMarket(it) }
+                markets.filter { it.id > 0L && !it.isDeleted }.forEach { rtdbService.syncMarket(it) }
 
                 // Sync all products
                 val products = repository.allProducts.first()
-                products.filter { it.id > 0L }.forEach { rtdbService.syncProduct(it) }
+                products.filter { it.id > 0L && !it.isDeleted }.forEach { rtdbService.syncProduct(it) }
 
                 // Sync all employees
                 val employees = repository.allEmployees.first()
-                employees.filter { it.id > 0L }.forEach { rtdbService.syncEmployee(it) }
+                employees.filter { it.id > 0L && !it.isDeleted }.forEach { rtdbService.syncEmployee(it) }
 
                 // Sync all pack groups
                 val packGroups = repository.allPackGroups.first()
@@ -910,11 +932,11 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
 
                 // Sync all visits
                 val visits = repository.allVisits.first()
-                visits.filter { it.id > 0L }.forEach { rtdbService.syncVisit(it) }
+                visits.filter { it.id > 0L && !it.isDeleted }.forEach { rtdbService.syncVisit(it) }
 
                 // Sync all purchase entries
                 val entries = repository.allEntries.first()
-                entries.filter { it.id > 0L }.forEach { rtdbService.syncPurchaseEntry(it) }
+                entries.filter { it.id > 0L && !it.isDeleted }.forEach { rtdbService.syncPurchaseEntry(it) }
 
                 // Sync all transactions
                 val transactions = repository.allTransactions.first()
@@ -1241,12 +1263,16 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteCustomer(customer: CustomerEntity) {
         viewModelScope.launch(Dispatchers.IO) {
-            val userRole = _currentRole.value
+            val isAdmin = isSuperAdmin.value || _currentRole.value.equals("Admin", ignoreCase = true)
             val empName = _currentEmployee.value?.name ?: "Salesman"
             val empEmail = currentUser.value?.email ?: ""
-            if (userRole.equals("Admin", ignoreCase = true)) {
+            val userRole = _currentRole.value
+            if (isAdmin) {
                 repository.deleteCustomer(customer)
                 rtdbService.deleteCustomer(customer.id)
+                launch(Dispatchers.Main) {
+                    Toast.makeText(getApplication(), "Customer permanently deleted", Toast.LENGTH_SHORT).show()
+                }
             } else {
                 val softDeleted = customer.copy(
                     isDeleted = true,
@@ -1300,12 +1326,16 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteSupplier(supplier: SupplierEntity) {
         viewModelScope.launch(Dispatchers.IO) {
-            val userRole = _currentRole.value
+            val isAdmin = isSuperAdmin.value || _currentRole.value.equals("Admin", ignoreCase = true)
             val empName = _currentEmployee.value?.name ?: "Salesman"
             val empEmail = currentUser.value?.email ?: ""
-            if (userRole.equals("Admin", ignoreCase = true)) {
+            val userRole = _currentRole.value
+            if (isAdmin) {
                 repository.deleteSupplier(supplier)
                 rtdbService.deleteSupplier(supplier.id)
+                launch(Dispatchers.Main) {
+                    Toast.makeText(getApplication(), "Supplier permanently deleted", Toast.LENGTH_SHORT).show()
+                }
             } else {
                 val softDeleted = supplier.copy(
                     isDeleted = true,
@@ -1338,8 +1368,27 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteBrand(brand: BrandEntity) {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.deleteBrand(brand)
-            rtdbService.deleteBrand(brand.id)
+            val isAdmin = isSuperAdmin.value || _currentRole.value.equals("Admin", ignoreCase = true)
+            val empName = _currentEmployee.value?.name ?: "Salesman"
+            val empEmail = currentUser.value?.email ?: ""
+            val userRole = _currentRole.value
+            if (isAdmin) {
+                repository.deleteBrand(brand)
+                rtdbService.deleteBrand(brand.id)
+                launch(Dispatchers.Main) {
+                    Toast.makeText(getApplication(), "Brand permanently deleted", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                val softDeleted = brand.copy(
+                    isDeleted = true,
+                    deletedAt = System.currentTimeMillis()
+                )
+                repository.saveBrand(softDeleted)
+                rtdbService.softDeleteBrand(brand, empName, empEmail, userRole)
+                launch(Dispatchers.Main) {
+                    Toast.makeText(getApplication(), "Brand sent to Admin for deletion confirmation", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 
@@ -1357,8 +1406,27 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteTransporter(transporter: TransporterEntity) {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.deleteTransporter(transporter)
-            rtdbService.deleteTransporter(transporter.id)
+            val isAdmin = isSuperAdmin.value || _currentRole.value.equals("Admin", ignoreCase = true)
+            val empName = _currentEmployee.value?.name ?: "Salesman"
+            val empEmail = currentUser.value?.email ?: ""
+            val userRole = _currentRole.value
+            if (isAdmin) {
+                repository.deleteTransporter(transporter)
+                rtdbService.deleteTransporter(transporter.id)
+                launch(Dispatchers.Main) {
+                    Toast.makeText(getApplication(), "Transporter permanently deleted", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                val softDeleted = transporter.copy(
+                    isDeleted = true,
+                    deletedAt = System.currentTimeMillis()
+                )
+                repository.saveTransporter(softDeleted)
+                rtdbService.softDeleteTransporter(transporter, empName, empEmail, userRole)
+                launch(Dispatchers.Main) {
+                    Toast.makeText(getApplication(), "Transporter sent to Admin for deletion confirmation", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 
@@ -1376,8 +1444,27 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteMarket(market: MarketEntity) {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.deleteMarket(market)
-            rtdbService.deleteMarket(market.id)
+            val isAdmin = isSuperAdmin.value || _currentRole.value.equals("Admin", ignoreCase = true)
+            val empName = _currentEmployee.value?.name ?: "Salesman"
+            val empEmail = currentUser.value?.email ?: ""
+            val userRole = _currentRole.value
+            if (isAdmin) {
+                repository.deleteMarket(market)
+                rtdbService.deleteMarket(market.id)
+                launch(Dispatchers.Main) {
+                    Toast.makeText(getApplication(), "Market permanently deleted", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                val softDeleted = market.copy(
+                    isDeleted = true,
+                    deletedAt = System.currentTimeMillis()
+                )
+                repository.saveMarket(softDeleted)
+                rtdbService.softDeleteMarket(market, empName, empEmail, userRole)
+                launch(Dispatchers.Main) {
+                    Toast.makeText(getApplication(), "Market sent to Admin for deletion confirmation", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 
@@ -1449,12 +1536,16 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteProduct(product: ProductEntity) {
         viewModelScope.launch(Dispatchers.IO) {
-            val userRole = _currentRole.value
+            val isAdmin = isSuperAdmin.value || _currentRole.value.equals("Admin", ignoreCase = true)
             val empName = _currentEmployee.value?.name ?: "Salesman"
             val empEmail = currentUser.value?.email ?: ""
-            if (userRole.equals("Admin", ignoreCase = true)) {
+            val userRole = _currentRole.value
+            if (isAdmin) {
                 repository.deleteProduct(product)
                 rtdbService.deleteProduct(product.id)
+                launch(Dispatchers.Main) {
+                    Toast.makeText(getApplication(), "Product permanently deleted", Toast.LENGTH_SHORT).show()
+                }
             } else {
                 val softDeleted = product.copy(
                     isDeleted = true,
@@ -1599,14 +1690,24 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun deleteVisit(visit: VisitEntity) {
+    fun deleteVisit(visit: VisitEntity, onComplete: (() -> Unit)? = null) {
         viewModelScope.launch(Dispatchers.IO) {
-            val userRole = _currentRole.value
+            val isAdmin = isSuperAdmin.value || _currentRole.value.equals("Admin", ignoreCase = true)
             val empName = _currentEmployee.value?.name ?: "Salesman"
             val empEmail = currentUser.value?.email ?: ""
-            if (userRole.equals("Admin", ignoreCase = true)) {
+            val userRole = _currentRole.value
+
+            val entriesForVisit = allEntries.value.filter { it.visitId == visit.id }
+
+            if (isAdmin) {
                 repository.deleteVisit(visit)
                 rtdbService.deleteVisit(visit.id)
+                entriesForVisit.forEach { entry ->
+                    rtdbService.deletePurchaseEntry(entry.id)
+                }
+                launch(Dispatchers.Main) {
+                    Toast.makeText(getApplication(), "Trip and all deliveries permanently deleted", Toast.LENGTH_SHORT).show()
+                }
             } else {
                 val softDeleted = visit.copy(
                     isDeleted = true,
@@ -1618,8 +1719,20 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 repository.saveVisit(softDeleted)
                 rtdbService.softDeleteVisit(visit, empName, empEmail, userRole)
+                entriesForVisit.forEach { entry ->
+                    val softEntry = entry.copy(
+                        isDeleted = true,
+                        deletedAt = System.currentTimeMillis(),
+                        deletedBy = empName,
+                        deletedByEmail = empEmail,
+                        deletedByRole = userRole,
+                        deletionStatus = "PENDING_CONFIRMATION"
+                    )
+                    repository.savePurchaseEntry(softEntry)
+                    rtdbService.softDeletePurchaseEntry(entry, empName, empEmail, userRole)
+                }
                 launch(Dispatchers.Main) {
-                    Toast.makeText(getApplication(), "Visit sent to Admin for deletion confirmation", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(getApplication(), "Trip & deliveries sent to Admin for deletion confirmation", Toast.LENGTH_SHORT).show()
                 }
             }
             launch(Dispatchers.Main) {
@@ -1627,6 +1740,7 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                     _selectedVisit.value = null
                     _currentScreen.value = AppScreen.VISITS
                 }
+                onComplete?.invoke()
             }
         }
     }
@@ -1809,12 +1923,16 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deletePurchaseEntry(entry: PurchaseEntryEntity) {
         viewModelScope.launch(Dispatchers.IO) {
-            val userRole = _currentRole.value
+            val isAdmin = isSuperAdmin.value || _currentRole.value.equals("Admin", ignoreCase = true)
             val empName = _currentEmployee.value?.name ?: "Salesman"
             val empEmail = currentUser.value?.email ?: ""
-            if (userRole.equals("Admin", ignoreCase = true)) {
+            val userRole = _currentRole.value
+            if (isAdmin) {
                 repository.deletePurchaseEntry(entry)
                 rtdbService.deletePurchaseEntry(entry.id)
+                launch(Dispatchers.Main) {
+                    Toast.makeText(getApplication(), "Order entry permanently deleted", Toast.LENGTH_SHORT).show()
+                }
             } else {
                 val softDeleted = entry.copy(
                     isDeleted = true,
@@ -1829,6 +1947,15 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 launch(Dispatchers.Main) {
                     Toast.makeText(getApplication(), "Order entry sent to Admin for deletion confirmation", Toast.LENGTH_SHORT).show()
                 }
+            }
+        }
+    }
+
+    fun cleanupOrphanEntries() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val orphans = repository.cleanupOrphanEntries()
+            orphans.forEach { orphan ->
+                rtdbService.deletePurchaseEntry(orphan.id)
             }
         }
     }
@@ -1924,6 +2051,100 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         val entries = visitEntries.value
         val text = ShareUtil.buildCustomerReportText(visit, customer, entries)
         ShareUtil.shareWhatsAppText(getApplication(), text)
+    }
+
+    fun shareCustomerGstInvoicePdf(visit: VisitEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val customer = allCustomers.value.find { it.id == visit.customerId }
+            val salesman = allEmployees.value.find { it.id == visit.employeeId }
+            val entries = visitEntries.value
+            val pdfFile = PdfGenerator.generateCustomerGstInvoice(
+                getApplication(),
+                visit,
+                customer,
+                salesman,
+                entries
+            )
+            launch(Dispatchers.Main) {
+                ShareUtil.sharePdfFile(
+                    getApplication(),
+                    pdfFile,
+                    "Himat Textile Customer GST Invoice - ${visit.visitCode}"
+                )
+            }
+        }
+    }
+
+    fun shareCustomerDateRangeReportPdf(
+        customer: CustomerEntity,
+        startDate: String,
+        endDate: String,
+        statusFilter: String = "All"
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val customerVisits = allVisits.value.filter { it.customerId == customer.id }
+            val visitMap = customerVisits.associateBy { it.id }
+
+            val filteredEntries = allEntries.value.filter { entry ->
+                val visit = visitMap[entry.visitId]
+                val entryDate = if (visit != null && visit.date.isNotBlank()) visit.date else entry.expectedDeliveryDate
+                val inDateRange = when {
+                    startDate.isNotBlank() && endDate.isNotBlank() -> entryDate in startDate..endDate
+                    startDate.isNotBlank() -> entryDate >= startDate
+                    endDate.isNotBlank() -> entryDate <= endDate
+                    else -> true
+                }
+                if (!inDateRange) return@filter false
+
+                val matchesStatus = when (statusFilter) {
+                    "Dispatched" -> entry.deliveryStatus.equals("Dispatched", ignoreCase = true) || entry.deliveryStatus.equals("Delivered", ignoreCase = true)
+                    "Pending" -> !entry.deliveryStatus.equals("Dispatched", ignoreCase = true) && !entry.deliveryStatus.equals("Delivered", ignoreCase = true)
+                    else -> true
+                }
+                matchesStatus
+            }.sortedByDescending { it.orderNo }
+
+            val pdfFile = PdfGenerator.generateCustomerDateRangeReport(
+                getApplication(),
+                customer,
+                filteredEntries,
+                startDate.ifBlank { "All Time" },
+                endDate.ifBlank { "Present" },
+                statusFilter
+            )
+            launch(Dispatchers.Main) {
+                ShareUtil.sharePdfFile(
+                    getApplication(),
+                    pdfFile,
+                    "Himat Statement - ${customer.name} ($startDate to $endDate)"
+                )
+            }
+        }
+    }
+
+    fun shareSupplierGstInvoicePdf(visit: VisitEntity, supplier: SupplierEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val customer = allCustomers.value.find { it.id == visit.customerId }
+            val salesman = allEmployees.value.find { it.id == visit.employeeId }
+            val supplierEntries = visitEntries.value.filter {
+                it.supplierId == supplier.id || (it.supplierName.isNotBlank() && it.supplierName.trim().equals(supplier.name.trim(), ignoreCase = true))
+            }
+            val pdfFile = PdfGenerator.generateSupplierGstInvoice(
+                getApplication(),
+                visit,
+                supplier,
+                customer,
+                salesman,
+                supplierEntries
+            )
+            launch(Dispatchers.Main) {
+                ShareUtil.sharePdfFile(
+                    getApplication(),
+                    pdfFile,
+                    "Himat Textile Supplier GST PO - ${supplier.name}"
+                )
+            }
+        }
     }
 
     fun shareSupplierCopyPdf(visit: VisitEntity, supplier: SupplierEntity) {
