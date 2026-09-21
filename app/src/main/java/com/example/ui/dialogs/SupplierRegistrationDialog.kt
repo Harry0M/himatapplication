@@ -301,6 +301,30 @@ fun SupplierRegistrationDialog(
                     // Basic Information
                     Text("BASIC DETAILS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
 
+                    // GSTIN First (Optional)
+                    OutlinedTextField(
+                        value = gstin,
+                        onValueChange = { input ->
+                            val clean = input.uppercase().filter { it.isLetterOrDigit() }.take(15)
+                            gstin = clean
+                            if (clean.length >= 12 && panNumber.isBlank()) {
+                                val extractedPan = clean.substring(2, 12)
+                                if (extractedPan.matches(Regex("^[A-Z]{5}[0-9]{4}[A-Z]$"))) {
+                                    panNumber = extractedPan
+                                }
+                            }
+                        },
+                        label = { Text("GSTIN Number (Optional)", fontSize = 12.sp) },
+                        placeholder = { Text("24AAAAA0000A1Z5", fontSize = 12.sp, color = Color.Gray) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
                     OutlinedTextField(
                         value = firmName,
                         onValueChange = { firmName = it; errorMessage = null },

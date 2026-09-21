@@ -1423,7 +1423,14 @@ export function CustomersView() {
                       </h4>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-800 space-y-1">
-                          <span className="text-[11px] text-muted-foreground block">GSTIN Number</span>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-muted-foreground block">GSTIN Number</span>
+                            {activeDetailRequest.keyType === "GSTIN" && (
+                              <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 rounded">
+                                Primary Key
+                              </span>
+                            )}
+                          </div>
                           {activeDetailRequest.gstin ? (
                             <span className="font-mono font-bold text-sm text-zinc-900 dark:text-zinc-100">
                               {activeDetailRequest.gstin}

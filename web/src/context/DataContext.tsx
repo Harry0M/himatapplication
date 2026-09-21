@@ -1651,11 +1651,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const submitRegistrationRequest = async (
     request: Omit<CustomerRegistrationRequest, "id" | "createdAt" | "status" | "phoneVerified"> & { verificationUid?: string }
   ): Promise<string> => {
-    const id = `req_${Date.now()}_${Math.floor(Math.random() * 1000)}`
+    const cleanGstin = request.gstin?.trim().toUpperCase() || ""
+    const cleanPhone = request.phone ? request.phone.replace(/\D/g, "").slice(-10) : ""
+    const primaryKey = request.primaryKey || cleanGstin || cleanPhone
+    const keyType: "GSTIN" | "PHONE" = request.keyType || (cleanGstin ? "GSTIN" : "PHONE")
+    const id = cleanGstin ? `req_gst_${cleanGstin}` : `req_phone_${cleanPhone}`
     const reqRef = ref(rtdb, `customer_registration_requests/${id}`)
     const payload: CustomerRegistrationRequest = {
       ...request,
       id,
+      primaryKey,
+      keyType,
       status: "PENDING",
       phoneVerified: true,
       createdAt: Date.now(),
@@ -1854,11 +1860,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const submitSupplierRegistrationRequest = async (
     request: Omit<SupplierRegistrationRequest, "id" | "createdAt" | "status" | "phoneVerified"> & { verificationUid?: string }
   ): Promise<string> => {
-    const id = `sup_req_${Date.now()}_${Math.floor(Math.random() * 1000)}`
+    const cleanGstin = request.gstin?.trim().toUpperCase() || ""
+    const cleanPhone = request.phone ? request.phone.replace(/\D/g, "").slice(-10) : ""
+    const primaryKey = request.primaryKey || cleanGstin || cleanPhone
+    const keyType: "GSTIN" | "PHONE" = request.keyType || (cleanGstin ? "GSTIN" : "PHONE")
+    const id = cleanGstin ? `req_sup_gst_${cleanGstin}` : `req_sup_phone_${cleanPhone}`
     const reqRef = ref(rtdb, `supplier_registration_requests/${id}`)
     const payload: SupplierRegistrationRequest = {
       ...request,
       id,
+      primaryKey,
+      keyType,
       status: "PENDING",
       phoneVerified: true,
       createdAt: Date.now(),

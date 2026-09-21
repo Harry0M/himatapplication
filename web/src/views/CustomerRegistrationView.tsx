@@ -27,6 +27,12 @@ import { GARMENT_CATEGORIES } from "../lib/constants"
 import { CustomerRegistrationRequest } from "../types"
 import { REGISTRATION_TRANSLATIONS, RegistrationLang } from "../lib/registrationI18n"
 import { HIMAT_LOGO_DATA_URI } from "../lib/logoBase64"
+import {
+  fetchGstDetails,
+  isValidGstin,
+  extractPanFromGstin,
+  getStateFromGstin,
+} from "../lib/gstHelper"
 
 export function CustomerRegistrationView() {
   const [currentStep, setCurrentStep] = useState<number>(1)
@@ -97,6 +103,99 @@ export function CustomerRegistrationView() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null)
   const recaptchaWrapperRef = useRef<HTMLDivElement | null>(null)
+
+  // GST Lookup and auto-population state
+  const [isFetchingGst, setIsFetchingGst] = useState<boolean>(false)
+  const [gstFeedback, setGstFeedback] = useState<{
+    type: "success" | "offline" | "error" | null
+    message: string
+  }>({ type: null, message: "" })
+
+  const handleGstLookup = async (inputGst?: string) => {
+    const cleanGst = (inputGst !== undefined ? inputGst : formData.gstin).toUpperCase().trim()
+    if (!cleanGst) {
+      setGstFeedback({ type: null, message: "" })
+      return
+    }
+
+    if (cleanGst.length !== 15 || !isValidGstin(cleanGst)) {
+      setGstFeedback({
+        type: "error",
+        message:
+          lang === "hi"
+            ? "कृपया 15 अक्षरों का मान्य जीएसटी नंबर दर्ज करें (उदा. 24AAAAA0000A1Z5)"
+            : "Please enter a valid 15-character GSTIN (e.g. 24AAAAA0000A1Z5)",
+      })
+      return
+    }
+
+    setIsFetchingGst(true)
+    setGstFeedback({ type: null, message: "" })
+
+    try {
+      const offlinePan = extractPanFromGstin(cleanGst)
+      const offlineState = getStateFromGstin(cleanGst)
+
+      // Pre-fill offline decoded values immediately
+      setFormData((prev) => ({
+        ...prev,
+        gstin: cleanGst,
+        panNumber: offlinePan || prev.panNumber,
+        state: offlineState || prev.state,
+      }))
+
+      // Attempt live fetch for firm name, address, city, pincode
+      const details = await fetchGstDetails(cleanGst)
+
+      if (details && (details.firmName || details.address || details.city || details.pincode)) {
+        setFormData((prev) => ({
+          ...prev,
+          gstin: cleanGst,
+          panNumber: details.pan || offlinePan || prev.panNumber,
+          state: details.state || offlineState || prev.state,
+          firmName: details.firmName || prev.firmName,
+          address: details.address || prev.address,
+          shopAddress: details.address || prev.shopAddress || prev.address,
+          city: details.city || prev.city,
+          pincode: details.pincode || prev.pincode,
+        }))
+        setGstFeedback({
+          type: "success",
+          message: t.gstAutoSuccess,
+        })
+      } else {
+        // Offline state & PAN detected, manual entry for rest
+        setGstFeedback({
+          type: "offline",
+          message: t.gstAutoOffline,
+        })
+      }
+    } catch (err) {
+      console.warn("GST lookup error:", err)
+      const offlinePan = extractPanFromGstin(cleanGst)
+      const offlineState = getStateFromGstin(cleanGst)
+      setFormData((prev) => ({
+        ...prev,
+        gstin: cleanGst,
+        panNumber: offlinePan || prev.panNumber,
+        state: offlineState || prev.state,
+      }))
+      setGstFeedback({
+        type: "offline",
+        message: t.gstAutoOffline,
+      })
+    } finally {
+      setIsFetchingGst(false)
+    }
+  }
+
+  const handleClearGst = () => {
+    setFormData((prev) => ({
+      ...prev,
+      gstin: "",
+    }))
+    setGstFeedback({ type: null, message: "" })
+  }
 
   // Sync phone2 if sameAsMobile is checked
   useEffect(() => {
@@ -300,15 +399,22 @@ export function CustomerRegistrationView() {
       const userCredential = await confirmationResult.confirm(otpCode.trim())
       const verifiedUser = userCredential.user
 
-      // 2. Prepare Registration Request Payload
-      const requestId = `req_${Date.now()}_${Math.floor(Math.random() * 1000)}`
+      // 2. Determine Primary Key and Request ID
+      // GSTIN is the primary key if provided; if not, 10-digit clean phone number is used.
+      const cleanGstin = formData.gstin.trim().toUpperCase()
+      const cleanPhone = formData.phone.replace(/\D/g, "").slice(-10)
+      const primaryKey = cleanGstin || cleanPhone
+      const keyType: "GSTIN" | "PHONE" = cleanGstin ? "GSTIN" : "PHONE"
+      const requestId = cleanGstin ? `req_gst_${cleanGstin}` : `req_phone_${cleanPhone}`
       const reqRef = ref(rtdb, `customer_registration_requests/${requestId}`)
 
       const payload: CustomerRegistrationRequest = {
         id: requestId,
+        primaryKey,
+        keyType,
         firmName: formData.firmName.trim(),
         name: formData.name.trim(),
-        phone: `+91${formData.phone.replace(/\D/g, "").slice(-10)}`,
+        phone: `+91${cleanPhone}`,
         phone2: formData.phone2.trim() ? `+91${formData.phone2.replace(/\D/g, "").slice(-10)}` : "",
         email: formData.email.trim(),
         address: formData.address.trim(),
@@ -320,7 +426,7 @@ export function CustomerRegistrationView() {
         pincode: formData.pincode.trim(),
         shopMapLink: formData.shopMapLink.trim(),
         garmentTypes: selectedGarments.join(", "),
-        gstin: formData.gstin.trim().toUpperCase(),
+        gstin: cleanGstin,
         panNumber: formData.panNumber.trim().toUpperCase(),
         preferredTransporterName: formData.preferredTransporterName.trim(),
         transportPreference: formData.transportPreference.trim(),
@@ -363,10 +469,13 @@ export function CustomerRegistrationView() {
 
   // Render Submitted Success Screen
   if (submittedRequestId) {
+    const cleanGst = formData.gstin.trim().toUpperCase()
+    const cleanPhone = formData.phone.replace(/\D/g, "").slice(-10)
+    const primaryKeyDisplay = cleanGst ? `${cleanGst} (GSTIN)` : `+91 ${cleanPhone} (Mobile)`
     const whatsappMsg = encodeURIComponent(
       lang === "en"
-        ? `Hello Himat Textile!\nI have submitted my new commercial account registration form online.\n\n📌 Firm Name: ${formData.firmName}\n👤 Proprietor: ${formData.name}\n📞 Mobile: +91 ${formData.phone.slice(-10)}\n📍 City: ${formData.city}\n🆔 Ref ID: ${submittedRequestId}\n\nPlease review our application and grant commercial account approval. Thank you!`
-        : `नमस्ते हिम्मत टेक्सटाइल (Himat Textile)!\nमैंने नया व्यापारिक खाता खोलने के लिए ऑनलाइन पंजीकरण फॉर्म सबमिट किया है।\n\n📌 फर्म का नाम: ${formData.firmName}\n👤 संचालक: ${formData.name}\n📞 मोबाइल: +91 ${formData.phone.slice(-10)}\n📍 शहर: ${formData.city}\n🆔 संदर्भ क्रमांक (Ref ID): ${submittedRequestId}\n\nकृपया हमारे खाते की समीक्षा कर अनुमोदन (Approval) प्रदान करें। धन्यवाद!`
+        ? `Hello Himat Textile!\nI have submitted my new commercial account registration form online.\n\n📌 Firm Name: ${formData.firmName}\n👤 Proprietor: ${formData.name}\n🔑 Primary Key: ${primaryKeyDisplay}\n📞 Mobile: +91 ${cleanPhone}\n📍 City: ${formData.city}\n🆔 Ref ID: ${submittedRequestId}\n\nPlease review our application and grant commercial account approval. Thank you!`
+        : `नमस्ते हिम्मत टेक्सटाइल (Himat Textile)!\nमैंने नया व्यापारिक खाता खोलने के लिए ऑनलाइन पंजीकरण फॉर्म सबमिट किया है।\n\n📌 फर्म का नाम: ${formData.firmName}\n👤 संचालक: ${formData.name}\n🔑 मुख्य पहचान (Key): ${primaryKeyDisplay}\n📞 मोबाइल: +91 ${cleanPhone}\n📍 शहर: ${formData.city}\n🆔 संदर्भ क्रमांक (Ref ID): ${submittedRequestId}\n\nकृपया हमारे खाते की समीक्षा कर अनुमोदन (Approval) प्रदान करें। धन्यवाद!`
     )
 
     return (
@@ -426,6 +535,12 @@ export function CustomerRegistrationView() {
           </div>
 
           <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 text-left space-y-2.5 text-xs">
+            <div className="flex justify-between items-center py-1 border-b border-zinc-200/60 dark:border-zinc-700/60">
+              <span className="text-muted-foreground">{t.primaryKeyLabel}</span>
+              <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                {formData.gstin ? `${formData.gstin} (GSTIN)` : `+91 ${formData.phone.slice(-10)} (Mobile)`}
+              </span>
+            </div>
             <div className="flex justify-between items-center py-1 border-b border-zinc-200/60 dark:border-zinc-700/60">
               <span className="text-muted-foreground">{t.refIdLabel}</span>
               <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{submittedRequestId}</span>
@@ -738,6 +853,97 @@ export function CustomerRegistrationView() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                {/* 0. GSTIN Number - Primary Key (Optional) at the very beginning of the form */}
+                <div className="sm:col-span-2 p-4 rounded-2xl bg-gradient-to-r from-indigo-50/70 via-blue-50/40 to-indigo-50/70 dark:from-indigo-950/40 dark:via-zinc-800/50 dark:to-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/80 space-y-2.5">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <label className="font-bold text-xs text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                      <span>{t.gstinStep1Label}</span>
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                        {t.gstOptionalBadge}
+                      </span>
+                      {formData.gstin && (
+                        <button
+                          type="button"
+                          onClick={handleClearGst}
+                          className="text-[11px] text-zinc-500 hover:text-red-600 dark:hover:text-red-400 underline ml-1"
+                        >
+                          {t.gstClearBtn}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type="text"
+                        maxLength={15}
+                        placeholder={t.gstinStep1Placeholder}
+                        value={formData.gstin}
+                        onChange={(e) => {
+                          const val = e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "")
+                          handleInputChange("gstin", val)
+                          if (val.length === 15 && isValidGstin(val)) {
+                            handleGstLookup(val)
+                          } else if (val.length === 0) {
+                            setGstFeedback({ type: null, message: "" })
+                          }
+                        }}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-indigo-300 dark:border-indigo-700/80 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm tracking-wider uppercase"
+                      />
+                      {formData.gstin.length === 15 && isValidGstin(formData.gstin) && (
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={isFetchingGst || !formData.gstin.trim()}
+                      onClick={() => handleGstLookup()}
+                      className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs transition-all shadow-xs disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shrink-0"
+                    >
+                      {isFetchingGst ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>{t.fetchingGst}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>{t.fetchGstBtn}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Feedback or Helper Message */}
+                  {gstFeedback.message ? (
+                    <div
+                      className={`text-[11px] p-2 rounded-xl flex items-start gap-1.5 font-medium ${
+                        gstFeedback.type === "success"
+                          ? "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                          : gstFeedback.type === "offline"
+                          ? "bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
+                          : "bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
+                      }`}
+                    >
+                      <span className="shrink-0">
+                        {gstFeedback.type === "success" ? "✓" : gstFeedback.type === "offline" ? "ℹ" : "⚠"}
+                      </span>
+                      <span className="leading-tight">{gstFeedback.message}</span>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-indigo-900/70 dark:text-indigo-300/70">
+                      {t.gstinStep1Help}
+                    </p>
+                  )}
+                </div>
+
                 {/* 1. Firm Name (Required *) */}
                 <div className="sm:col-span-2 space-y-1.5">
                   <label className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1">
@@ -1044,15 +1250,29 @@ export function CustomerRegistrationView() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                 {/* GSTIN */}
                 <div className="space-y-1.5">
-                  <label className="font-semibold text-zinc-800 dark:text-zinc-200">
-                    {t.gstinLabel}
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="font-semibold text-zinc-800 dark:text-zinc-200">
+                      {t.gstinLabel}
+                    </label>
+                    {formData.gstin && (
+                      <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
+                        ✓ Primary Key
+                      </span>
+                    )}
+                  </div>
                   <input
                     type="text"
                     maxLength={15}
                     placeholder={t.gstinPlaceholder}
                     value={formData.gstin}
-                    onChange={(e) => handleInputChange("gstin", e.target.value.toUpperCase())}
+                    onChange={(e) => {
+                      const val = e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "")
+                      handleInputChange("gstin", val)
+                      if (val.length >= 12 && !formData.panNumber) {
+                        const pan = extractPanFromGstin(val)
+                        if (pan) handleInputChange("panNumber", pan)
+                      }
+                    }}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-xs uppercase"
                   />
                   <p className="text-[10px] text-muted-foreground">
@@ -1070,7 +1290,7 @@ export function CustomerRegistrationView() {
                     maxLength={10}
                     placeholder={t.panPlaceholder}
                     value={formData.panNumber}
-                    onChange={(e) => handleInputChange("panNumber", e.target.value.toUpperCase())}
+                    onChange={(e) => handleInputChange("panNumber", e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, ""))}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-xs uppercase"
                   />
                 </div>
@@ -1247,19 +1467,19 @@ export function CustomerRegistrationView() {
                     <span className="font-semibold text-zinc-900 dark:text-zinc-100">{formData.name}</span>
                   </div>
                   <div>
+                    <span className="text-muted-foreground block">{t.summaryKey}</span>
+                    <span className="font-semibold font-mono text-indigo-600 dark:text-indigo-400">
+                      {formData.gstin ? `${formData.gstin} (GSTIN)` : `+91 ${formData.phone.slice(-10)} (Mobile)`}
+                    </span>
+                  </div>
+                  <div>
                     <span className="text-muted-foreground block">{t.summaryCityState}</span>
                     <span className="font-semibold text-zinc-900 dark:text-zinc-100">{formData.city}, {formData.state}</span>
                   </div>
                   <div>
                     <span className="text-muted-foreground block">{t.summaryMobile}</span>
-                    <span className="font-semibold font-mono text-indigo-600 dark:text-indigo-400">+91 {formData.phone.slice(-10)}</span>
+                    <span className="font-semibold font-mono text-zinc-900 dark:text-zinc-100">+91 {formData.phone.slice(-10)}</span>
                   </div>
-                  {formData.gstin && (
-                    <div>
-                      <span className="text-muted-foreground block">{t.summaryGst}</span>
-                      <span className="font-semibold font-mono text-zinc-900 dark:text-zinc-100">{formData.gstin}</span>
-                    </div>
-                  )}
                   {formData.preferredTransporterName && (
                     <div>
                       <span className="text-muted-foreground block">{t.summaryTransport}</span>

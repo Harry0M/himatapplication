@@ -30,7 +30,9 @@ import {
   Clock,
   XCircle,
   Copy,
-  Factory
+  Factory,
+  RefreshCw,
+  Sparkles
 } from "lucide-react"
 import { useData } from "../context/DataContext"
 import { Card } from "../components/ui/Card"
@@ -51,6 +53,12 @@ import { generateSuppliersTallyXml, downloadXmlFile } from "../lib/tallyExport"
 import { FileUpload } from "../components/ui/FileUpload"
 import { ImageLightboxModal } from "../components/ui/ImageLightboxModal"
 import { SupplierDetailView } from "./SupplierDetailView"
+import {
+  fetchGstDetails,
+  isValidGstin,
+  extractPanFromGstin,
+  getStateFromGstin,
+} from "../lib/gstHelper"
 
 export function SuppliersView() {
   const {
@@ -228,6 +236,92 @@ export function SuppliersView() {
   const [visitingCardPhotoUri, setVisitingCardPhotoUri] = useState<string>("")
   const [referredBy, setReferredBy] = useState<string>("")
   const [notes, setNotes] = useState<string>("")
+
+  // GST Lookup & auto-population state
+  const [isFetchingGst, setIsFetchingGst] = useState<boolean>(false)
+  const [gstFeedback, setGstFeedback] = useState<{
+    type: "success" | "offline" | "error" | null
+    message: string
+  }>({ type: null, message: "" })
+
+  const handleGstLookup = async (inputGst?: string) => {
+    const rawGst = (inputGst !== undefined ? inputGst : gstin).trim().toUpperCase()
+    if (!rawGst) {
+      setGstFeedback({ type: null, message: "" })
+      return
+    }
+
+    if (rawGst.length !== 15 || !isValidGstin(rawGst)) {
+      setGstFeedback({
+        type: "error",
+        message: "Please enter a valid 15-character GSTIN (e.g. 24AAAAA0000A1Z5)",
+      })
+      return
+    }
+
+    setIsFetchingGst(true)
+    setGstFeedback({ type: null, message: "" })
+
+    try {
+      const offlinePan = extractPanFromGstin(rawGst)
+      const offlineState = getStateFromGstin(rawGst)
+
+      setGstin(rawGst)
+      if (offlinePan) setPanNumber(offlinePan)
+      if (offlineState) setState(offlineState)
+
+      const details = await fetchGstDetails(rawGst)
+      if (details && (details.firmName || details.address || details.city || details.pincode)) {
+        if (details.firmName) {
+          setFirmName(details.firmName)
+          setName(details.firmName)
+        }
+        if (details.city) setCity(details.city)
+        if (details.state) setState(details.state)
+        if (details.pan) setPanNumber(details.pan)
+        if (details.address) {
+          setFactories((prev) => {
+            const updated = [...prev]
+            if (updated.length > 0 && (!updated[0].address || updated[0].address.trim() === "")) {
+              updated[0] = {
+                ...updated[0],
+                address: details.address || updated[0].address,
+                city: details.city || updated[0].city,
+                pincode: details.pincode || updated[0].pincode,
+              }
+            }
+            return updated
+          })
+        }
+        setGstFeedback({
+          type: "success",
+          message: "✓ Mill details & address retrieved from GSTIN",
+        })
+      } else {
+        setGstFeedback({
+          type: "offline",
+          message: "✓ State & PAN auto-detected from GSTIN. Please enter Mill Name below.",
+        })
+      }
+    } catch (err) {
+      console.warn("GST lookup error in supplier dialog:", err)
+      const offlinePan = extractPanFromGstin(rawGst)
+      const offlineState = getStateFromGstin(rawGst)
+      if (offlinePan) setPanNumber(offlinePan)
+      if (offlineState) setState(offlineState)
+      setGstFeedback({
+        type: "offline",
+        message: "✓ State & PAN auto-detected from GSTIN.",
+      })
+    } finally {
+      setIsFetchingGst(false)
+    }
+  }
+
+  const handleClearGst = () => {
+    setGstin("")
+    setGstFeedback({ type: null, message: "" })
+  }
 
   // Draft state (strictly local browser storage)
   const [hasDraft, setHasDraft] = useState<boolean>(false)
@@ -1587,6 +1681,95 @@ export function SuppliersView() {
           {/* TAB 1: Firm, Market & Brand */}
           {activeFormTab === "basic" && (
             <div className="space-y-3.5 text-xs">
+              {/* GSTIN First with Auto-Fetch Option */}
+              <div className="p-3.5 rounded-xl bg-gradient-to-r from-indigo-50/80 via-blue-50/50 to-indigo-50/80 dark:from-indigo-950/40 dark:via-zinc-800/50 dark:to-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
+                    <ShieldCheck className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                    <span>GSTIN Number (Auto-Fetch Mill Details)</span>
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                      Optional
+                    </span>
+                    {gstin && (
+                      <button
+                        type="button"
+                        onClick={handleClearGst}
+                        className="text-[11px] text-zinc-500 hover:text-red-600 dark:hover:text-red-400 underline ml-1"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Input
+                      maxLength={15}
+                      value={gstin}
+                      onChange={(e) => {
+                        const val = e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "")
+                        setGstin(val)
+                        if (val.length === 15 && isValidGstin(val)) {
+                          handleGstLookup(val)
+                        } else if (val.length === 0) {
+                          setGstFeedback({ type: null, message: "" })
+                        }
+                      }}
+                      placeholder="e.g. 24AAAAA0000A1Z5 (15 Characters)"
+                      className="h-9 text-xs font-mono uppercase bg-white dark:bg-zinc-900 border-indigo-300 dark:border-indigo-700"
+                    />
+                    {gstin.length === 15 && isValidGstin(gstin) && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      </div>
+                    )}
+                  </div>
+
+                  <Button
+                    type="button"
+                    disabled={isFetchingGst || !gstin.trim()}
+                    onClick={() => handleGstLookup()}
+                    className="h-9 px-3.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5 shrink-0"
+                  >
+                    {isFetchingGst ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        <span>Fetching...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-3.5 w-3.5" />
+                        <span>Fetch Details</span>
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {gstFeedback.message ? (
+                  <div
+                    className={`text-[11px] p-2 rounded-lg flex items-start gap-1.5 font-medium ${
+                      gstFeedback.type === "success"
+                        ? "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                        : gstFeedback.type === "offline"
+                        ? "bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
+                        : "bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
+                    }`}
+                  >
+                    <span className="shrink-0">
+                      {gstFeedback.type === "success" ? "✓" : gstFeedback.type === "offline" ? "ℹ" : "⚠"}
+                    </span>
+                    <span className="leading-tight">{gstFeedback.message}</span>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-indigo-900/70 dark:text-indigo-300/70">
+                    Entering GSTIN automatically decodes State and PAN, and auto-fills Mill Name, City, and Address.
+                  </p>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">

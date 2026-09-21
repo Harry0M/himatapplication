@@ -27,6 +27,12 @@ import { auth, rtdb } from "../lib/firebase"
 import { FileUpload } from "../components/ui/FileUpload"
 import { SupplierRegistrationRequest } from "../types"
 import { HIMAT_LOGO_DATA_URI } from "../lib/logoBase64"
+import {
+  fetchGstDetails,
+  isValidGstin,
+  extractPanFromGstin,
+  getStateFromGstin,
+} from "../lib/gstHelper"
 
 const SUPPLIER_FABRIC_CATEGORIES = [
   "Shirting (Cotton & PC)",
@@ -131,6 +137,107 @@ export function SupplierRegistrationView() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null)
   const recaptchaWrapperRef = useRef<HTMLDivElement | null>(null)
+
+  // GST Lookup and auto-population state
+  const [isFetchingGst, setIsFetchingGst] = useState<boolean>(false)
+  const [gstFeedback, setGstFeedback] = useState<{
+    type: "success" | "offline" | "error" | null
+    message: string
+  }>({ type: null, message: "" })
+
+  const handleGstLookup = async (inputGst?: string) => {
+    const cleanGst = (inputGst !== undefined ? inputGst : formData.gstin).toUpperCase().trim()
+    if (!cleanGst) {
+      setGstFeedback({ type: null, message: "" })
+      return
+    }
+
+    if (cleanGst.length !== 15 || !isValidGstin(cleanGst)) {
+      setGstFeedback({
+        type: "error",
+        message:
+          lang === "hi"
+            ? "कृपया 15 अक्षरों का मान्य जीएसटी नंबर दर्ज करें (उदा. 24AAAAA0000A1Z5)"
+            : "Please enter a valid 15-character GSTIN (e.g. 24AAAAA0000A1Z5)",
+      })
+      return
+    }
+
+    setIsFetchingGst(true)
+    setGstFeedback({ type: null, message: "" })
+
+    try {
+      const offlinePan = extractPanFromGstin(cleanGst)
+      const offlineState = getStateFromGstin(cleanGst)
+
+      // Pre-fill offline decoded values immediately
+      setFormData((prev) => ({
+        ...prev,
+        gstin: cleanGst,
+        panNumber: offlinePan || prev.panNumber,
+        state: offlineState || prev.state,
+      }))
+
+      // Attempt live fetch for mill name, address, city, pincode
+      const details = await fetchGstDetails(cleanGst)
+
+      if (details && (details.firmName || details.address || details.city || details.pincode)) {
+        setFormData((prev) => ({
+          ...prev,
+          gstin: cleanGst,
+          panNumber: details.pan || offlinePan || prev.panNumber,
+          state: details.state || offlineState || prev.state,
+          firmName: details.firmName || prev.firmName,
+          address: details.address || prev.address,
+          officeAddress: details.address || prev.officeAddress || prev.address,
+          city: details.city || prev.city,
+          pincode: details.pincode || prev.pincode,
+        }))
+        setGstFeedback({
+          type: "success",
+          message:
+            lang === "hi"
+              ? "✓ जीएसटी से फर्म विवरण व पता स्वतः प्राप्त हो गया"
+              : "✓ Business name & address retrieved from GSTIN",
+        })
+      } else {
+        setGstFeedback({
+          type: "offline",
+          message:
+            lang === "hi"
+              ? "✓ राज्य और पैन नंबर स्वतः पहचान लिए गए हैं। कृपया नीचे मिल का नाम दर्ज करें।"
+              : "✓ State & PAN auto-detected from GSTIN. Please enter Mill Name below.",
+        })
+      }
+    } catch (err) {
+      console.warn("GST lookup error:", err)
+      const offlinePan = extractPanFromGstin(cleanGst)
+      const offlineState = getStateFromGstin(cleanGst)
+      setFormData((prev) => ({
+        ...prev,
+        gstin: cleanGst,
+        panNumber: offlinePan || prev.panNumber,
+        state: offlineState || prev.state,
+      }))
+      setGstFeedback({
+        type: "offline",
+        message:
+          lang === "hi"
+            ? "✓ राज्य और पैन नंबर स्वतः पहचान लिए गए हैं।"
+            : "✓ State & PAN auto-detected from GSTIN.",
+      })
+    } finally {
+      setIsFetchingGst(false)
+    }
+  }
+
+  const handleClearGst = () => {
+    setFormData((prev) => ({
+      ...prev,
+      gstin: "",
+    }))
+    setGstFeedback({ type: null, message: "" })
+  }
 
   // Sync phone2 if sameAsMobile is checked
   useEffect(() => {
@@ -287,7 +394,11 @@ export function SupplierRegistrationView() {
       const userCredential = await confirmationResult.confirm(otpCode.trim())
       const verifiedUser = userCredential.user
 
-      const requestId = `sup_req_${Date.now()}_${Math.floor(Math.random() * 1000)}`
+      const cleanGstin = formData.gstin.trim().toUpperCase()
+      const cleanPhone = formData.phone.replace(/\D/g, "").slice(-10)
+      const primaryKey = cleanGstin || cleanPhone
+      const keyType: "GSTIN" | "PHONE" = cleanGstin ? "GSTIN" : "PHONE"
+      const requestId = cleanGstin ? `req_sup_gst_${cleanGstin}` : `req_sup_phone_${cleanPhone}`
       const reqRef = ref(rtdb, `supplier_registration_requests/${requestId}`)
 
       const finalMarket = formData.marketArea === "Other / Outside Ahmedabad" && formData.customMarket.trim()
@@ -296,12 +407,14 @@ export function SupplierRegistrationView() {
 
       const payload: SupplierRegistrationRequest = {
         id: requestId,
+        primaryKey,
+        keyType,
         firmName: formData.firmName.trim(),
         name: formData.firmName.trim(),
         contactPerson: formData.contactPerson.trim(),
         type: formData.type,
         brand: formData.brand.trim(),
-        phone: `+91${formData.phone.replace(/\D/g, "").slice(-10)}`,
+        phone: `+91${cleanPhone}`,
         phone2: formData.phone2.trim() ? `+91${formData.phone2.replace(/\D/g, "").slice(-10)}` : "",
         email: formData.email.trim(),
         address: formData.address.trim(),
@@ -315,7 +428,7 @@ export function SupplierRegistrationView() {
         productsMade: selectedCategories.join(", "),
         categories: selectedCategories.join(", "),
         priceRange: formData.priceRange.trim(),
-        gstin: formData.gstin.trim().toUpperCase(),
+        gstin: cleanGstin,
         panNumber: formData.panNumber.trim().toUpperCase(),
         bankName: formData.bankName.trim(),
         accountNumber: formData.accountNumber.trim(),
@@ -353,7 +466,10 @@ export function SupplierRegistrationView() {
 
   // SUCCESS VIEW
   if (submittedRequestId) {
-    const shareMessage = `Namaste! We have submitted our supplier registration with Himat Textile.%0A%0A*Mill / Firm:* ${encodeURIComponent(formData.firmName)}%0A*Contact:* ${encodeURIComponent(formData.contactPerson)} (${formData.phone})%0A*Type:* ${formData.type}%0A*Market:* ${encodeURIComponent(formData.marketArea)}%0A*Ref ID:* ${submittedRequestId}`
+    const cleanGst = formData.gstin.trim().toUpperCase()
+    const cleanPhone = formData.phone.replace(/\D/g, "").slice(-10)
+    const primaryKeyDisplay = cleanGst ? `${cleanGst} (GSTIN)` : `+91 ${cleanPhone} (Mobile)`
+    const shareMessage = `Namaste! We have submitted our supplier registration with Himat Textile.%0A%0A*Mill / Firm:* ${encodeURIComponent(formData.firmName)}%0A*Contact:* ${encodeURIComponent(formData.contactPerson)} (+91 ${cleanPhone})%0A*Primary Key:* ${encodeURIComponent(primaryKeyDisplay)}%0A*Type:* ${formData.type}%0A*Market:* ${encodeURIComponent(formData.marketArea)}%0A*Ref ID:* ${submittedRequestId}`
 
     return (
       <div className="min-h-screen bg-gradient-to-b from-zinc-50 to-zinc-100 dark:from-zinc-950 dark:to-zinc-900 py-10 px-4 sm:px-6">
@@ -371,8 +487,14 @@ export function SupplierRegistrationView() {
 
           <div className="mt-6 p-4 bg-zinc-50 dark:bg-zinc-800/60 rounded-xl border border-zinc-200 dark:border-zinc-700 text-left space-y-2">
             <div className="flex justify-between text-xs">
+              <span className="text-zinc-500">Primary Account Key:</span>
+              <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                {formData.gstin ? `${formData.gstin} (GSTIN)` : `+91 ${formData.phone.replace(/\D/g, "").slice(-10)} (Mobile)`}
+              </span>
+            </div>
+            <div className="flex justify-between text-xs">
               <span className="text-zinc-500">Reference ID:</span>
-              <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">{submittedRequestId}</span>
+              <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{submittedRequestId}</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-zinc-500">Mill / Firm:</span>
@@ -540,6 +662,102 @@ export function SupplierRegistrationView() {
                 <p className="text-xs text-zinc-500 mt-0.5">
                   Enter your firm name and primary proprietor/manager details.
                 </p>
+              </div>
+
+              {/* GSTIN First with Auto-Fetch Option */}
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-50/70 via-teal-50/40 to-emerald-50/70 dark:from-emerald-950/40 dark:via-zinc-800/50 dark:to-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/80 space-y-2.5">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <label className="font-bold text-xs text-emerald-950 dark:text-emerald-200 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <span>
+                      {lang === "hi"
+                        ? "जीएसटी नंबर (GSTIN - वैकल्पिक / स्वतः विवरण भरें)"
+                        : "GSTIN Number (Optional - Auto-Fetch Details)"}
+                    </span>
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                      {lang === "hi" ? "वैकल्पिक • मुख्य पहचान" : "Optional • Primary Key"}
+                    </span>
+                    {formData.gstin && (
+                      <button
+                        type="button"
+                        onClick={handleClearGst}
+                        className="text-[11px] text-zinc-500 hover:text-red-600 dark:hover:text-red-400 underline ml-1"
+                      >
+                        {lang === "hi" ? "हटाएं" : "Clear"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      maxLength={15}
+                      placeholder="24AAAAA0000A1Z5 (15 Characters)"
+                      value={formData.gstin}
+                      onChange={(e) => {
+                        const val = e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "")
+                        handleInputChange("gstin", val)
+                        if (val.length === 15 && isValidGstin(val)) {
+                          handleGstLookup(val)
+                        } else if (val.length === 0) {
+                          setGstFeedback({ type: null, message: "" })
+                        }
+                      }}
+                      className="w-full h-10 px-3.5 rounded-xl border border-emerald-300 dark:border-emerald-700/80 bg-white dark:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-sm tracking-wider uppercase text-zinc-900 dark:text-zinc-100"
+                    />
+                    {formData.gstin.length === 15 && isValidGstin(formData.gstin) && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={isFetchingGst || !formData.gstin.trim()}
+                    onClick={() => handleGstLookup()}
+                    className="h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition-all shadow-xs disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shrink-0"
+                  >
+                    {isFetchingGst ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>{lang === "hi" ? "डेटा लोड हो रहा है..." : "Fetching..."}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>{lang === "hi" ? "विवरण प्राप्त करें" : "Fetch Details"}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {gstFeedback.message ? (
+                  <div
+                    className={`text-[11px] p-2 rounded-xl flex items-start gap-1.5 font-medium ${
+                      gstFeedback.type === "success"
+                        ? "bg-emerald-100/70 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800"
+                        : gstFeedback.type === "offline"
+                        ? "bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
+                        : "bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
+                    }`}
+                  >
+                    <span className="shrink-0">
+                      {gstFeedback.type === "success" ? "✓" : gstFeedback.type === "offline" ? "ℹ" : "⚠"}
+                    </span>
+                    <span className="leading-tight">{gstFeedback.message}</span>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-emerald-900/70 dark:text-emerald-300/70">
+                    {lang === "hi"
+                      ? "जीएसटी नंबर दर्ज करने से राज्य, पैन नंबर, मिल का नाम और पता स्वतः भर जाएगा। यदि जीएसटी नहीं है तो खाली छोड़ें।"
+                      : "Enter 15-digit GSTIN to auto-fetch mill name, address, state & PAN. If unregistered, leave blank."}
+                  </p>
+                )}
               </div>
 
               {/* Classification Toggle */}
@@ -884,16 +1102,30 @@ export function SupplierRegistrationView() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                    GSTIN Number (Optional)
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                      GSTIN Number (Optional)
+                    </label>
+                    {formData.gstin && (
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                        ✓ Primary Key
+                      </span>
+                    )}
+                  </div>
                   <input
                     type="text"
                     maxLength={15}
                     value={formData.gstin}
-                    onChange={(e) => handleInputChange("gstin", e.target.value.toUpperCase())}
+                    onChange={(e) => {
+                      const val = e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "")
+                      handleInputChange("gstin", val)
+                      if (val.length >= 12 && !formData.panNumber) {
+                        const pan = extractPanFromGstin(val)
+                        if (pan) handleInputChange("panNumber", pan)
+                      }
+                    }}
                     placeholder="24ABCDE1234F1Z5"
-                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 uppercase"
+                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 uppercase font-mono"
                   />
                 </div>
               </div>
@@ -907,9 +1139,9 @@ export function SupplierRegistrationView() {
                     type="text"
                     maxLength={10}
                     value={formData.panNumber}
-                    onChange={(e) => handleInputChange("panNumber", e.target.value.toUpperCase())}
+                    onChange={(e) => handleInputChange("panNumber", e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, ""))}
                     placeholder="ABCDE1234F"
-                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 uppercase"
+                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 uppercase font-mono"
                   />
                 </div>
 
@@ -1012,6 +1244,12 @@ export function SupplierRegistrationView() {
                 <div className="flex justify-between text-xs">
                   <span className="text-zinc-500">Firm Name:</span>
                   <span className="font-bold text-zinc-900 dark:text-zinc-100">{formData.firmName}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-zinc-500">Primary Key:</span>
+                  <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                    {formData.gstin ? `${formData.gstin} (GSTIN)` : `+91 ${formData.phone.replace(/\D/g, "").slice(-10)} (Mobile)`}
+                  </span>
                 </div>
                 <div className="flex justify-between text-xs">
                   <span className="text-zinc-500">Classification:</span>

@@ -330,6 +330,8 @@ export interface SoftDeletedItem {
 
 export interface CustomerRegistrationRequest {
   id: string
+  primaryKey?: string // GSTIN if available, else clean 10-digit mobile
+  keyType?: "GSTIN" | "PHONE"
   firmName: string
   name: string // Owner / Contact Person
   phone: string // Mobile Number (Verified via SMS)
@@ -374,6 +376,8 @@ export interface CustomerRegistrationRequest {
 
 export interface SupplierRegistrationRequest {
   id: string
+  primaryKey?: string // GSTIN if available, else clean 10-digit mobile
+  keyType?: "GSTIN" | "PHONE"
   firmName: string
   name: string // Mill / Firm Name or Owner Name
   contactPerson: string
