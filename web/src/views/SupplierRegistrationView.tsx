@@ -275,8 +275,15 @@ export function SupplierRegistrationView() {
     }
   }
 
+  // Step 1 completeness check
+  const isStep1Complete = Boolean(
+    formData.firmName.trim() &&
+    formData.contactPerson.trim() &&
+    formData.phone.replace(/\D/g, "").length === 10
+  )
+
   // Step Validation
-  const validateCurrentStep = (targetStep?: number): boolean => {
+  const validateCurrentStep = (targetStep?: number, isSkip = false): boolean => {
     setErrorMessage(null)
     // Mandatory fields check for Step 1
     if (currentStep === 1 || (targetStep && targetStep > 1)) {
@@ -295,7 +302,7 @@ export function SupplierRegistrationView() {
       }
     }
 
-    if (currentStep === 2 || (targetStep && targetStep > 2)) {
+    if (!isSkip && (currentStep === 2 || (targetStep && targetStep > 2 && currentStep > 1))) {
       if (!formData.address.trim() && !formData.officeAddress.trim()) {
         setErrorMessage("Please enter Factory / Mill or Office Address")
         return false
@@ -307,6 +314,13 @@ export function SupplierRegistrationView() {
     }
 
     return true
+  }
+
+  const handleSkipToSubmit = () => {
+    if (validateCurrentStep(5, true)) {
+      setCurrentStep(5)
+      window.scrollTo({ top: 0, behavior: "smooth" })
+    }
   }
 
   const goToNextStep = () => {
@@ -1309,18 +1323,36 @@ export function SupplierRegistrationView() {
 
           {/* Navigation Buttons */}
           <div className="mt-8 pt-4 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
-            {currentStep > 1 ? (
-              <button
-                type="button"
-                onClick={goToPrevStep}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-zinc-300 dark:border-zinc-700 text-xs font-semibold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Back</span>
-              </button>
-            ) : (
-              <div></div>
-            )}
+            <div className="flex items-center gap-2">
+              {currentStep > 1 ? (
+                <button
+                  type="button"
+                  onClick={goToPrevStep}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-zinc-300 dark:border-zinc-700 text-xs font-semibold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Back</span>
+                </button>
+              ) : null}
+
+              {currentStep < 5 && isStep1Complete && (
+                <button
+                  type="button"
+                  onClick={handleSkipToSubmit}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-emerald-600 dark:border-emerald-500 bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-xs font-bold transition-all shadow-xs"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>
+                    {lang === "hi"
+                      ? "सीधे सबमिट करें"
+                      : lang === "gu"
+                      ? "સીધા સબમિટ કરો"
+                      : "Skip to Submit"}
+                  </span>
+                  <ArrowRight className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                </button>
+              )}
+            </div>
 
             {currentStep < 5 && (
               <button
