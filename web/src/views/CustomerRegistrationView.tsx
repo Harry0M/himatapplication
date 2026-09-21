@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from "react"
 import {
   Building2,
-  Store,
   User,
   Phone,
   Mail,
@@ -19,14 +18,16 @@ import {
   Check,
   MessageSquare,
   Globe,
+  Store,
   Tag
 } from "lucide-react"
 import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from "firebase/auth"
 import { ref, set } from "firebase/database"
 import { auth, rtdb } from "../lib/firebase"
 import { FileUpload } from "../components/ui/FileUpload"
-import { GARMENT_CATEGORIES, AHMEDABAD_TEXTILE_MARKETS } from "../lib/constants"
+import { GARMENT_CATEGORIES } from "../lib/constants"
 import { CustomerRegistrationRequest } from "../types"
+import { REGISTRATION_TRANSLATIONS, RegistrationLang } from "../lib/registrationI18n"
 import { HIMAT_LOGO_DATA_URI } from "../lib/logoBase64"
 import {
   fetchGstDetails,
@@ -38,30 +39,23 @@ import {
 export function CustomerRegistrationView() {
   const [currentStep, setCurrentStep] = useState<number>(1)
 
-  // Language State - English ('en'), Hindi ('hi'), Gujarati ('gu')
-  const [lang, setLang] = useState<"en" | "hi" | "gu">(() => {
-    return (localStorage.getItem("himat_customer_reg_lang") as "en" | "hi" | "gu") || "en"
+  // Language State - Defaults to English ('en') with user toggle
+  const [lang, setLang] = useState<RegistrationLang>(() => {
+    return (localStorage.getItem("himat_reg_lang") as RegistrationLang) || "en"
   })
 
-  const handleLanguageSwitch = (newLang: "en" | "hi" | "gu") => {
+  const t = REGISTRATION_TRANSLATIONS[lang]
+
+  const handleLanguageSwitch = (newLang: RegistrationLang) => {
     setLang(newLang)
-    localStorage.setItem("himat_customer_reg_lang", newLang)
+    localStorage.setItem("himat_reg_lang", newLang)
   }
 
   // Form State
   const [formData, setFormData] = useState({
     // Step 1: Business Profile
     firmName: "",
-    name: "", // Owner / Contact Person
-    customerType: "Retailer" as "Retailer" | "Wholesaler",
-    phone: "",
-    phone2: "",
-    sameAsMobile: true,
-    email: "",
-
-    // Step 2: Location & Shop
-    marketArea: "Maskati Cloth Market (Sakarkalupur)",
-    customMarket: "",
+    marketArea: "",
     address: "",
     shopAddress: "",
     city: "Ahmedabad",
@@ -70,29 +64,32 @@ export function CustomerRegistrationView() {
     pincode: "",
     shopMapLink: "",
 
-    // Step 3: Garments, Transport & Bank
-    preferredTransporterName: "",
-    transportPreference: "Godown Delivery",
+    // Step 2: Owner & Contact
+    name: "",
+    phone: "",
+    phone2: "",
+    sameAsMobile: true,
+    email: "",
+
+    // Step 3: KYC & Docs
     gstin: "",
     panNumber: "",
-    bankName: "",
-    accountNumber: "",
-    ifscCode: "",
-    notes: "",
-
-    // Step 4: KYC & Photos
-    visitingCardPhotoUri: "",
     shopPhotoUri: "",
     gstCertPhotoUri: "",
     panPhotoUri: "",
     aadharPhotoUri: "",
+
+    // Step 4: Transport & Bank
+    preferredTransporterName: "",
+    transportPreference: "",
+    bankName: "",
+    accountNumber: "",
+    ifscCode: "",
+    notes: "",
   })
 
   // Selected Garment Categories (Pills)
-  const [selectedGarments, setSelectedGarments] = useState<string[]>([
-    "Kurtis & Ethnic Wear",
-    "Cotton Shirting & Suiting"
-  ])
+  const [selectedGarments, setSelectedGarments] = useState<string[]>([])
   const [customGarment, setCustomGarment] = useState<string>("")
 
   // Phone Auth State
@@ -129,8 +126,6 @@ export function CustomerRegistrationView() {
         message:
           lang === "hi"
             ? "कृपया 15 अक्षरों का मान्य जीएसटी नंबर दर्ज करें (उदा. 24AAAAA0000A1Z5)"
-            : lang === "gu"
-            ? "કૃપા કરીને 15 અક્ષરોનો માન્ય જીએસટી નંબર દાખલ કરો (દા.ત. 24AAAAA0000A1Z5)"
             : "Please enter a valid 15-character GSTIN (e.g. 24AAAAA0000A1Z5)",
       })
       return
@@ -168,22 +163,13 @@ export function CustomerRegistrationView() {
         }))
         setGstFeedback({
           type: "success",
-          message:
-            lang === "hi"
-              ? "✓ जीएसटी से फर्म विवरण व पता स्वतः प्राप्त हो गया"
-              : lang === "gu"
-              ? "✓ જીએસટી પરથી પેઢીની વિગતો અને સરનામું આપોઆપ આવી ગયું"
-              : "✓ Business name & address retrieved from GSTIN",
+          message: t.gstAutoSuccess,
         })
       } else {
+        // Offline state & PAN detected, manual entry for rest
         setGstFeedback({
           type: "offline",
-          message:
-            lang === "hi"
-              ? "✓ राज्य और पैन नंबर स्वतः पहचान लिए गए हैं। कृपया नीचे दुकान का नाम दर्ज करें।"
-              : lang === "gu"
-              ? "✓ રાજ્ય અને પાન નંબર આપોઆપ મળી ગયા છે. કૃપા કરીને નીચે દુકાનનું નામ દાખલ કરો."
-              : "✓ State & PAN auto-detected from GSTIN. Please enter Shop Name below.",
+          message: t.gstAutoOffline,
         })
       }
     } catch (err) {
@@ -198,12 +184,7 @@ export function CustomerRegistrationView() {
       }))
       setGstFeedback({
         type: "offline",
-        message:
-          lang === "hi"
-            ? "✓ राज्य और पैन नंबर स्वतः पहचान लिए गए हैं।"
-            : lang === "gu"
-            ? "✓ રાજ્ય અને પાન નંબર આપોઆપ ઓળખાઈ ગયા છે."
-            : "✓ State & PAN auto-detected from GSTIN.",
+        message: t.gstAutoOffline,
       })
     } finally {
       setIsFetchingGst(false)
@@ -254,132 +235,148 @@ export function CustomerRegistrationView() {
     }
   }
 
-  // Step Validation
+  // Step Validation with localized error messages
   const validateCurrentStep = (targetStep?: number): boolean => {
     setErrorMessage(null)
-    // Mandatory fields check for Step 1
+    // Always enforce all 5 mandatory fields if currently on Step 1 or trying to navigate past Step 1
     if (currentStep === 1 || (targetStep && targetStep > 1)) {
       if (!formData.firmName.trim()) {
-        setErrorMessage(
-          lang === "hi"
-            ? "कृपया दुकान / फर्म का नाम दर्ज करें"
-            : lang === "gu"
-            ? "કૃપા કરીને દુકાન / પેઢીનું નામ દાખલ કરો"
-            : "Please enter Shop / Firm Name"
-        )
+        setErrorMessage(t.errFirmName)
         return false
       }
       if (!formData.name.trim()) {
-        setErrorMessage(
-          lang === "hi"
-            ? "कृपया संचालक / मालिक का नाम दर्ज करें"
-            : lang === "gu"
-            ? "કૃપા કરીને માલિકનું નામ દાખલ કરો"
-            : "Please enter Proprietor / Owner Name"
-        )
+        setErrorMessage(t.errOwnerName)
         return false
       }
       const cleanPhone = formData.phone.replace(/\D/g, "")
-      if (!cleanPhone || cleanPhone.length < 10) {
-        setErrorMessage(
-          lang === "hi"
-            ? "कृपया 10 अंकों का मान्य मोबाइल नंबर दर्ज करें"
-            : lang === "gu"
-            ? "કૃપા કરીને 10 અંકનો માન્ય મોબાઈલ નંબર દાખલ કરો"
-            : "Please enter a valid 10-digit mobile number"
-        )
-        return false
-      }
-    }
-
-    if (currentStep === 2 || (targetStep && targetStep > 2)) {
-      if (!formData.address.trim() && !formData.shopAddress.trim()) {
-        setErrorMessage(
-          lang === "hi"
-            ? "कृपया दुकान / स्टोर का पता दर्ज करें"
-            : lang === "gu"
-            ? "કૃપા કરીને દુકાનનું સરનામું દાખલ કરો"
-            : "Please enter Shop / Store Address"
-        )
+      if (cleanPhone.length !== 10) {
+        setErrorMessage(t.errPhone)
         return false
       }
       if (!formData.city.trim()) {
-        setErrorMessage(
-          lang === "hi"
-            ? "कृपया शहर का नाम दर्ज करें"
-            : lang === "gu"
-            ? "કૃપા કરીને શહેરનું નામ દાખલ કરો"
-            : "Please enter City"
-        )
+        setErrorMessage(t.errCity)
+        return false
+      }
+      if (!formData.address.trim()) {
+        setErrorMessage(t.errAddress)
         return false
       }
     }
-
     return true
   }
 
-  const goToNextStep = () => {
+  const handleNextStep = () => {
     if (validateCurrentStep(currentStep + 1)) {
-      setCurrentStep((prev) => Math.min(prev + 1, 5))
+      setCurrentStep((prev) => Math.min(prev + 1, t.stepIndicators.length))
       window.scrollTo({ top: 0, behavior: "smooth" })
     }
   }
 
-  const goToPrevStep = () => {
+  const handlePrevStep = () => {
     setErrorMessage(null)
     setCurrentStep((prev) => Math.max(prev - 1, 1))
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
-  // Firebase Phone Auth - Setup invisible reCAPTCHA
-  const setupRecaptcha = () => {
-    if (!recaptchaVerifierRef.current) {
-      try {
-        recaptchaVerifierRef.current = new RecaptchaVerifier(
-          auth,
-          "customer-recaptcha-container",
-          {
-            size: "invisible",
-            callback: () => {},
-            "expired-callback": () => {
-              setErrorMessage("reCAPTCHA expired. Please try sending OTP again.")
-            },
-          }
-        )
-      } catch (err: any) {
-        console.error("Recaptcha setup error:", err)
+  // Cleanup recaptcha on unmount
+  useEffect(() => {
+    return () => {
+      if (recaptchaVerifierRef.current) {
+        try {
+          recaptchaVerifierRef.current.clear()
+        } catch (e) {
+          // ignore
+        }
+        recaptchaVerifierRef.current = null
       }
     }
+  }, [])
+
+  // Initialize or Reset Recaptcha Verifier
+  const getRecaptchaVerifier = () => {
+    if (recaptchaVerifierRef.current) {
+      try {
+        recaptchaVerifierRef.current.clear()
+      } catch (e) {
+        // ignore
+      }
+      recaptchaVerifierRef.current = null
+    }
+
+    // Completely replace the container DOM element so that no leftover grecaptcha widget ID or data attributes remain
+    const wrapper = recaptchaWrapperRef.current || document.getElementById("recaptcha-wrapper")
+    if (wrapper) {
+      wrapper.innerHTML = '<div id="recaptcha-container"></div>'
+    } else {
+      const oldContainer = document.getElementById("recaptcha-container")
+      if (oldContainer && oldContainer.parentNode) {
+        const newContainer = document.createElement("div")
+        newContainer.id = "recaptcha-container"
+        oldContainer.parentNode.replaceChild(newContainer, oldContainer)
+      }
+    }
+
+    const verifier = new RecaptchaVerifier(auth, "recaptcha-container", {
+      size: "invisible",
+      callback: () => {
+        // Recaptcha resolved
+      },
+      "expired-callback": () => {
+        setErrorMessage(t.errSecurityExpired)
+      },
+    })
+    recaptchaVerifierRef.current = verifier
+    return verifier
   }
 
-  // Send OTP
+  // Send SMS OTP via Firebase Phone Auth
   const handleSendOtp = async () => {
     setErrorMessage(null)
     const cleanPhone = formData.phone.replace(/\D/g, "").slice(-10)
     if (cleanPhone.length !== 10) {
-      setErrorMessage("Please enter a valid 10-digit mobile number")
+      setErrorMessage(t.errPhone)
       return
     }
 
     setIsSendingOtp(true)
     try {
-      setupRecaptcha()
-      const formattedPhone = `+91${cleanPhone}`
-      const appVerifier = recaptchaVerifierRef.current
-      if (!appVerifier) throw new Error("Recaptcha not initialized")
-
-      const confirmation = await signInWithPhoneNumber(auth, formattedPhone, appVerifier)
+      const fullPhoneNumber = `+91${cleanPhone}`
+      const appVerifier = getRecaptchaVerifier()
+      const confirmation = await signInWithPhoneNumber(auth, fullPhoneNumber, appVerifier)
       setConfirmationResult(confirmation)
       setOtpSent(true)
-      setResendTimer(30)
+      setResendTimer(60)
     } catch (err: any) {
-      console.error("SMS Send Error:", err)
-      if (err.code === "auth/invalid-phone-number") {
-        setErrorMessage("Invalid mobile number format.")
-      } else if (err.code === "auth/too-many-requests") {
-        setErrorMessage("Too many SMS attempts. Please try again later.")
+      console.error("Firebase Phone Auth error:", err)
+      // On failure, clean up recaptcha verifier and DOM so the user can immediately retry
+      if (recaptchaVerifierRef.current) {
+        try {
+          recaptchaVerifierRef.current.clear()
+        } catch (e) {
+          // ignore
+        }
+        recaptchaVerifierRef.current = null
+      }
+      const wrapper = recaptchaWrapperRef.current || document.getElementById("recaptcha-wrapper")
+      if (wrapper) {
+        wrapper.innerHTML = '<div id="recaptcha-container"></div>'
       } else {
-        setErrorMessage(err.message || "Failed to send OTP. Please check your connection.")
+        const oldContainer = document.getElementById("recaptcha-container")
+        if (oldContainer && oldContainer.parentNode) {
+          const newContainer = document.createElement("div")
+          newContainer.id = "recaptcha-container"
+          oldContainer.parentNode.replaceChild(newContainer, oldContainer)
+        }
+      }
+
+      if (err.code === "auth/invalid-phone-number") {
+        setErrorMessage(t.errPhone)
+      } else if (err.code === "auth/too-many-requests") {
+        setErrorMessage(t.errTooManyAttempts)
+      } else if (err.code === "auth/quota-exceeded") {
+        setErrorMessage(t.errQuotaExceeded)
+      } else {
+        setErrorMessage(err.message || t.errGenericPhoneAuth)
       }
     } finally {
       setIsSendingOtp(false)
@@ -390,29 +387,28 @@ export function CustomerRegistrationView() {
   const handleVerifyAndSubmit = async () => {
     setErrorMessage(null)
     if (!confirmationResult) {
-      setErrorMessage("Please request an OTP first.")
+      setErrorMessage(t.errSendOtpFirst)
       return
     }
     if (!otpCode.trim() || otpCode.trim().length < 6) {
-      setErrorMessage("Please enter the 6-digit verification code.")
+      setErrorMessage(t.errOtpLength)
       return
     }
 
     setIsVerifyingOtp(true)
     try {
+      // 1. Confirm OTP with Firebase Auth
       const userCredential = await confirmationResult.confirm(otpCode.trim())
       const verifiedUser = userCredential.user
 
+      // 2. Determine Primary Key and Request ID
+      // GSTIN is the primary key if provided; if not, 10-digit clean phone number is used.
       const cleanGstin = formData.gstin.trim().toUpperCase()
       const cleanPhone = formData.phone.replace(/\D/g, "").slice(-10)
       const primaryKey = cleanGstin || cleanPhone
       const keyType: "GSTIN" | "PHONE" = cleanGstin ? "GSTIN" : "PHONE"
       const requestId = cleanGstin ? `req_gst_${cleanGstin}` : `req_phone_${cleanPhone}`
       const reqRef = ref(rtdb, `customer_registration_requests/${requestId}`)
-
-      const finalMarket = formData.marketArea === "Other / Outside Ahmedabad" && formData.customMarket.trim()
-        ? formData.customMarket.trim()
-        : formData.marketArea
 
       const payload: CustomerRegistrationRequest = {
         id: requestId,
@@ -425,7 +421,7 @@ export function CustomerRegistrationView() {
         email: formData.email.trim(),
         address: formData.address.trim(),
         shopAddress: formData.shopAddress.trim() || formData.address.trim(),
-        marketArea: finalMarket,
+        marketArea: formData.marketArea.trim(),
         city: formData.city.trim() || "Ahmedabad",
         district: formData.district.trim(),
         state: formData.state.trim() || "Gujarat",
@@ -450,6 +446,7 @@ export function CustomerRegistrationView() {
         createdAt: Date.now(),
       }
 
+      // Filter out undefined keys for Firebase RTDB
       const cleanPayload: Record<string, any> = {}
       for (const [k, v] of Object.entries(payload)) {
         if (v !== undefined) cleanPayload[k] = v
@@ -459,87 +456,71 @@ export function CustomerRegistrationView() {
       setSubmittedRequestId(requestId)
       window.scrollTo({ top: 0, behavior: "smooth" })
     } catch (err: any) {
-      console.error("Submission error:", err)
+      console.error("OTP verification or submission error:", err)
       if (err.code === "auth/invalid-verification-code") {
-        setErrorMessage("Invalid OTP code. Please re-check the SMS.")
+        setErrorMessage(t.errOtpInvalid)
+      } else if (err.code === "auth/code-expired") {
+        setErrorMessage(t.errOtpExpired)
       } else {
-        setErrorMessage(err.message || "Verification failed. Please try again.")
+        setErrorMessage(err.message || t.errGenericPhoneAuth)
       }
     } finally {
       setIsVerifyingOtp(false)
     }
   }
 
-  // SUCCESS VIEW
+  // Render Submitted Success Screen
   if (submittedRequestId) {
     const cleanGst = formData.gstin.trim().toUpperCase()
     const cleanPhone = formData.phone.replace(/\D/g, "").slice(-10)
     const primaryKeyDisplay = cleanGst ? `${cleanGst} (GSTIN)` : `+91 ${cleanPhone} (Mobile)`
-    const shareMessage = `Namaste! We have submitted our customer commercial account registration with Himat Textile.%0A%0A*Shop / Firm:* ${encodeURIComponent(formData.firmName)}%0A*Contact:* ${encodeURIComponent(formData.name)} (+91 ${cleanPhone})%0A*Primary Key:* ${encodeURIComponent(primaryKeyDisplay)}%0A*City:* ${encodeURIComponent(formData.city)}%0A*Ref ID:* ${submittedRequestId}`
+    const whatsappMsg = encodeURIComponent(
+      lang === "en"
+        ? `Hello Himat Textile!\nI have submitted my new commercial account registration form online.\n\n📌 Firm Name: ${formData.firmName}\n👤 Proprietor: ${formData.name}\n🔑 Primary Key: ${primaryKeyDisplay}\n📞 Mobile: +91 ${cleanPhone}\n📍 City: ${formData.city}\n🆔 Ref ID: ${submittedRequestId}\n\nPlease review our application and grant commercial account approval. Thank you!`
+        : `नमस्ते हिम्मत टेक्सटाइल (Himat Textile)!\nमैंने नया व्यापारिक खाता खोलने के लिए ऑनलाइन पंजीकरण फॉर्म सबमिट किया है।\n\n📌 फर्म का नाम: ${formData.firmName}\n👤 संचालक: ${formData.name}\n🔑 मुख्य पहचान (Key): ${primaryKeyDisplay}\n📞 मोबाइल: +91 ${cleanPhone}\n📍 शहर: ${formData.city}\n🆔 संदर्भ क्रमांक (Ref ID): ${submittedRequestId}\n\nकृपया हमारे खाते की समीक्षा कर अनुमोदन (Approval) प्रदान करें। धन्यवाद!`
+    )
 
     return (
-      <div className="min-h-screen bg-gradient-to-b from-zinc-50 to-zinc-100 dark:from-zinc-950 dark:to-zinc-900 py-10 px-4 sm:px-6">
-        <div className="max-w-xl mx-auto bg-white dark:bg-zinc-900 rounded-2xl shadow-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden text-center p-8 sm:p-10">
-          <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-950/60 rounded-full flex items-center justify-center mx-auto mb-5 text-emerald-600 dark:text-emerald-400 shadow-inner">
-            <CheckCircle2 className="w-9 h-9" />
+      <div className="min-h-screen bg-gradient-to-b from-zinc-50 to-zinc-200 dark:from-zinc-950 dark:to-zinc-900 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white dark:bg-zinc-900 rounded-3xl shadow-xl border border-zinc-200 dark:border-zinc-800 p-6 sm:p-8 text-center">
+          <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-950/60 rounded-full flex items-center justify-center mx-auto mb-4 text-emerald-600 dark:text-emerald-400">
+            <CheckCircle2 className="w-10 h-10" />
           </div>
 
-          <h2 className="text-2xl font-black text-zinc-900 dark:text-zinc-50 tracking-tight">
-            {lang === "hi"
-              ? "पंजीकरण सफलतापूर्वक सबमिट हुआ!"
-              : lang === "gu"
-              ? "નોંધણી સફળતાપૂર્વક સબમિટ થઈ ગઈ!"
-              : "Registration Submitted Successfully!"}
+          <h2 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">
+            {lang === "hi" ? "पंजीकरण अनुरोध सबमिट हुआ!" : "Registration Submitted!"}
           </h2>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-2">
+          <p className="text-xs text-zinc-500 mt-1">
             {lang === "hi"
-              ? "हिम्मत टेक्सटाइल के साथ अपनी दुकान/फर्म का व्यापारिक खाता पंजीकरण कराने के लिए धन्यवाद। हमारी टीम आपके विवरण की समीक्षा कर जल्द संपर्क करेगी।"
-              : lang === "gu"
-              ? "હિંમત ટેક્સટાઈલ સાથે તમારી દુકાન/પેઢીનું વેપારી ખાતું ખોલવા બદલ આભાર. અમારી ટીમ ટૂંક સમયમાં સંપર્ક કરશે."
-              : "Thank you for registering your retail/wholesale store with Himat Textile. Our team will review your business profile and grant commercial account approval."}
+              ? "आपका ग्राहक खाता अनुरोध प्राप्त हो गया है। व्यवस्थापक अनुमोदन के बाद सक्रिय किया जाएगा।"
+              : "Your customer account request has been received. Our team will verify and activate your commercial account."}
           </p>
 
-          <div className="mt-6 p-4 bg-zinc-50 dark:bg-zinc-800/60 rounded-xl border border-zinc-200 dark:border-zinc-700 text-left space-y-2">
+          <div className="mt-6 p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-left space-y-2">
             <div className="flex justify-between text-xs">
-              <span className="text-zinc-500">Primary Account Key:</span>
-              <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                {formData.gstin ? `${formData.gstin} (GSTIN)` : `+91 ${formData.phone.replace(/\D/g, "").slice(-10)} (Mobile)`}
-              </span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-zinc-500">Reference ID:</span>
-              <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{submittedRequestId}</span>
+              <span className="text-zinc-500">Request ID:</span>
+              <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">{submittedRequestId}</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-zinc-500">Shop / Firm:</span>
-              <span className="font-bold text-zinc-900 dark:text-zinc-100">{formData.firmName}</span>
+              <span className="font-semibold text-zinc-900 dark:text-zinc-100">{formData.firmName}</span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-zinc-500">Proprietor:</span>
-              <span className="font-medium text-zinc-800 dark:text-zinc-200">{formData.name}</span>
+              <span className="text-zinc-500">Contact Person:</span>
+              <span className="font-medium text-zinc-800 dark:text-zinc-200">{formData.name} ({formData.phone})</span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-zinc-500">Verified Mobile:</span>
-              <span className="font-medium text-zinc-800 dark:text-zinc-200">+91 {formData.phone.replace(/\D/g, "").slice(-10)}</span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-zinc-500">City / Market:</span>
-              <span className="font-medium text-zinc-800 dark:text-zinc-200">{formData.city} {formData.marketArea ? `• ${formData.marketArea}` : ""}</span>
-            </div>
-            <div className="flex justify-between text-xs pt-1 border-t border-zinc-200 dark:border-zinc-700">
-              <span className="text-zinc-500">Status:</span>
-              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300">
-                Pending Approval
-              </span>
+              <span className="text-zinc-500">City / State:</span>
+              <span className="font-semibold text-emerald-600 dark:text-emerald-400">{formData.city}, {formData.state}</span>
             </div>
           </div>
 
           <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
             <a
-              href={`https://wa.me/919427028169?text=${shareMessage}`}
+              href={`https://api.whatsapp.com/send?phone=919427028169&text=${whatsappMsg}`}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-all"
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-all"
             >
               <MessageSquare className="w-4 h-4" />
               Notify Admin on WhatsApp
@@ -559,11 +540,13 @@ export function CustomerRegistrationView() {
     )
   }
 
-  // WIZARD VIEW
+  // WIZARD VIEW - Identical clean, simple style as Supplier Onboarding
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-50 via-zinc-100 to-zinc-200 dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-950 py-8 px-4 sm:px-6">
-      {/* Invisible reCAPTCHA container */}
-      <div id="customer-recaptcha-container" ref={recaptchaWrapperRef}></div>
+      {/* Hidden Recaptcha Wrapper & Target Container */}
+      <div ref={recaptchaWrapperRef} id="recaptcha-wrapper">
+        <div id="recaptcha-container"></div>
+      </div>
 
       <div className="max-w-2xl mx-auto">
         {/* Header with Himat Textile Logo */}
@@ -581,21 +564,13 @@ export function CustomerRegistrationView() {
 
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-xs font-semibold mb-2">
             <Store className="w-3.5 h-3.5" />
-            <span>
-              {lang === "hi"
-                ? "व्यापारी व ग्राहक ऑनबोर्डिंग फॉर्म"
-                : lang === "gu"
-                ? "વેપારી અને ગ્રાહક નોંધણી ફોર્મ"
-                : "Buyer & Customer Commercial Onboarding"}
-            </span>
+            <span>Wholesale Customer & Buyer Onboarding</span>
           </div>
 
           <p className="text-xs text-zinc-600 dark:text-zinc-400 max-w-md mx-auto">
             {lang === "hi"
-              ? "हिम्मत टेक्सटाइल से सीधे रेडी गारमेंट्स और फैब्रिक्स की थोक खरीद हेतु अपनी दुकान/फर्म का खाता खोलें।"
-              : lang === "gu"
-              ? "હિંમત ટેક્સટાઈલમાંથી સીધા રેડી ગારમેન્ટ્સ અને કાપડની હોલસેલ ખરીદી માટે તમારી દુકાનનું ખાતું ખોલો."
-              : "Register your retail store, wholesale agency or garment shop to purchase fabrics and garments directly with trade credit and bill tracking."}
+              ? "सीधे थोक में कपड़े और गारमेंट्स खरीदने के लिए अपनी दुकान या फर्म को पंजीकृत करें।"
+              : "Register your garment retail shop, wholesale agency, or textile trading business to order directly."}
           </p>
 
           {/* Language Toggle */}
@@ -622,17 +597,6 @@ export function CustomerRegistrationView() {
             >
               हिंदी
             </button>
-            <button
-              type="button"
-              onClick={() => handleLanguageSwitch("gu")}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-                lang === "gu"
-                  ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
-                  : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900"
-              }`}
-            >
-              ગુજરાતી
-            </button>
           </div>
         </div>
 
@@ -641,14 +605,20 @@ export function CustomerRegistrationView() {
           <div className="flex items-center justify-between">
             {[
               { num: 1, label: "Profile" },
-              { num: 2, label: "Location" },
-              { num: 3, label: "Garments" },
-              { num: 4, label: "Photos" },
+              { num: 2, label: "Owner" },
+              { num: 3, label: "KYC" },
+              { num: 4, label: "Transport" },
               { num: 5, label: "Verify" },
             ].map((step, idx) => (
               <React.Fragment key={step.num}>
                 <div className="flex flex-col items-center">
-                  <div
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (step.num < currentStep || validateCurrentStep(step.num)) {
+                        setCurrentStep(step.num)
+                      }
+                    }}
                     className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
                       currentStep === step.num
                         ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 ring-2 ring-emerald-500"
@@ -658,7 +628,7 @@ export function CustomerRegistrationView() {
                     }`}
                   >
                     {currentStep > step.num ? <Check className="w-3.5 h-3.5" /> : step.num}
-                  </div>
+                  </button>
                   <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 mt-1 hidden sm:block">
                     {step.label}
                   </span>
@@ -675,7 +645,7 @@ export function CustomerRegistrationView() {
           </div>
         </div>
 
-        {/* Error Alert */}
+        {/* Global Error Banner */}
         {errorMessage && (
           <div className="mb-6 p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 flex items-start gap-2.5 text-xs text-red-700 dark:text-red-300">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -683,18 +653,20 @@ export function CustomerRegistrationView() {
           </div>
         )}
 
-        {/* Step Card */}
+        {/* Step Card Container */}
         <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-lg border border-zinc-200 dark:border-zinc-800 p-6 sm:p-8">
-          {/* STEP 1: BUSINESS & CONTACT PROFILE */}
+          {/* STEP 1: BUSINESS PROFILE & MANDATORY DETAILS */}
           {currentStep === 1 && (
             <div className="space-y-4">
               <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3 mb-4">
                 <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
                   <Building2 className="w-4 h-4 text-emerald-600" />
-                  <span>Step 1: Shop & Contact Profile</span>
+                  <span>Step 1: Business Profile</span>
                 </h3>
                 <p className="text-xs text-zinc-500 mt-0.5">
-                  Enter your firm name and primary proprietor/manager details.
+                  {lang === "hi"
+                    ? "अपनी फर्म का नाम, संचालक और प्राथमिक संपर्क विवरण दर्ज करें।"
+                    : "Enter your firm name, proprietor, and primary contact details."}
                 </p>
               </div>
 
@@ -706,8 +678,6 @@ export function CustomerRegistrationView() {
                     <span>
                       {lang === "hi"
                         ? "जीएसटी नंबर (GSTIN - वैकल्पिक / स्वतः विवरण भरें)"
-                        : lang === "gu"
-                        ? "જીએસટી નંબર (GSTIN - વૈકલ્પિક / આપોઆપ વિગતો મેળવો)"
                         : "GSTIN Number (Optional - Auto-Fetch Details)"}
                     </span>
                   </label>
@@ -790,215 +760,164 @@ export function CustomerRegistrationView() {
                 ) : (
                   <p className="text-[11px] text-emerald-900/70 dark:text-emerald-300/70">
                     {lang === "hi"
-                      ? "जीएसटी नंबर दर्ज करने से राज्य, पैन नंबर, दुकान का नाम और पता स्वतः भर जाएगा। यदि जीएसटी नहीं है तो खाली छोड़ें।"
-                      : lang === "gu"
-                      ? "જીએસટી નંબર દાખલ કરવાથી રાજ્ય, પાન નંબર, દુકાનનું નામ અને સરનામું આપોઆપ ભરાઈ જશે."
-                      : "Enter 15-digit GSTIN to auto-fetch shop name, address, state & PAN. If unregistered, leave blank."}
+                      ? "जीएसटी नंबर दर्ज करने से राज्य, पैन नंबर, फर्म का नाम और पता स्वतः भर जाएगा। यदि जीएसटी नहीं है तो खाली छोड़ें।"
+                      : "Enter 15-digit GSTIN to auto-fetch firm name, address, state & PAN. If unregistered, leave blank."}
                   </p>
                 )}
               </div>
 
-              {/* Classification Toggle */}
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1.5">
-                  Business Classification <span className="text-red-500">*</span>
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleInputChange("customerType", "Retailer")}
-                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-2 ${
-                      formData.customerType === "Retailer"
-                        ? "border-emerald-600 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 ring-1 ring-emerald-600"
-                        : "border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50"
-                    }`}
-                  >
-                    <Store className="w-4 h-4" />
-                    <span>Retailer / Garment Store</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleInputChange("customerType", "Wholesaler")}
-                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-2 ${
-                      formData.customerType === "Wholesaler"
-                        ? "border-emerald-600 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 ring-1 ring-emerald-600"
-                        : "border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50"
-                    }`}
-                  >
-                    <Building2 className="w-4 h-4" />
-                    <span>Wholesaler / Stockist</span>
-                  </button>
-                </div>
-              </div>
-
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                  Shop / Firm Name <span className="text-red-500">*</span>
+                  Firm / Shop Name <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={formData.firmName}
                   onChange={(e) => handleInputChange("firmName", e.target.value)}
-                  placeholder="e.g. Mahavir Garments & Sarees"
+                  placeholder="e.g. Shree Ram Garments"
                   className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                  Proprietor / Contact Person <span className="text-red-500">*</span>
+                  Proprietor / Owner Name <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => handleInputChange("name", e.target.value)}
-                  placeholder="e.g. Dineshbhai Shah"
+                  placeholder="e.g. Mukeshbhai Shah"
                   className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                    Mobile Number (for SMS OTP) <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-xs text-zinc-500 font-semibold">+91</span>
-                    <input
-                      type="tel"
-                      maxLength={10}
-                      value={formData.phone}
-                      onChange={(e) => handleInputChange("phone", e.target.value)}
-                      placeholder="9825012345"
-                      className="w-full h-10 pl-11 pr-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                      WhatsApp Number
-                    </label>
-                    <label className="inline-flex items-center gap-1 text-[11px] text-zinc-500 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.sameAsMobile}
-                        onChange={(e) => handleInputChange("sameAsMobile", e.target.checked)}
-                        className="rounded border-zinc-300 text-emerald-600 focus:ring-emerald-500"
-                      />
-                      <span>Same as Mobile</span>
-                    </label>
-                  </div>
-                  {!formData.sameAsMobile ? (
-                    <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-xs text-zinc-500 font-semibold">+91</span>
-                      <input
-                        type="tel"
-                        maxLength={10}
-                        value={formData.phone2}
-                        onChange={(e) => handleInputChange("phone2", e.target.value)}
-                        placeholder="WhatsApp phone number"
-                        className="w-full h-10 pl-11 pr-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      />
-                    </div>
-                  ) : (
-                    <input
-                      type="text"
-                      disabled
-                      value={formData.phone ? `+91 ${formData.phone}` : "Same as Mobile"}
-                      className="w-full h-10 px-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/40 text-xs text-zinc-400 cursor-not-allowed"
-                    />
-                  )}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                  Mobile Number (for SMS OTP) <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-xs text-zinc-500 font-semibold">+91</span>
+                  <input
+                    type="tel"
+                    maxLength={10}
+                    value={formData.phone}
+                    onChange={(e) => handleInputChange("phone", e.target.value.replace(/\D/g, ""))}
+                    placeholder="9825012345"
+                    className="w-full h-10 pl-11 pr-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
                 </div>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                  Email Address (Optional)
+                  City <span className="text-red-500">*</span>
                 </label>
                 <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => handleInputChange("email", e.target.value)}
-                  placeholder="e.g. mahavirgarments@gmail.com"
+                  type="text"
+                  value={formData.city}
+                  onChange={(e) => handleInputChange("city", e.target.value)}
+                  placeholder="e.g. Ahmedabad, Surat, Rajkot, Indore"
                   className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                  Complete Shop / Office Address <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  rows={2}
+                  value={formData.address}
+                  onChange={(e) => handleInputChange("address", e.target.value)}
+                  placeholder="Shop number, market name, road, landmark..."
+                  className="w-full p-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
             </div>
           )}
 
-          {/* STEP 2: LOCATION & SHOP DETAILS */}
+          {/* STEP 2: ADDITIONAL PROFILE & CONTACT */}
           {currentStep === 2 && (
             <div className="space-y-4">
               <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3 mb-4">
                 <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-emerald-600" />
-                  <span>Step 2: Shop Location & Market Hub</span>
+                  <User className="w-4 h-4 text-emerald-600" />
+                  <span>Step 2: Additional Profile & Preferences</span>
                 </h3>
                 <p className="text-xs text-zinc-500 mt-0.5">
-                  Specify your shop or showroom address for order billing and dispatch delivery.
+                  Provide secondary contact, market area, and garment sourcing preferences.
                 </p>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                  Textile Market / Commercial Hub
-                </label>
-                <select
-                  value={formData.marketArea}
-                  onChange={(e) => handleInputChange("marketArea", e.target.value)}
-                  className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                >
-                  {AHMEDABAD_TEXTILE_MARKETS.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                    WhatsApp Number
+                  </label>
+                  <label className="inline-flex items-center gap-1 text-[11px] text-zinc-500 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.sameAsMobile}
+                      onChange={(e) => handleInputChange("sameAsMobile", e.target.checked)}
+                      className="rounded border-zinc-300 text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <span>Same as Mobile</span>
+                  </label>
+                </div>
+                {!formData.sameAsMobile && (
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-xs text-zinc-500 font-semibold">+91</span>
+                    <input
+                      type="tel"
+                      maxLength={10}
+                      value={formData.phone2}
+                      onChange={(e) => handleInputChange("phone2", e.target.value.replace(/\D/g, ""))}
+                      placeholder="WhatsApp phone number"
+                      className="w-full h-10 pl-11 pr-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                )}
               </div>
 
-              {formData.marketArea === "Other / Outside Ahmedabad" && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                    Custom Market / Area Name
+                    Email Address (Optional)
                   </label>
                   <input
-                    type="text"
-                    value={formData.customMarket}
-                    onChange={(e) => handleInputChange("customMarket", e.target.value)}
-                    placeholder="e.g. Rajkot Soni Bazar, Surat Ring Road"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => handleInputChange("email", e.target.value)}
+                    placeholder="e.g. contact@shreeram.com"
                     className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
-              )}
 
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                  Shop / Store Address <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  rows={2}
-                  value={formData.address}
-                  onChange={(e) => {
-                    handleInputChange("address", e.target.value)
-                    handleInputChange("shopAddress", e.target.value)
-                  }}
-                  placeholder="Shop number, floor, complex name, market road..."
-                  className="w-full p-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                    Market Area (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.marketArea}
+                    onChange={(e) => handleInputChange("marketArea", e.target.value)}
+                    placeholder="e.g. Relief Road, Rituraj Market"
+                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                    City <span className="text-red-500">*</span>
+                    District
                   </label>
                   <input
                     type="text"
-                    value={formData.city}
-                    onChange={(e) => handleInputChange("city", e.target.value)}
+                    value={formData.district}
+                    onChange={(e) => handleInputChange("district", e.target.value)}
+                    placeholder="e.g. Ahmedabad"
                     className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
@@ -1023,8 +942,8 @@ export function CustomerRegistrationView() {
                     type="text"
                     maxLength={6}
                     value={formData.pincode}
-                    onChange={(e) => handleInputChange("pincode", e.target.value)}
-                    placeholder="380001"
+                    onChange={(e) => handleInputChange("pincode", e.target.value.replace(/\D/g, ""))}
+                    placeholder="380002"
                     className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
@@ -1042,26 +961,11 @@ export function CustomerRegistrationView() {
                   className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
-            </div>
-          )}
 
-          {/* STEP 3: GARMENTS, TRANSPORT & BANK */}
-          {currentStep === 3 && (
-            <div className="space-y-4">
-              <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3 mb-4">
-                <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                  <Tag className="w-4 h-4 text-emerald-600" />
-                  <span>Step 3: Garments & Transport</span>
-                </h3>
-                <p className="text-xs text-zinc-500 mt-0.5">
-                  Select garment lines you retail and your preferred transport service.
-                </p>
-              </div>
-
-              {/* Garment Categories Pills */}
-              <div>
+              {/* Garment Categories Preference */}
+              <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800">
                 <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-2">
-                  Garments & Fabrics Retailed (Select all that apply)
+                  Garments / Products Dealt In (Select all that apply)
                 </label>
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   {GARMENT_CATEGORIES.map((cat) => {
@@ -1095,7 +999,7 @@ export function CustomerRegistrationView() {
                         addCustomGarment()
                       }
                     }}
-                    placeholder="Add other garment category..."
+                    placeholder="Add custom garment or category..."
                     className="flex-1 h-9 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                   <button
@@ -1107,37 +1011,44 @@ export function CustomerRegistrationView() {
                   </button>
                 </div>
               </div>
+            </div>
+          )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                    Preferred Transporter / Carrier (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.preferredTransporterName}
-                    onChange={(e) => handleInputChange("preferredTransporterName", e.target.value)}
-                    placeholder="e.g. V-Trans, ARC, TCI Express, Mahaveer"
-                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                    Delivery Preference
-                  </label>
-                  <select
-                    value={formData.transportPreference}
-                    onChange={(e) => handleInputChange("transportPreference", e.target.value)}
-                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  >
-                    <option value="Godown Delivery">Transporter Godown Delivery (Self Pickup)</option>
-                    <option value="Door Delivery">Door Delivery to Shop</option>
-                  </select>
-                </div>
+          {/* STEP 3: KYC & DOCUMENTS */}
+          {currentStep === 3 && (
+            <div className="space-y-4">
+              <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3 mb-4">
+                <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <span>Step 3: Verification & KYC Documents</span>
+                </h3>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Provide GSTIN, PAN, and shop photos for verification.
+                </p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                    GSTIN Number (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={15}
+                    value={formData.gstin}
+                    onChange={(e) => {
+                      const val = e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "")
+                      handleInputChange("gstin", val)
+                      if (val.length >= 12 && !formData.panNumber) {
+                        const pan = extractPanFromGstin(val)
+                        if (pan) handleInputChange("panNumber", pan)
+                      }
+                    }}
+                    placeholder="24ABCDE1234F1Z5"
+                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 uppercase font-mono"
+                  />
+                </div>
+
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
                     PAN Number (Optional)
@@ -1151,7 +1062,85 @@ export function CustomerRegistrationView() {
                     className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 uppercase font-mono"
                   />
                 </div>
+              </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                <div className="sm:col-span-2">
+                  <FileUpload
+                    label="Shop Front / Showroom Photo"
+                    folder="kyc/shop"
+                    prefix="shop_front"
+                    value={formData.shopPhotoUri}
+                    onChange={(url) => handleInputChange("shopPhotoUri", url)}
+                    description="Clear photo of your shop with board name visible"
+                  />
+                </div>
+
+                <div>
+                  <FileUpload
+                    label="GST Certificate or Visiting Card"
+                    folder="kyc/gst"
+                    prefix="gst_card"
+                    value={formData.gstCertPhotoUri}
+                    onChange={(url) => handleInputChange("gstCertPhotoUri", url)}
+                  />
+                </div>
+
+                <div>
+                  <FileUpload
+                    label="Aadhaar / Owner ID Photo (Optional)"
+                    folder="kyc/id"
+                    prefix="aadhar"
+                    value={formData.aadharPhotoUri}
+                    onChange={(url) => handleInputChange("aadharPhotoUri", url)}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 4: TRANSPORT & BANK */}
+          {currentStep === 4 && (
+            <div className="space-y-4">
+              <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3 mb-4">
+                <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                  <Truck className="w-4 h-4 text-emerald-600" />
+                  <span>Step 4: Logistics & Bank Details</span>
+                </h3>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Provide preferred transporter, delivery station, and bank account for smooth dispatch.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                    Preferred Transporter Name (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.preferredTransporterName}
+                    onChange={(e) => handleInputChange("preferredTransporterName", e.target.value)}
+                    placeholder="e.g. V-Trans, ARC, TCI Freight"
+                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                    Booking Station / Destination (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.transportPreference}
+                    onChange={(e) => handleInputChange("transportPreference", e.target.value)}
+                    placeholder="e.g. Ring Road Station, Godown Delivery"
+                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
                     Bank Name (Optional)
@@ -1160,84 +1149,55 @@ export function CustomerRegistrationView() {
                     type="text"
                     value={formData.bankName}
                     onChange={(e) => handleInputChange("bankName", e.target.value)}
-                    placeholder="e.g. HDFC Bank, SBI, ICICI"
+                    placeholder="e.g. State Bank of India, HDFC"
                     className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                    Account Number (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.accountNumber}
+                    onChange={(e) => handleInputChange("accountNumber", e.target.value)}
+                    placeholder="Bank Account Number"
+                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
                   />
                 </div>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                  Additional Notes / Purchase Requirements
+                  IFSC Code (Optional)
+                </label>
+                <input
+                  type="text"
+                  maxLength={11}
+                  value={formData.ifscCode}
+                  onChange={(e) => handleInputChange("ifscCode", e.target.value.toUpperCase())}
+                  placeholder="SBIN0001234"
+                  className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono uppercase"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                  Additional Notes / Instructions
                 </label>
                 <textarea
                   rows={2}
                   value={formData.notes}
                   onChange={(e) => handleInputChange("notes", e.target.value)}
-                  placeholder="e.g. Preferred credit period, weekly dispatch schedules, lot preferences..."
+                  placeholder="e.g. Special packing instructions, timing preference..."
                   className="w-full p-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
             </div>
           )}
 
-          {/* STEP 4: KYC & PHOTOS */}
-          {currentStep === 4 && (
-            <div className="space-y-4">
-              <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3 mb-4">
-                <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span>Step 4: Verification Photos</span>
-                </h3>
-                <p className="text-xs text-zinc-500 mt-0.5">
-                  Upload visiting cards and shop photos to fast-track your commercial account approval.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <FileUpload
-                    label="Visiting Card Photo"
-                    folder="customer_requests/visiting_cards"
-                    value={formData.visitingCardPhotoUri}
-                    onChange={(url: string) => handleInputChange("visitingCardPhotoUri", url)}
-                  />
-                </div>
-
-                <div>
-                  <FileUpload
-                    label="Shop Front / Signboard Photo"
-                    folder="customer_requests/shop_front"
-                    value={formData.shopPhotoUri}
-                    onChange={(url: string) => handleInputChange("shopPhotoUri", url)}
-                  />
-                </div>
-
-                <div>
-                  <FileUpload
-                    label="GST Certificate (Optional)"
-                    folder="customer_requests/gst_certs"
-                    value={formData.gstCertPhotoUri}
-                    onChange={(url: string) => handleInputChange("gstCertPhotoUri", url)}
-                  />
-                </div>
-
-                <div>
-                  <FileUpload
-                    label="PAN / Aadhaar Card Photo (Optional)"
-                    folder="customer_requests/id_proofs"
-                    value={formData.panPhotoUri || formData.aadharPhotoUri}
-                    onChange={(url: string) => {
-                      handleInputChange("panPhotoUri", url)
-                      handleInputChange("aadharPhotoUri", url)
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 5: PHONE VERIFICATION & SUBMISSION */}
+          {/* STEP 5: VERIFY & SUBMIT */}
           {currentStep === 5 && (
             <div className="space-y-4">
               <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3 mb-4">
@@ -1246,7 +1206,7 @@ export function CustomerRegistrationView() {
                   <span>Step 5: Verify Mobile & Submit</span>
                 </h3>
                 <p className="text-xs text-zinc-500 mt-0.5">
-                  Verify your mobile number via 6-digit SMS code to finalize your commercial account.
+                  Verify your mobile number via 6-digit SMS code to finalize your registration.
                 </p>
               </div>
 
@@ -1262,17 +1222,19 @@ export function CustomerRegistrationView() {
                   </span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-zinc-500">Classification:</span>
-                  <span className="font-semibold text-emerald-600">{formData.customerType}</span>
-                </div>
-                <div className="flex justify-between text-xs">
                   <span className="text-zinc-500">Proprietor:</span>
                   <span className="font-medium text-zinc-800 dark:text-zinc-200">{formData.name} ({formData.phone})</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-zinc-500">Market / City:</span>
-                  <span className="font-medium text-zinc-800 dark:text-zinc-200">{formData.marketArea}, {formData.city}</span>
+                  <span className="text-zinc-500">City / State:</span>
+                  <span className="font-medium text-zinc-800 dark:text-zinc-200">{formData.city}, {formData.state}</span>
                 </div>
+                {formData.preferredTransporterName && (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-zinc-500">Transport:</span>
+                    <span className="font-medium text-zinc-800 dark:text-zinc-200">{formData.preferredTransporterName}</span>
+                  </div>
+                )}
               </div>
 
               {!otpSent ? (
@@ -1359,7 +1321,7 @@ export function CustomerRegistrationView() {
             {currentStep > 1 ? (
               <button
                 type="button"
-                onClick={goToPrevStep}
+                onClick={handlePrevStep}
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-zinc-300 dark:border-zinc-700 text-xs font-semibold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
@@ -1370,14 +1332,29 @@ export function CustomerRegistrationView() {
             )}
 
             {currentStep < 5 && (
-              <button
-                type="button"
-                onClick={goToNextStep}
-                className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 text-white text-xs font-bold shadow-md transition-all"
-              >
-                <span>Continue</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex items-center gap-2">
+                {currentStep >= 2 && currentStep <= 4 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (validateCurrentStep(5)) {
+                        setCurrentStep(5)
+                      }
+                    }}
+                    className="inline-flex items-center gap-1 px-3.5 py-2 rounded-xl border border-zinc-300 dark:border-zinc-700 text-xs font-semibold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all"
+                  >
+                    <span>Skip to Verification</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleNextStep}
+                  className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 text-white text-xs font-bold shadow-md transition-all"
+                >
+                  <span>Continue</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             )}
           </div>
         </div>
