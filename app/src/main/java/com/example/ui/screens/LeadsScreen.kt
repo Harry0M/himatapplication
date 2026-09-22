@@ -7,6 +7,11 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -43,6 +48,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
@@ -102,6 +108,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.data.local.entity.LeadEntity
+import com.example.ui.dialogs.CustomDateRangePickerDialog
 import com.example.ui.dialogs.FullScreenImageViewerDialog
 import com.example.ui.theme.GoldAccent
 import com.example.ui.theme.NavyPrimary
@@ -111,6 +118,7 @@ import com.example.ui.viewmodel.HimatViewModel
 import com.example.util.rememberDialogBottomPadding
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -150,6 +158,13 @@ fun LeadsScreen(
     var selectedTab by remember { mutableStateOf(0) } // 0: All, 1: Retailers, 2: Suppliers
     var statusFilter by remember { mutableStateOf("All") }
     var searchQuery by remember { mutableStateOf("") }
+    var isSearchVisible by remember { mutableStateOf(false) }
+
+    var selectedDateRange by remember { mutableStateOf("All Time") } // "All Time", "Today", "Yesterday", "This Week", "This Month", "Custom"
+    var customStartDateMillis by remember { mutableStateOf<Long?>(null) }
+    var customEndDateMillis by remember { mutableStateOf<Long?>(null) }
+    var customDateLabel by remember { mutableStateOf("") }
+    var showCustomDatePickerDialog by remember { mutableStateOf(false) }
 
     var showAddEditDialog by remember { mutableStateOf(false) }
     var editingLead by remember { mutableStateOf<LeadEntity?>(null) }
@@ -162,15 +177,53 @@ fun LeadsScreen(
     val customerLeadsCount = remember(allLeads) { allLeads.count { it.type == "customer" } }
     val supplierLeadsCount = remember(allLeads) { allLeads.count { it.type == "supplier" } }
 
-    val filteredLeads = remember(allLeads, selectedTab, statusFilter, searchQuery) {
+    val filteredLeads = remember(allLeads, selectedTab, statusFilter, selectedDateRange, customStartDateMillis, customEndDateMillis, searchQuery) {
         val q = searchQuery.trim().lowercase()
+        val todayStart = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+
+        val yesterdayStart = todayStart - 86400000L
+        val weekStart = todayStart - (6 * 86400000L)
+        val monthStart = Calendar.getInstance().apply {
+            set(Calendar.DAY_OF_MONTH, 1)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+
         allLeads.filter { lead ->
+            if (lead.isDeleted) return@filter false
+
             val matchesType = when (selectedTab) {
                 1 -> lead.type == "customer"
                 2 -> lead.type == "supplier"
                 else -> true
             }
+            if (!matchesType) return@filter false
+
             val matchesStatus = if (statusFilter == "All") true else lead.status.equals(statusFilter, ignoreCase = true)
+            if (!matchesStatus) return@filter false
+
+            val leadTime = lead.createdAt
+            val matchesDate = when (selectedDateRange) {
+                "Today" -> leadTime >= todayStart
+                "Yesterday" -> leadTime in yesterdayStart until todayStart
+                "This Week" -> leadTime >= weekStart
+                "This Month" -> leadTime >= monthStart
+                "Custom" -> {
+                    if (customStartDateMillis != null && customEndDateMillis != null) {
+                        leadTime in customStartDateMillis!!..customEndDateMillis!!
+                    } else true
+                }
+                else -> true
+            }
+            if (!matchesDate) return@filter false
+
             val matchesQuery = q.isEmpty() ||
                     lead.firmName.lowercase().contains(q) ||
                     lead.name.lowercase().contains(q) ||
@@ -179,8 +232,23 @@ fun LeadsScreen(
                     lead.city.lowercase().contains(q) ||
                     lead.notes.lowercase().contains(q)
 
-            matchesType && matchesStatus && matchesQuery
-        }
+            matchesQuery
+        }.sortedByDescending { it.createdAt }
+    }
+
+    if (showCustomDatePickerDialog) {
+        CustomDateRangePickerDialog(
+            initialStartMillis = customStartDateMillis,
+            initialEndMillis = customEndDateMillis,
+            onDismissRequest = { showCustomDatePickerDialog = false },
+            onDateRangeSelected = { start, end, label ->
+                customStartDateMillis = start
+                customEndDateMillis = end
+                customDateLabel = label
+                selectedDateRange = "Custom"
+                showCustomDatePickerDialog = false
+            }
+        )
     }
 
     Scaffold(
@@ -241,13 +309,36 @@ fun LeadsScreen(
                         letterSpacing = (-0.2).sp
                     )
                     Text(
-                        text = "${allLeads.size} contacts met in market",
+                        text = "${filteredLeads.size} contacts met in market",
                         fontSize = 11.5.sp,
                         color = TextSecondary
                     )
                 }
 
-                Spacer(modifier = Modifier.width(6.dp))
+                // Search Toggle Button (matching VisitsScreen)
+                Surface(
+                    shape = CircleShape,
+                    color = if (isSearchVisible || searchQuery.isNotBlank()) NavyPrimary else Color.White,
+                    border = BorderStroke(1.dp, if (isSearchVisible || searchQuery.isNotBlank()) NavyPrimary else Color(0xFFE2E8F0)),
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .clickable {
+                            isSearchVisible = !isSearchVisible
+                            if (!isSearchVisible) searchQuery = ""
+                        }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = if (isSearchVisible || searchQuery.isNotBlank()) Icons.Default.Clear else Icons.Default.Search,
+                            contentDescription = "Toggle Search",
+                            tint = if (isSearchVisible || searchQuery.isNotBlank()) Color.White else NavyPrimary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
 
                 Button(
                     onClick = {
@@ -264,33 +355,38 @@ fun LeadsScreen(
                     Text("New Lead", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.5.sp)
                 }
             }
-            // Search Input
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface)
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
+
+            // Expandable Pill Search Bar (matching VisitsScreen)
+            AnimatedVisibility(
+                visible = isSearchVisible || searchQuery.isNotBlank(),
+                enter = expandVertically(animationSpec = tween(220)) + fadeIn(animationSpec = tween(200)),
+                exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(180))
             ) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Search by shop, name, phone, meeting place...", fontSize = 11.5.sp) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(16.dp)) },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(28.dp)) {
-                                Icon(Icons.Default.Clear, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(15.dp))
+                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Search by shop, name, phone, meeting place...", fontSize = 13.sp, color = TextSecondary) },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = NavyPrimary, modifier = Modifier.size(19.dp)) },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    Icon(Icons.Default.Clear, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(18.dp))
+                                }
                             }
-                        }
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(8.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = NavyPrimary,
-                        unfocusedBorderColor = Color(0xFFCBD5E1)
+                        },
+                        singleLine = true,
+                        shape = CircleShape,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White,
+                            focusedBorderColor = NavyPrimary,
+                            unfocusedBorderColor = Color(0xFFE2E8F0)
+                        )
                     )
-                )
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
             }
 
             // Entity Type Tabs (All, Retailers, Suppliers)
@@ -323,26 +419,128 @@ fun LeadsScreen(
                 )
             }
 
-            // Status Filter Chips
-            Row(
+            // Rounded Pill Filters (matching VisitsScreen & DeliveriesScreen)
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface)
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 10.dp, vertical = 5.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    .background(Color.White)
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val statuses = listOf("All", "Thinking", "Follow-up", "New", "Converted", "Dropped")
-                statuses.forEach { st ->
-                    FilterChip(
-                        selected = statusFilter == st,
-                        onClick = { statusFilter = st },
-                        label = { Text(st, fontSize = 10.sp) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = NavyPrimary.copy(alpha = 0.12f),
-                            selectedLabelColor = NavyPrimary
-                        )
-                    )
+                // Row 1: Status Filter Chips with Counts
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val statuses = listOf("All", "Thinking", "Follow-up", "New", "Converted", "Dropped")
+                    statuses.forEach { st ->
+                        val count = if (st == "All") allLeads.size else allLeads.count { it.status.equals(st, true) }
+                        val isSelected = statusFilter == st
+                        Surface(
+                            color = if (isSelected) NavyPrimary else Color.White,
+                            shape = CircleShape,
+                            border = BorderStroke(
+                                1.dp,
+                                if (isSelected) NavyPrimary else Color(0xFFE2E8F0)
+                            ),
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable { statusFilter = st }
+                        ) {
+                            Text(
+                                text = "$st ($count)",
+                                color = if (isSelected) Color.White else TextPrimary,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Row 2: Date Filters + Custom Range Picker
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val dateRanges = listOf("All Time", "Today", "Yesterday", "This Week", "This Month")
+                    dateRanges.forEach { range ->
+                        val isSelected = selectedDateRange == range
+                        Surface(
+                            color = if (isSelected) NavyPrimary else Color.White,
+                            shape = CircleShape,
+                            border = BorderStroke(
+                                1.dp,
+                                if (isSelected) NavyPrimary else Color(0xFFE2E8F0)
+                            ),
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable { selectedDateRange = range }
+                        ) {
+                            Text(
+                                text = range,
+                                color = if (isSelected) Color.White else TextPrimary,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+
+                    // Custom Date Range Chip
+                    val isCustomSelected = selectedDateRange == "Custom"
+                    Surface(
+                        color = if (isCustomSelected) NavyPrimary else Color.White,
+                        shape = CircleShape,
+                        border = BorderStroke(
+                            1.dp,
+                            if (isCustomSelected) NavyPrimary else Color(0xFFE2E8F0)
+                        ),
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable { showCustomDatePickerDialog = true }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DateRange,
+                                contentDescription = null,
+                                tint = if (isCustomSelected) Color.White else NavyPrimary,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (isCustomSelected && customDateLabel.isNotBlank()) customDateLabel else "Custom 📅",
+                                color = if (isCustomSelected) Color.White else TextPrimary,
+                                fontWeight = if (isCustomSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 12.sp
+                            )
+                            if (isCustomSelected) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Clear,
+                                    contentDescription = "Clear",
+                                    tint = Color.White,
+                                    modifier = Modifier
+                                        .size(13.dp)
+                                        .clickable {
+                                            selectedDateRange = "All Time"
+                                            customStartDateMillis = null
+                                            customEndDateMillis = null
+                                            customDateLabel = ""
+                                        }
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
@@ -530,11 +728,12 @@ private fun LeadCard(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp)
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Column(modifier = Modifier.padding(11.dp)) {
+        Column(modifier = Modifier.padding(14.dp)) {
             // Badges Row (Type, Subtype, Status)
             Row(
                 modifier = Modifier.fillMaxWidth(),

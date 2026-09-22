@@ -1,6 +1,12 @@
 package com.example.ui.screens
 
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -25,9 +31,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Search
@@ -41,8 +49,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,6 +59,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import com.example.ui.dialogs.CustomDateRangePickerDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -107,9 +114,15 @@ fun CustomerOrderReportScreen(
 
     var selectedCustomer by remember { mutableStateOf(initialCustomer) }
     var customerSearchQuery by remember { mutableStateOf("") }
+    var isCustomerSearchVisible by remember { mutableStateOf(false) }
 
     var orderSearchQuery by remember { mutableStateOf("") }
-    var selectedDateRange by remember { mutableStateOf("All Time") } // "All Time", "Today", "Yesterday", "This Week", "This Month"
+    var isOrderSearchVisible by remember { mutableStateOf(false) }
+    var selectedDateRange by remember { mutableStateOf("All Time") } // "All Time", "Today", "Yesterday", "This Week", "This Month", "Custom"
+    var customStartDateMillis by remember { mutableStateOf<Long?>(null) }
+    var customEndDateMillis by remember { mutableStateOf<Long?>(null) }
+    var customDateLabel by remember { mutableStateOf("") }
+    var showCustomDatePickerDialog by remember { mutableStateOf(false) }
     var selectedSupplierName by remember { mutableStateOf<String?>(null) }
     var selectedStatus by remember { mutableStateOf("All") } // "All", "Pending", "Delivered"
     var isSupplierDropdownExpanded by remember { mutableStateOf(false) }
@@ -183,112 +196,174 @@ fun CustomerOrderReportScreen(
                         color = TextSecondary
                     )
                 }
-            }
-                // Compact Search Field
-                Box(
+
+                // Search Toggle Button (matching VisitsScreen)
+                Surface(
+                    shape = CircleShape,
+                    color = if (isCustomerSearchVisible || customerSearchQuery.isNotBlank()) NavyPrimary else Color.White,
+                    border = BorderStroke(1.dp, if (isCustomerSearchVisible || customerSearchQuery.isNotBlank()) NavyPrimary else Color(0xFFE2E8F0)),
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surface)
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                ) {
-                    CompactSearchBar(
-                        query = customerSearchQuery,
-                        onQueryChange = { customerSearchQuery = it },
-                        placeholder = "Search customer by firm name, phone or city..."
-                    )
-                }
-
-                HorizontalDivider(color = Color(0xFFE2E8F0))
-
-                if (filteredCustomers.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.Storefront, contentDescription = null, tint = TextSecondary.copy(alpha = 0.4f), modifier = Modifier.size(48.dp))
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Text("No customers found", fontWeight = FontWeight.Bold, color = TextSecondary, fontSize = 14.sp)
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .clickable {
+                            isCustomerSearchVisible = !isCustomerSearchVisible
+                            if (!isCustomerSearchVisible) customerSearchQuery = ""
                         }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = if (isCustomerSearchVisible || customerSearchQuery.isNotBlank()) Icons.Default.Clear else Icons.Default.Search,
+                            contentDescription = "Toggle Search",
+                            tint = if (isCustomerSearchVisible || customerSearchQuery.isNotBlank()) Color.White else NavyPrimary,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        items(filteredCustomers, key = { it.id }) { customer ->
-                            val customerVisits = remember(allVisits, customer.id) {
-                                allVisits.filter { it.customerId == customer.id }
-                            }
-                            val customerVisitIds = remember(customerVisits) { customerVisits.map { it.id }.toSet() }
-                            val customerOrdersCount = remember(allEntries, customerVisitIds) {
-                                allEntries.count { it.visitId in customerVisitIds && !it.isDeleted }
-                            }
+                }
+            }
 
-                            Card(
+            // Expandable Pill Search Bar (matching VisitsScreen)
+            AnimatedVisibility(
+                visible = isCustomerSearchVisible || customerSearchQuery.isNotBlank(),
+                enter = expandVertically(animationSpec = tween(220)) + fadeIn(animationSpec = tween(200)),
+                exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(180))
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)) {
+                    OutlinedTextField(
+                        value = customerSearchQuery,
+                        onValueChange = { customerSearchQuery = it },
+                        placeholder = {
+                            Text(
+                                text = "Search customer by firm name, phone or city...",
+                                fontSize = 13.sp,
+                                color = TextSecondary
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = null,
+                                tint = NavyPrimary,
+                                modifier = Modifier.size(19.dp)
+                            )
+                        },
+                        trailingIcon = {
+                            if (customerSearchQuery.isNotEmpty()) {
+                                IconButton(onClick = { customerSearchQuery = "" }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Clear,
+                                        contentDescription = "Clear",
+                                        tint = TextSecondary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = CircleShape,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White,
+                            focusedBorderColor = NavyPrimary,
+                            unfocusedBorderColor = Color(0xFFE2E8F0)
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+            }
+
+            HorizontalDivider(color = Color(0xFFE2E8F0))
+
+            if (filteredCustomers.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.Storefront, contentDescription = null, tint = TextSecondary.copy(alpha = 0.4f), modifier = Modifier.size(48.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text("No customers found", fontWeight = FontWeight.Bold, color = TextSecondary, fontSize = 14.sp)
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(filteredCustomers, key = { it.id }) { customer ->
+                        val customerVisits = remember(allVisits, customer.id) {
+                            allVisits.filter { it.customerId == customer.id }
+                        }
+                        val customerVisitIds = remember(customerVisits) { customerVisits.map { it.id }.toSet() }
+                        val customerOrdersCount = remember(allEntries, customerVisitIds) {
+                            allEntries.count { it.visitId in customerVisitIds && !it.isDeleted }
+                        }
+
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selectedCustomer = customer
+                                    currentPage = 1
+                                },
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                        ) {
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable {
-                                        selectedCustomer = customer
-                                        currentPage = 1
-                                    },
-                                shape = RoundedCornerShape(10.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier.weight(1f)
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        modifier = Modifier.weight(1f)
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = Color(0xFF9F1239).copy(alpha = 0.1f),
+                                        modifier = Modifier.size(38.dp)
                                     ) {
-                                        Surface(
-                                            shape = CircleShape,
-                                            color = Color(0xFF9F1239).copy(alpha = 0.1f),
-                                            modifier = Modifier.size(34.dp)
-                                        ) {
-                                            Box(contentAlignment = Alignment.Center) {
-                                                Icon(Icons.Default.Storefront, contentDescription = null, tint = Color(0xFF9F1239), modifier = Modifier.size(18.dp))
-                                            }
-                                        }
-
-                                        Column {
-                                            Text(
-                                                text = customer.firmName.ifBlank { customer.name },
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 13.5.sp,
-                                                color = TextPrimary,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                text = "${customer.city} • ${customer.phone}",
-                                                fontSize = 10.5.sp,
-                                                color = TextSecondary
-                                            )
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(Icons.Default.Storefront, contentDescription = null, tint = Color(0xFF9F1239), modifier = Modifier.size(20.dp))
                                         }
                                     }
 
-                                    Surface(
-                                        color = NavyPrimary.copy(alpha = 0.1f),
-                                        shape = RoundedCornerShape(5.dp)
-                                    ) {
+                                    Column {
                                         Text(
-                                            text = "$customerOrdersCount Orders",
+                                            text = customer.firmName.ifBlank { customer.name },
                                             fontWeight = FontWeight.Bold,
-                                            fontSize = 10.5.sp,
-                                            color = NavyPrimary,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                            fontSize = 14.sp,
+                                            color = TextPrimary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "${customer.city} • ${customer.phone}",
+                                            fontSize = 11.5.sp,
+                                            color = TextSecondary
                                         )
                                     }
+                                }
+
+                                Surface(
+                                    color = NavyPrimary.copy(alpha = 0.1f),
+                                    shape = CircleShape
+                                ) {
+                                    Text(
+                                        text = "$customerOrdersCount Orders",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        color = NavyPrimary,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                    )
                                 }
                             }
                         }
                     }
+                }
             }
         }
         return
@@ -312,7 +387,7 @@ fun CustomerOrderReportScreen(
 
     // Filtered by date range, supplier, status, search query
     val filteredCustomerEntries = remember(
-        allCustomerEntries, selectedDateRange, selectedSupplierName, selectedStatus, orderSearchQuery
+        allCustomerEntries, selectedDateRange, customStartDateMillis, customEndDateMillis, selectedSupplierName, selectedStatus, orderSearchQuery
     ) {
         val todayStart = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 0)
@@ -338,6 +413,11 @@ fun CustomerOrderReportScreen(
                 "Yesterday" -> entryTime in yesterdayStart until todayStart
                 "This Week" -> entryTime >= weekStart
                 "This Month" -> entryTime >= monthStart
+                "Custom" -> {
+                    if (customStartDateMillis != null && customEndDateMillis != null) {
+                        entryTime in customStartDateMillis!!..customEndDateMillis!!
+                    } else true
+                }
                 else -> true
             }
             if (!dateMatches) return@filter false
@@ -378,6 +458,22 @@ fun CustomerOrderReportScreen(
     val totalCases = remember(filteredCustomerEntries) { filteredCustomerEntries.sumOf { it.caseCount } }
     val totalAmount = remember(filteredCustomerEntries) { filteredCustomerEntries.sumOf { it.grandTotalWithGst } }
     val totalGst = remember(filteredCustomerEntries) { filteredCustomerEntries.sumOf { it.gstAmount } }
+
+    if (showCustomDatePickerDialog) {
+        CustomDateRangePickerDialog(
+            initialStartMillis = customStartDateMillis,
+            initialEndMillis = customEndDateMillis,
+            onDismissRequest = { showCustomDatePickerDialog = false },
+            onDateRangeSelected = { start, end, label ->
+                customStartDateMillis = start
+                customEndDateMillis = end
+                customDateLabel = label
+                selectedDateRange = "Custom"
+                currentPage = 1
+                showCustomDatePickerDialog = false
+            }
+        )
+    }
 
     Scaffold(
         containerColor = Color(0xFFF6F8FB),
@@ -443,7 +539,7 @@ fun CustomerOrderReportScreen(
                                             context = context,
                                             customer = customer,
                                             entries = filteredCustomerEntries,
-                                            startDate = selectedDateRange,
+                                            startDate = if (selectedDateRange == "Custom" && customDateLabel.isNotBlank()) customDateLabel else selectedDateRange,
                                             endDate = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date()),
                                             statusFilter = selectedStatus
                                         )
@@ -524,7 +620,33 @@ fun CustomerOrderReportScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.width(6.dp))
+                // Search Toggle Button (matching VisitsScreen)
+                Surface(
+                    shape = CircleShape,
+                    color = if (isOrderSearchVisible || orderSearchQuery.isNotBlank()) NavyPrimary else Color.White,
+                    border = BorderStroke(1.dp, if (isOrderSearchVisible || orderSearchQuery.isNotBlank()) NavyPrimary else Color(0xFFE2E8F0)),
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .clickable {
+                            isOrderSearchVisible = !isOrderSearchVisible
+                            if (!isOrderSearchVisible) {
+                                orderSearchQuery = ""
+                                currentPage = 1
+                            }
+                        }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = if (isOrderSearchVisible || orderSearchQuery.isNotBlank()) Icons.Default.Clear else Icons.Default.Search,
+                            contentDescription = "Toggle Search",
+                            tint = if (isOrderSearchVisible || orderSearchQuery.isNotBlank()) Color.White else NavyPrimary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
 
                 // Switch Customer button
                 OutlinedButton(
@@ -538,6 +660,61 @@ fun CustomerOrderReportScreen(
                     Text("Switch", color = NavyPrimary, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                 }
             }
+
+            // Expandable Pill Search Bar (matching VisitsScreen)
+            AnimatedVisibility(
+                visible = isOrderSearchVisible || orderSearchQuery.isNotBlank(),
+                enter = expandVertically(animationSpec = tween(220)) + fadeIn(animationSpec = tween(200)),
+                exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(180))
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)) {
+                    OutlinedTextField(
+                        value = orderSearchQuery,
+                        onValueChange = {
+                            orderSearchQuery = it
+                            currentPage = 1
+                        },
+                        placeholder = {
+                            Text(
+                                text = "Filter customer orders by Order #, Mill, or Item...",
+                                fontSize = 13.sp,
+                                color = TextSecondary
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = null,
+                                tint = NavyPrimary,
+                                modifier = Modifier.size(19.dp)
+                            )
+                        },
+                        trailingIcon = {
+                            if (orderSearchQuery.isNotEmpty()) {
+                                IconButton(onClick = { orderSearchQuery = ""; currentPage = 1 }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Clear,
+                                        contentDescription = "Clear",
+                                        tint = TextSecondary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = CircleShape,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White,
+                            focusedBorderColor = NavyPrimary,
+                            unfocusedBorderColor = Color(0xFFE2E8F0)
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+            }
+
             // Compact KPI Summary Strip
             Row(
                 modifier = Modifier
@@ -567,68 +744,106 @@ fun CustomerOrderReportScreen(
 
             HorizontalDivider(color = Color(0xFFE2E8F0))
 
-            // Compact Filter Bar
+            // Rounded Pill Filters (matching VisitsScreen & DeliveriesScreen)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface)
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                    .background(Color.White)
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                CompactSearchBar(
-                    query = orderSearchQuery,
-                    onQueryChange = {
-                        orderSearchQuery = it
-                        currentPage = 1
-                    },
-                    placeholder = "Filter customer orders by Order #, Mill, or Item..."
-                )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
+                // Row 1: Status Chips with counts + Supplier Dropdown
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf("All Time", "Today", "Yesterday", "This Week", "This Month").forEach { range ->
-                        FilterChip(
-                            selected = selectedDateRange == range,
-                            onClick = {
-                                selectedDateRange = range
-                                currentPage = 1
-                            },
-                            label = { Text(range, fontSize = 10.5.sp) },
-                            modifier = Modifier.height(28.dp),
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = NavyPrimary,
-                                selectedLabelColor = Color.White
+                    val allCount = allCustomerEntries.size
+                    val pendingCount = allCustomerEntries.count { it.deliveryStatus.equals("Pending", true) }
+                    val deliveredCount = allCustomerEntries.count { it.deliveryStatus.equals("Delivered", true) }
+                    val statuses = listOf(
+                        "All" to allCount,
+                        "Pending" to pendingCount,
+                        "Delivered" to deliveredCount
+                    )
+
+                    statuses.forEach { (status, count) ->
+                        val isSelected = selectedStatus == status
+                        Surface(
+                            color = if (isSelected) NavyPrimary else Color.White,
+                            shape = CircleShape,
+                            border = BorderStroke(
+                                1.dp,
+                                if (isSelected) NavyPrimary else Color(0xFFE2E8F0)
+                            ),
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable {
+                                    selectedStatus = status
+                                    currentPage = 1
+                                }
+                        ) {
+                            Text(
+                                text = "$status ($count)",
+                                color = if (isSelected) Color.White else TextPrimary,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                             )
-                        )
+                        }
                     }
 
-                    // Supplier Filter Dropdown
+                    // Supplier Filter Dropdown Chip
+                    val isSupplierSelected = selectedSupplierName != null
                     Box {
-                        FilterChip(
-                            selected = selectedSupplierName != null,
-                            onClick = { isSupplierDropdownExpanded = true },
-                            label = { Text(selectedSupplierName ?: "All Suppliers", fontSize = 10.5.sp) },
-                            modifier = Modifier.height(28.dp),
-                            trailingIcon = {
-                                if (selectedSupplierName != null) {
+                        Surface(
+                            color = if (isSupplierSelected) Color(0xFF0D9488) else Color.White,
+                            shape = CircleShape,
+                            border = BorderStroke(
+                                1.dp,
+                                if (isSupplierSelected) Color(0xFF0D9488) else Color(0xFFE2E8F0)
+                            ),
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable { isSupplierDropdownExpanded = true }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = selectedSupplierName ?: "All Suppliers",
+                                    color = if (isSupplierSelected) Color.White else TextPrimary,
+                                    fontWeight = if (isSupplierSelected) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                if (isSupplierSelected) {
                                     Icon(
-                                        Icons.Default.Clear,
+                                        imageVector = Icons.Default.Clear,
                                         contentDescription = "Clear",
-                                        modifier = Modifier.size(13.dp).clickable { selectedSupplierName = null; currentPage = 1 }
+                                        tint = Color.White,
+                                        modifier = Modifier
+                                            .size(14.dp)
+                                            .clickable {
+                                                selectedSupplierName = null
+                                                currentPage = 1
+                                            }
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = null,
+                                        tint = TextSecondary,
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
-                            },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = Color(0xFF0D9488),
-                                selectedLabelColor = Color.White
-                            )
-                        )
+                            }
+                        }
 
                         DropdownMenu(
                             expanded = isSupplierDropdownExpanded,
@@ -654,21 +869,91 @@ fun CustomerOrderReportScreen(
                             }
                         }
                     }
+                }
 
-                    listOf("All", "Pending", "Delivered").forEach { st ->
-                        FilterChip(
-                            selected = selectedStatus == st,
-                            onClick = {
-                                selectedStatus = st
-                                currentPage = 1
-                            },
-                            label = { Text(if (st == "All") "All Status" else st, fontSize = 10.5.sp) },
-                            modifier = Modifier.height(28.dp),
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = Color(0xFF9F1239),
-                                selectedLabelColor = Color.White
+                // Row 2: Date Filters + Custom Range Picker
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val dateRanges = listOf("All Time", "Today", "Yesterday", "This Week", "This Month")
+                    dateRanges.forEach { range ->
+                        val isSelected = selectedDateRange == range
+                        Surface(
+                            color = if (isSelected) NavyPrimary else Color.White,
+                            shape = CircleShape,
+                            border = BorderStroke(
+                                1.dp,
+                                if (isSelected) NavyPrimary else Color(0xFFE2E8F0)
+                            ),
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable {
+                                    selectedDateRange = range
+                                    currentPage = 1
+                                }
+                        ) {
+                            Text(
+                                text = range,
+                                color = if (isSelected) Color.White else TextPrimary,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                             )
-                        )
+                        }
+                    }
+
+                    // Custom Date Range Chip
+                    val isCustomSelected = selectedDateRange == "Custom"
+                    Surface(
+                        color = if (isCustomSelected) NavyPrimary else Color.White,
+                        shape = CircleShape,
+                        border = BorderStroke(
+                            1.dp,
+                            if (isCustomSelected) NavyPrimary else Color(0xFFE2E8F0)
+                        ),
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable { showCustomDatePickerDialog = true }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DateRange,
+                                contentDescription = null,
+                                tint = if (isCustomSelected) Color.White else NavyPrimary,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (isCustomSelected && customDateLabel.isNotBlank()) customDateLabel else "Custom 📅",
+                                color = if (isCustomSelected) Color.White else TextPrimary,
+                                fontWeight = if (isCustomSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 12.sp
+                            )
+                            if (isCustomSelected) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Clear,
+                                    contentDescription = "Clear",
+                                    tint = Color.White,
+                                    modifier = Modifier
+                                        .size(13.dp)
+                                        .clickable {
+                                            selectedDateRange = "All Time"
+                                            customStartDateMillis = null
+                                            customEndDateMillis = null
+                                            customDateLabel = ""
+                                            currentPage = 1
+                                        }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -687,8 +972,8 @@ fun CustomerOrderReportScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(pagedEntries, key = { it.id }) { entry ->
                         val formattedDate = remember(entry.createdAt) {
@@ -700,11 +985,12 @@ fun CustomerOrderReportScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { onOpenOrder(entry) },
-                            shape = RoundedCornerShape(10.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                         ) {
-                            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                            Column(modifier = Modifier.padding(14.dp)) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
