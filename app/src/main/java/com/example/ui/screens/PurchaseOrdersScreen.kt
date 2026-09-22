@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -16,7 +17,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -207,87 +207,7 @@ fun PurchaseOrdersScreen(
     val safeBottomPadding = rememberDialogBottomPadding(extraPadding = 8.dp, fallbackNavHeight = 48.dp)
 
     Scaffold(
-        topBar = {
-            Surface(
-                color = NavyPrimary,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = onBack, modifier = Modifier.size(34.dp)) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Purchase Orders & Invoices",
-                            color = Color.White,
-                            fontSize = 14.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = "$totalRecords orders • $totalPieces pcs of all time",
-                            color = GoldAccent,
-                            fontSize = 10.5.sp,
-                            maxLines = 1
-                        )
-                    }
-
-                    // Bulk PDF Download / Share Action
-                    Button(
-                        onClick = {
-                            if (filteredEntries.isEmpty()) {
-                                Toast.makeText(context, "No purchase orders to export", Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
-                            isGeneratingPdf = true
-                            coroutineScope.launch {
-                                try {
-                                    val pdfFile = PdfGenerator.generatePurchaseOrdersBulkPdf(
-                                        context = context,
-                                        entries = filteredEntries,
-                                        dateFilterLabel = selectedDateRange,
-                                        supplierFilterLabel = selectedSupplierName ?: "All Suppliers",
-                                        statusFilterLabel = if (selectedStatus == "All") "All Status" else selectedStatus
-                                    )
-                                    ShareUtil.sharePdfFile(context, pdfFile, "Purchase Orders & Supplier Invoices Statement")
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "PDF Export failed: ${e.message}", Toast.LENGTH_SHORT).show()
-                                } finally {
-                                    isGeneratingPdf = false
-                                }
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC2410C)),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        modifier = Modifier.height(32.dp),
-                        enabled = !isGeneratingPdf
-                    ) {
-                        if (isGeneratingPdf) {
-                            CircularProgressIndicator(modifier = Modifier.size(14.dp), color = Color.White, strokeWidth = 2.dp)
-                        } else {
-                            Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text("Bulk PDF", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                        }
-                    }
-                }
-            }
-        },
+        containerColor = Color(0xFFF6F8FB),
         bottomBar = {
             // Pagination Bar at Bottom
             Surface(
@@ -340,8 +260,91 @@ fun PurchaseOrdersScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .background(MaterialTheme.colorScheme.background)
+                .background(Color(0xFFF6F8FB))
         ) {
+            // Flat, borderless, clean header matching VisitsScreen & DeliveriesScreen
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = Color.White,
+                    shadowElevation = 0.dp,
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    modifier = Modifier.size(38.dp)
+                ) {
+                    IconButton(onClick = onBack, modifier = Modifier.size(38.dp)) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = NavyPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(10.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Purchase Orders",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NavyPrimary,
+                        letterSpacing = (-0.2).sp
+                    )
+                    Text(
+                        text = "$totalRecords orders • $totalPieces pcs of all time",
+                        fontSize = 11.5.sp,
+                        color = TextSecondary
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(6.dp))
+
+                // Bulk PDF Download / Share Action
+                Button(
+                    onClick = {
+                        if (filteredEntries.isEmpty()) {
+                            Toast.makeText(context, "No purchase orders to export", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        isGeneratingPdf = true
+                        coroutineScope.launch {
+                            try {
+                                val pdfFile = PdfGenerator.generatePurchaseOrdersBulkPdf(
+                                    context = context,
+                                    entries = filteredEntries,
+                                    dateFilterLabel = selectedDateRange,
+                                    supplierFilterLabel = selectedSupplierName ?: "All Suppliers",
+                                    statusFilterLabel = if (selectedStatus == "All") "All Status" else selectedStatus
+                                )
+                                ShareUtil.sharePdfFile(context, pdfFile, "Purchase Orders & Supplier Invoices Statement")
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "PDF Export failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                            } finally {
+                                isGeneratingPdf = false
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC2410C)),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 9.dp, vertical = 5.dp),
+                    modifier = Modifier.height(34.dp),
+                    enabled = !isGeneratingPdf
+                ) {
+                    if (isGeneratingPdf) {
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), color = Color.White, strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Bulk PDF", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.5.sp)
+                    }
+                }
+            }
             // Compact KPI Summary Strip
             Row(
                 modifier = Modifier

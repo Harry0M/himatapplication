@@ -17,15 +17,17 @@ import androidx.compose.ui.res.painterResource
 import com.example.R
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Share
@@ -172,20 +174,34 @@ fun CustomerReportScreen(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = NavyPrimary)
+                    Surface(
+                        shape = CircleShape,
+                        color = Color.White,
+                        shadowElevation = 0.dp,
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        IconButton(onClick = onBack, modifier = Modifier.size(38.dp)) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = NavyPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text(
-                            text = "Customer Consolidated Day Report",
-                            fontSize = 17.sp,
+                            text = "Customer Day Report",
+                            fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
-                            color = NavyPrimary
+                            color = NavyPrimary,
+                            letterSpacing = (-0.2).sp
                         )
                         Text(
-                            text = "All wholesaler purchases aggregated for ${visit.customerName}",
-                            fontSize = 11.sp,
+                            text = "Aggregated purchases for ${visit.customerName}",
+                            fontSize = 11.5.sp,
                             color = TextSecondary
                         )
                     }

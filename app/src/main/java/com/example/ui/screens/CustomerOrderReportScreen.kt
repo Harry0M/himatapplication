@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -15,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -138,38 +138,52 @@ fun CustomerOrderReportScreen(
             }
         }
 
-        Scaffold(
-            topBar = {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFFF6F8FB))
+        ) {
+            // Flat, borderless, clean header matching VisitsScreen & DeliveriesScreen
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Surface(
-                    color = NavyPrimary,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
+                    shape = CircleShape,
+                    color = Color.White,
+                    shadowElevation = 0.dp,
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    modifier = Modifier.size(38.dp)
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = onBack, modifier = Modifier.size(34.dp)) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(18.dp))
-                        }
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Customer Order Reports", color = Color.White, fontSize = 14.5.sp, fontWeight = FontWeight.Bold)
-                            Text("Select a retailer to view all orders of all time", color = GoldAccent, fontSize = 10.5.sp)
-                        }
+                    IconButton(onClick = onBack, modifier = Modifier.size(38.dp)) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = NavyPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
+
+                Spacer(modifier = Modifier.width(10.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Customer Reports",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NavyPrimary,
+                        letterSpacing = (-0.2).sp
+                    )
+                    Text(
+                        text = "Select a retailer to view all orders of all time",
+                        fontSize = 11.5.sp,
+                        color = TextSecondary
+                    )
+                }
             }
-        ) { paddingValues ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-                    .background(MaterialTheme.colorScheme.background)
-            ) {
                 // Compact Search Field
                 Box(
                     modifier = Modifier
@@ -275,7 +289,6 @@ fun CustomerOrderReportScreen(
                             }
                         }
                     }
-                }
             }
         }
         return
@@ -367,43 +380,7 @@ fun CustomerOrderReportScreen(
     val totalGst = remember(filteredCustomerEntries) { filteredCustomerEntries.sumOf { it.gstAmount } }
 
     Scaffold(
-        topBar = {
-            Surface(
-                color = NavyPrimary,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = { selectedCustomer = null }, modifier = Modifier.size(34.dp)) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(18.dp))
-                    }
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(customer.firmName.ifBlank { customer.name }, color = Color.White, fontSize = 14.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("${customer.city} • $totalOrders orders of all time", color = GoldAccent, fontSize = 10.5.sp, maxLines = 1)
-                    }
-
-                    // Change Customer button
-                    Button(
-                        onClick = { selectedCustomer = null },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.2f)),
-                        shape = RoundedCornerShape(6.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        modifier = Modifier.height(30.dp)
-                    ) {
-                        Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text("Switch", color = Color.White, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        },
+        containerColor = Color(0xFFF6F8FB),
         bottomBar = {
             Surface(
                 color = MaterialTheme.colorScheme.surface,
@@ -501,8 +478,66 @@ fun CustomerOrderReportScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .background(MaterialTheme.colorScheme.background)
+                .background(Color(0xFFF6F8FB))
         ) {
+            // Flat, borderless, clean header matching VisitsScreen & DeliveriesScreen
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = Color.White,
+                    shadowElevation = 0.dp,
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    modifier = Modifier.size(38.dp)
+                ) {
+                    IconButton(onClick = { selectedCustomer = null }, modifier = Modifier.size(38.dp)) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = NavyPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(10.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = customer.firmName.ifBlank { customer.name },
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NavyPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        letterSpacing = (-0.2).sp
+                    )
+                    Text(
+                        text = "${customer.city} • $totalOrders orders of all time",
+                        fontSize = 11.5.sp,
+                        color = TextSecondary,
+                        maxLines = 1
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(6.dp))
+
+                // Switch Customer button
+                OutlinedButton(
+                    onClick = { selectedCustomer = null },
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp),
+                    modifier = Modifier.height(34.dp)
+                ) {
+                    Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = NavyPrimary, modifier = Modifier.size(15.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Switch", color = NavyPrimary, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                }
+            }
             // Compact KPI Summary Strip
             Row(
                 modifier = Modifier
