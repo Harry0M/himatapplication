@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -72,8 +73,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.filled.Undo
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.example.data.local.entity.PackGroupEntity
 import com.example.data.local.entity.PurchaseEntryEntity
 import com.example.data.local.entity.SupplierEntity
 import com.example.ui.components.SupplierTypeBadge
@@ -805,17 +808,24 @@ fun SupplierSearchBottomSheet(
 
 @Composable
 fun MixedPackDialog(
-    incompleteEntries: List<PurchaseEntryEntity>,
+    allEntries: List<PurchaseEntryEntity>,
+    packGroups: List<PackGroupEntity> = emptyList(),
     onDismiss: () -> Unit,
-    onPack: (selectedEntries: List<PurchaseEntryEntity>, targetCaseSize: Int) -> Unit
+    onPack: (selectedEntries: List<PurchaseEntryEntity>, caseCount: Int, customNote: String?) -> Unit,
+    onUnpackGroup: ((PackGroupEntity) -> Unit)? = null
 ) {
-    val selectedEntries = remember { mutableStateListOf<PurchaseEntryEntity>().apply { addAll(incompleteEntries) } }
-    var targetCaseSizeText by remember { mutableStateOf("24") }
+    val packedEntryIds = remember(packGroups) {
+        packGroups.flatMap { group -> group.linkedEntryIds.split(",").mapNotNull { it.trim().toLongOrNull() } }.toSet()
+    }
+    val looseEntries = remember(allEntries) {
+        allEntries.filter { it.loosePieces > 0 }
+    }
+    val selectedEntries = remember { mutableStateListOf<PurchaseEntryEntity>() }
+    var caseCountText by remember { mutableStateOf("1") }
+    var customNoteText by remember { mutableStateOf("") }
 
     val totalSelectedLoose = selectedEntries.sumOf { it.loosePieces }
-    val targetCaseSize = targetCaseSizeText.toIntOrNull() ?: 24
-    val resultingCases = if (targetCaseSize > 0) totalSelectedLoose / targetCaseSize else 1
-    val remainingLoose = if (targetCaseSize > 0) totalSelectedLoose % targetCaseSize else 0
+    val caseCount = caseCountText.toIntOrNull() ?: 1
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -825,99 +835,359 @@ fun MixedPackDialog(
         ) {
             Column(
                 modifier = Modifier
-                    .padding(20.dp)
+                    .padding(18.dp)
                     .verticalScroll(rememberScrollState())
             ) {
+                // Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Inventory,
-                            contentDescription = null,
-                            tint = Color(0xFFD97706)
-                        )
+                        Surface(
+                            color = Color(0xFFFEF3C7),
+                            shape = CircleShape,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Inventory,
+                                    contentDescription = null,
+                                    tint = Color(0xFFD97706),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Mixed Case Packing",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = NavyPrimary
-                        )
+                        Column {
+                            Text(
+                                text = "Pack Loose Pieces",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = NavyPrimary
+                            )
+                            Text(
+                                text = "Combine orders into full cases",
+                                fontSize = 11.sp,
+                                color = TextSecondary
+                            )
+                        }
                     }
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close")
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
                     }
                 }
 
-                Text(
-                    text = "Link loose pieces across multiple supplier stops into physically packed full cases. The packing note will appear on both the Customer Report and each Supplier's copy.",
-                    fontSize = 12.sp,
-                    color = TextSecondary
-                )
-
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Text(
-                    text = "Select Incomplete Purchase Stops to Combine:",
+                    text = "Select Orders with Loose Pcs to Pack:",
                     fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    color = TextPrimary
+                    fontSize = 12.5.sp,
+                    color = NavyPrimary
+                )
+                Text(
+                    text = "Pick 2, 3 or multiple orders to combine into a case. You can repeat this multiple times for different cases.",
+                    fontSize = 11.sp,
+                    color = TextSecondary
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                if (incompleteEntries.isEmpty()) {
-                    Text(
-                        text = "No loose items found in this visit. All orders have full cases!",
-                        fontSize = 12.sp,
-                        color = TextSecondary,
-                        modifier = Modifier.padding(vertical = 12.dp)
-                    )
+                if (looseEntries.isEmpty()) {
+                    Surface(
+                        color = Color(0xFFF8FAFC),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "No loose items found in this visit. All orders have full cases!",
+                            fontSize = 12.sp,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
                 } else {
-                    incompleteEntries.forEach { entry ->
-                        val isSelected = selectedEntries.contains(entry)
+                    looseEntries.forEach { entry ->
+                        val isSelected = selectedEntries.any { it.id == entry.id }
+                        val isAlreadyPacked = entry.id in packedEntryIds || (entry.packGroupId != null && entry.packGroupId != 0L)
                         Surface(
-                            color = if (isSelected) Color(0xFFFEF3C7) else Color(0xFFF8FAFC),
+                            color = if (isSelected) Color(0xFFFEF3C7) else if (isAlreadyPacked) Color(0xFFF0FDF4) else Color(0xFFF8FAFC),
                             shape = RoundedCornerShape(8.dp),
-                            border = androidx.compose.foundation.BorderStroke(
+                            border = BorderStroke(
                                 1.dp,
-                                if (isSelected) Color(0xFFF59E0B) else Color(0xFFE2E8F0)
+                                if (isSelected) Color(0xFFF59E0B) else if (isAlreadyPacked) Color(0xFFBBF7D0) else Color(0xFFE2E8F0)
                             ),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 4.dp)
+                                .padding(vertical = 3.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .clickable {
-                                    if (isSelected) selectedEntries.remove(entry) else selectedEntries.add(entry)
+                                    if (isSelected) {
+                                        selectedEntries.removeAll { it.id == entry.id }
+                                    } else {
+                                        selectedEntries.add(entry)
+                                    }
                                 }
                         ) {
                             Row(
-                                modifier = Modifier.padding(10.dp),
+                                modifier = Modifier.padding(8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Checkbox(
                                     checked = isSelected,
                                     onCheckedChange = { checked ->
-                                        if (checked) selectedEntries.add(entry) else selectedEntries.remove(entry)
+                                        if (checked) selectedEntries.add(entry) else selectedEntries.removeAll { it.id == entry.id }
                                     }
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "${entry.supplierName} • ${entry.itemCode}",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp,
-                                        color = TextPrimary
-                                    )
-                                    Text(
-                                        text = "Order: ${entry.orderNo} | Total: ${entry.pieces} pcs | Loose: ${entry.loosePieces} pcs",
-                                        fontSize = 11.sp,
-                                        color = Color(0xFFD97706),
-                                        fontWeight = FontWeight.SemiBold
-                                    )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Surface(
+                                            color = NavyPrimary.copy(alpha = 0.08f),
+                                            shape = RoundedCornerShape(4.dp)
+                                        ) {
+                                            Text(
+                                                text = entry.orderNo,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 10.5.sp,
+                                                color = NavyPrimary,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = entry.supplierName,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp,
+                                            color = TextPrimary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            text = "Item: ${entry.itemCode} • Total: ${entry.pieces} pcs",
+                                            fontSize = 11.sp,
+                                            color = TextSecondary
+                                        )
+                                        Text(
+                                            text = "${entry.loosePieces} Loose Pcs",
+                                            fontSize = 11.5.sp,
+                                            color = Color(0xFFD97706),
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    if (!entry.mixedPackNote.isNullOrBlank()) {
+                                        Text(
+                                            text = "↳ ${entry.mixedPackNote}",
+                                            fontSize = 10.sp,
+                                            color = Color(0xFF15803D),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (selectedEntries.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Case Count Input
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = caseCountText,
+                            onValueChange = { caseCountText = it },
+                            label = { Text("Resulting Cases (Cs)") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = NavyPrimary,
+                                unfocusedBorderColor = Color(0xFFE2E8F0)
+                            )
+                        )
+                        OutlinedTextField(
+                            value = customNoteText,
+                            onValueChange = { customNoteText = it },
+                            label = { Text("Custom Note (Optional)") },
+                            placeholder = { Text("e.g. Case #1") },
+                            modifier = Modifier.weight(1.5f),
+                            singleLine = true,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = NavyPrimary,
+                                unfocusedBorderColor = Color(0xFFE2E8F0)
+                            )
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Live Reciprocal Note Preview
+                    Surface(
+                        color = Color(0xFFF0FDF4),
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, Color(0xFF86EFAC)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Reciprocal Notes Preview:",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.5.sp,
+                                    color = Color(0xFF166534)
+                                )
+                                Text(
+                                    text = "$totalSelectedLoose pcs → $caseCount Case(s)",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.5.sp,
+                                    color = Color(0xFF15803D)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            selectedEntries.forEach { entry ->
+                                val others = selectedEntries.filter { it.id != entry.id }
+                                val noteDesc = if (others.isEmpty()) {
+                                    "Packed in Mixed Case (${entry.loosePieces} pcs)"
+                                } else if (others.size == 1) {
+                                    val other = others.first()
+                                    "Packed with ${other.supplierName} (${other.itemCode} - ${other.loosePieces} pcs)"
+                                } else {
+                                    "Packed with " + others.joinToString(" & ") { "${it.supplierName} (${it.itemCode})" }
+                                }
+                                Text(
+                                    text = "• ${entry.supplierName} (${entry.orderNo}): $noteDesc",
+                                    fontSize = 10.5.sp,
+                                    color = Color(0xFF15803D)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Button(
+                        onClick = {
+                            if (selectedEntries.isNotEmpty()) {
+                                onPack(selectedEntries.toList(), maxOf(1, caseCount), customNoteText.takeIf { it.isNotBlank() })
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Pack ${selectedEntries.size} Orders into Case",
+                            fontWeight = FontWeight.Bold,
+                            color = GoldAccent
+                        )
+                    }
+                }
+
+                // Section: Existing Packed Cases
+                if (packGroups.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFE2E8F0)))
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = "Already Packed Cases in this Trip (${packGroups.size}):",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.5.sp,
+                        color = NavyPrimary
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    packGroups.forEach { group ->
+                        val linkedIds = group.linkedEntryIds.split(",").mapNotNull { it.trim().toLongOrNull() }
+                        val groupEntries = allEntries.filter { it.id in linkedIds || it.packGroupId == group.id }
+
+                        Surface(
+                            color = Color(0xFFF8FAFC),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 3.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Surface(
+                                            color = NavyPrimary.copy(alpha = 0.08f),
+                                            shape = RoundedCornerShape(4.dp)
+                                        ) {
+                                            Text(
+                                                text = group.packGroupCode,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 10.5.sp,
+                                                color = NavyPrimary,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "${group.resultingCases} Case (${group.combinedPieces} pcs)",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF15803D)
+                                        )
+                                    }
+
+                                    if (onUnpackGroup != null) {
+                                        OutlinedButton(
+                                            onClick = { onUnpackGroup(group) },
+                                            shape = RoundedCornerShape(6.dp),
+                                            colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White),
+                                            border = BorderStroke(1.dp, Color(0xFFFCA5A5)),
+                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                            modifier = Modifier.height(26.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Undo,
+                                                contentDescription = null,
+                                                tint = Color(0xFFDC2626),
+                                                modifier = Modifier.size(11.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Text("Unpack", fontSize = 10.sp, color = Color(0xFFDC2626), fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+
+                                if (groupEntries.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    groupEntries.forEach { item ->
+                                        Text(
+                                            text = "• ${item.supplierName} (${item.itemCode}) - ${item.loosePieces} loose pcs",
+                                            fontSize = 10.5.sp,
+                                            color = TextSecondary
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -926,67 +1196,12 @@ fun MixedPackDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                OutlinedTextField(
-                    value = targetCaseSizeText,
-                    onValueChange = { targetCaseSizeText = it },
-                    label = { Text("Standard Target Case Size (Pcs)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Result Summary Card
-                Surface(
-                    color = Color(0xFFF0FDF4),
-                    shape = RoundedCornerShape(8.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF86EFAC)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(
-                            text = "Packing Preview:",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.5.sp,
-                            color = Color(0xFF166534)
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "• Combined Loose: $totalSelectedLoose pcs from ${selectedEntries.size} orders",
-                            fontSize = 12.sp,
-                            color = Color(0xFF15803D)
-                        )
-                        Text(
-                            text = "• Resulting Mixed Cases: $resultingCases Case(s)" +
-                                    if (remainingLoose > 0) " + $remainingLoose loose left" else " (Fully Packed)",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF15803D)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(20.dp))
-
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
                     TextButton(onClick = onDismiss) {
-                        Text("Cancel")
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(
-                        onClick = {
-                            if (selectedEntries.isNotEmpty()) {
-                                onPack(selectedEntries, targetCaseSize)
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
-                        enabled = selectedEntries.isNotEmpty()
-                    ) {
-                        Text("Pack Mixed Case(s)")
+                        Text("Close", color = TextSecondary)
                     }
                 }
             }

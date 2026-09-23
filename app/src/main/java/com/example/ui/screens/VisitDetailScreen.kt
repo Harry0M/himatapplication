@@ -127,7 +127,7 @@ fun VisitDetailScreen(
     }.toSet()
 
     val isEntryPacked: (PurchaseEntryEntity) -> Boolean = { entry ->
-        (entry.packGroupId != null && entry.packGroupId != 0L) || (entry.id in packedEntryIds)
+        (entry.packGroupId != null && entry.packGroupId != 0L) || (entry.id in packedEntryIds) || !entry.mixedPackNote.isNullOrBlank()
     }
 
     val unfixedLooseEntries = entries.filter { it.loosePieces > 0 && !isEntryPacked(it) }
@@ -371,7 +371,13 @@ fun VisitDetailScreen(
                             Text("$totalCases", fontWeight = FontWeight.Bold, fontSize = 14.5.sp, color = Color(0xFF059669))
                         }
                         Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color(0xFFE2E8F0)))
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { onOpenMixedPack() }
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                        ) {
                             Text("Loose Pcs", fontSize = 10.5.sp, color = TextSecondary)
                             Text(
                                 text = if (totalUnfixedLoose == 0 && fixedLooseEntries.isNotEmpty()) "0 (Fixed ✓)" else "$totalUnfixedLoose",
@@ -487,16 +493,31 @@ fun VisitDetailScreen(
                         fontSize = 14.sp,
                         color = TextPrimary
                     )
-                    Text(
-                        text = "+ Add Stop",
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = NavyPrimary,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable { onOpenAddEntry() }
-                            .padding(horizontal = 6.dp, vertical = 4.dp)
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (entries.any { it.loosePieces > 0 } || packGroups.isNotEmpty()) {
+                            Text(
+                                text = "📦 Pack Loose Pcs",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFD97706),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable { onOpenMixedPack() }
+                                    .padding(horizontal = 6.dp, vertical = 4.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                        }
+                        Text(
+                            text = "+ Add Stop",
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NavyPrimary,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { onOpenAddEntry() }
+                                .padding(horizontal = 6.dp, vertical = 4.dp)
+                        )
+                    }
                 }
             }
 
@@ -612,7 +633,7 @@ fun VisitDetailScreen(
         EditStopBottomSheet(
             entry = entry,
             onDismiss = { editingEntry = null },
-            onSave = { updatedPieces, updatedRate, updatedCaseSize, updatedCases, updatedLoose, status, transp, expDate, payStatus, payMode, paidAmt, remarks ->
+            onSave = { updatedPieces, updatedRate, updatedCaseSize, updatedCases, updatedLoose, status, transp, expDate, payStatus, payMode, paidAmt, remarks, mixedNote ->
                 viewModel.updatePurchaseEntry(
                     entry = entry,
                     newPieces = updatedPieces,
@@ -627,6 +648,7 @@ fun VisitDetailScreen(
                     paymentMode = payMode,
                     paidAmount = paidAmt,
                     paymentRemarks = remarks,
+                    mixedPackNote = mixedNote,
                     onSuccess = {
                         editingEntry = null
                     }
@@ -796,11 +818,22 @@ fun PurchaseEntryItemCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Text(
-                        text = "${entry.pieces} Pcs",
-                        fontSize = 11.5.sp,
-                        color = TextSecondary
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "${entry.pieces} Pcs",
+                            fontSize = 11.5.sp,
+                            color = TextSecondary
+                        )
+                        val packText = if (entry.caseCount > 0) "${entry.caseCount} Cs" + (if (entry.loosePieces > 0) " + ${entry.loosePieces} Loose" else "") else if (entry.loosePieces > 0) "${entry.loosePieces} Loose" else ""
+                        if (packText.isNotBlank()) {
+                            Text(
+                                text = " • $packText",
+                                fontSize = 11.sp,
+                                color = if (entry.loosePieces > 0) Color(0xFFD97706) else Color(0xFF15803D),
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
                 }
 
                 Column(horizontalAlignment = Alignment.End) {
@@ -812,6 +845,24 @@ fun PurchaseEntryItemCard(
                     )
                     Spacer(modifier = Modifier.height(3.dp))
                     StatusBadge(status = entry.deliveryStatus)
+                }
+            }
+
+            if (!entry.mixedPackNote.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(5.dp))
+                Surface(
+                    color = Color(0xFFFFFBEB),
+                    shape = RoundedCornerShape(4.dp),
+                    border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "↳ Note: ${entry.mixedPackNote}",
+                        fontSize = 10.5.sp,
+                        color = Color(0xFFB45309),
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
+                    )
                 }
             }
 
@@ -1245,24 +1296,22 @@ fun LoosePacksFixedBanner(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                if (remainingLoose > 0) {
-                    Surface(
-                        shape = CircleShape,
-                        color = Color(0xFFFEF3C7),
-                        border = BorderStroke(1.dp, Color(0xFFFDE68A)),
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .clickable { onCombineMore() }
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "Combine more loose packs",
-                                tint = Color(0xFFD97706),
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0xFFFEF3C7),
+                    border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .clickable { onCombineMore() }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Pack More Loose Pieces",
+                            tint = Color(0xFFD97706),
+                            modifier = Modifier.size(16.dp)
+                        )
                     }
                 }
 
@@ -1515,7 +1564,8 @@ fun EditStopBottomSheet(
         paymentStatus: String,
         paymentMode: String,
         paidAmount: Double,
-        paymentRemarks: String
+        paymentRemarks: String,
+        mixedPackNote: String?
     ) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -1534,6 +1584,7 @@ fun EditStopBottomSheet(
         mutableStateOf(if (entry.paidAmount > 0) entry.paidAmount.toString() else "")
     }
     var paymentRemarks by remember(entry) { mutableStateOf(entry.paymentRemarks) }
+    var mixedPackNoteText by remember(entry) { mutableStateOf(entry.mixedPackNote ?: "") }
 
     // Live calculations
     val pieces = piecesText.toIntOrNull() ?: 0
@@ -1748,6 +1799,21 @@ fun EditStopBottomSheet(
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = mixedPackNoteText,
+                onValueChange = { mixedPackNoteText = it },
+                label = { Text("Packing Remarks / Packed With (Optional)") },
+                placeholder = { Text("e.g. Packed with Shree Ambica 5 pcs") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                shape = RoundedCornerShape(10.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = NavyPrimary,
+                    unfocusedBorderColor = Color(0xFFE2E8F0)
+                )
+            )
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -1972,7 +2038,8 @@ fun EditStopBottomSheet(
                             paymentStatus,
                             paymentMode,
                             parsedPaidAmount,
-                            paymentRemarks
+                            paymentRemarks,
+                            mixedPackNoteText.trim().takeIf { it.isNotBlank() }
                         )
                     },
                     enabled = isValid,

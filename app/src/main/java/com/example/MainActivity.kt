@@ -924,24 +924,23 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
 
     if (showMixedPackDialog) {
         selectedVisit?.let { visit ->
-            val packedEntryIds = visitPackGroups.flatMap { group ->
-                group.linkedEntryIds.split(",").mapNotNull { it.trim().toLongOrNull() }
-            }.toSet()
-            val incompleteEntries = visitEntries.filter {
-                it.loosePieces > 0 && it.packGroupId == null && it.id !in packedEntryIds
-            }
             MixedPackDialog(
-                incompleteEntries = incompleteEntries,
+                allEntries = visitEntries,
+                packGroups = visitPackGroups,
                 onDismiss = { showMixedPackDialog = false },
-                onPack = { selected, targetCaseSize ->
+                onPack = { selected, caseCount, customNote ->
                     viewModel.createMixedPack(
                         visitId = visit.id,
                         selectedEntries = selected,
-                        targetCaseSize = targetCaseSize,
+                        caseCount = caseCount,
+                        customNote = customNote,
                         onSuccess = {
                             showMixedPackDialog = false
                         }
                     )
+                },
+                onUnpackGroup = { group ->
+                    viewModel.deletePackGroup(group)
                 }
             )
         }

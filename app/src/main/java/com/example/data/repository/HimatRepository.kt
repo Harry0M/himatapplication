@@ -294,10 +294,10 @@ class HimatRepository(private val database: AppDatabase) {
         val gstAmount = (totalAmount * entry.gstRate) / 100.0
         val grandTotal = totalAmount + gstAmount
 
-        // Auto Case / Loose calculation
+        // Auto Case / Loose calculation only as fallback if both were 0 and pieces > 0
         val caseSize = if (entry.caseSize > 0) entry.caseSize else 24
-        val caseCount = entry.pieces / caseSize
-        val loosePieces = entry.pieces % caseSize
+        val caseCount = if (entry.caseCount > 0 || entry.loosePieces > 0) entry.caseCount else (if (caseSize > 0) entry.pieces / caseSize else 0)
+        val loosePieces = if (entry.caseCount > 0 || entry.loosePieces > 0) entry.loosePieces else (if (caseSize > 0) entry.pieces % caseSize else 0)
 
         val processedEntry = entry.copy(
             totalAmount = totalAmount,
@@ -332,8 +332,72 @@ class HimatRepository(private val database: AppDatabase) {
         val grandTotal = totalAmount + gstAmount
 
         val caseSize = if (entry.caseSize > 0) entry.caseSize else 24
-        val caseCount = if (entry.caseCount > 0 || entry.loosePieces > 0) entry.caseCount else (if (caseSize > 0) entry.pieces / caseSize else 0)
-        val loosePieces = if (entry.caseCount > 0 || entry.loosePieces > 0) entry.loosePieces else (if (caseSize > 0) entry.pieces % caseSize else 0)
+        // Keep whatever caseCount and loosePieces user specified without forced recalculation
+        val caseCount = entry.caseCount
+        val loosePieces = entry.loosePieces
+
+        // If loosePieces is set to 0 and this entry was part of a packGroup:
+        var finalPackGroupId = entry.packGroupId
+        var finalMixedPackNote = entry.mixedPackNote
+
+        if (loosePieces == 0 && entry.packGroupId != null && entry.packGroupId != 0L) {
+            val oldGroupId = entry.packGroupId!!
+            finalPackGroupId = null
+            // Clear auto-generated packing note if it was an auto note
+            if (finalMixedPackNote != null && (finalMixedPackNote.startsWith("Packed with", ignoreCase = true) || finalMixedPackNote.startsWith("Mixed", ignoreCase = true))) {
+                finalMixedPackNote = null
+            }
+            // Remove entry from the pack group
+            val group = packGroupDao.getPackGroupById(oldGroupId)
+            if (group != null) {
+                val remainingIds = group.linkedEntryIds.split(",")
+                    .mapNotNull { it.trim().toLongOrNull() }
+                    .filter { it != entry.id }
+
+                if (remainingIds.size <= 1) {
+                    // Dissolve group because a mixed pack requires at least 2 entries
+                    if (remainingIds.size == 1) {
+                        val singleEntryId = remainingIds.first()
+                        val singleEntry = purchaseEntryDao.getEntryById(singleEntryId)
+                        if (singleEntry != null && (singleEntry.mixedPackNote?.startsWith("Packed with", ignoreCase = true) == true || singleEntry.mixedPackNote?.startsWith("Mixed", ignoreCase = true) == true)) {
+                            purchaseEntryDao.updateMixedPackInfo(singleEntryId, null, null)
+                        } else {
+                            purchaseEntryDao.updateMixedPackInfo(singleEntryId, null, singleEntry?.mixedPackNote)
+                        }
+                    }
+                    packGroupDao.deletePackGroup(group)
+                } else {
+                    // Update remaining entries in the group
+                    val updatedIdsStr = remainingIds.joinToString(",")
+                    val remainingEntries = remainingIds.mapNotNull { purchaseEntryDao.getEntryById(it) }
+                    val newCombinedPieces = remainingEntries.sumOf { it.loosePieces }
+                    val newCases = if (caseSize > 0) maxOf(1, newCombinedPieces / caseSize) else 1
+                    val newRemainingLoose = if (caseSize > 0) newCombinedPieces % caseSize else 0
+
+                    packGroupDao.insertPackGroup(
+                        group.copy(
+                            linkedEntryIds = updatedIdsStr,
+                            combinedPieces = newCombinedPieces,
+                            resultingCases = newCases,
+                            remainingLoose = newRemainingLoose
+                        )
+                    )
+
+                    // Re-generate reciprocal notes for the remaining entries
+                    remainingEntries.forEach { remEntry ->
+                        val others = remainingEntries.filter { it.id != remEntry.id }
+                        val othersDesc = if (others.size == 1) {
+                            val o = others.first()
+                            "${o.supplierName} (${o.itemCode} - ${o.loosePieces} pcs)"
+                        } else {
+                            others.joinToString(" & ") { "${it.supplierName} (${it.itemCode})" }
+                        }
+                        val note = "Packed with $othersDesc"
+                        purchaseEntryDao.updateMixedPackInfoWithOrderNo(remEntry.id, remEntry.orderNo, group.id, note)
+                    }
+                }
+            }
+        }
 
         val processedEntry = entry.copy(
             totalAmount = totalAmount,
@@ -341,7 +405,9 @@ class HimatRepository(private val database: AppDatabase) {
             grandTotalWithGst = grandTotal,
             caseSize = caseSize,
             caseCount = caseCount,
-            loosePieces = loosePieces
+            loosePieces = loosePieces,
+            packGroupId = finalPackGroupId,
+            mixedPackNote = finalMixedPackNote
         )
 
         purchaseEntryDao.updateEntry(processedEntry)
@@ -363,7 +429,8 @@ class HimatRepository(private val database: AppDatabase) {
                     paymentStatus = processedEntry.paymentStatus,
                     paymentMode = processedEntry.paymentMode,
                     paidAmount = processedEntry.paidAmount,
-                    paymentRemarks = processedEntry.paymentRemarks
+                    paymentRemarks = processedEntry.paymentRemarks,
+                    mixedPackNote = processedEntry.mixedPackNote
                 )
                 transactionDao.updateTransaction(updatedTxn)
             }
@@ -406,14 +473,17 @@ class HimatRepository(private val database: AppDatabase) {
     suspend fun createMixedPackGroup(
         visitId: Long,
         selectedEntries: List<PurchaseEntryEntity>,
-        targetCaseSize: Int,
+        targetCaseSize: Int = 24,
+        caseCount: Int = 1,
         customNote: String? = null
     ): Long {
         if (selectedEntries.isEmpty()) return 0L
 
         val totalCombinedLoose = selectedEntries.sumOf { it.loosePieces }
-        val resultingCases = if (targetCaseSize > 0) totalCombinedLoose / targetCaseSize else 1
-        val remainingLoose = if (targetCaseSize > 0) totalCombinedLoose % targetCaseSize else 0
+        val resultingCases = maxOf(1, caseCount)
+        val remainingLoose = if (targetCaseSize > 0 && resultingCases * targetCaseSize < totalCombinedLoose) {
+            totalCombinedLoose - (resultingCases * targetCaseSize)
+        } else 0
 
         val linkedIdsString = selectedEntries.joinToString(",") { it.id.toString() }
         val summaryNote = customNote ?: buildString {
@@ -422,33 +492,40 @@ class HimatRepository(private val database: AppDatabase) {
                 if (index > 0) append(" + ")
                 append("${entry.loosePieces} pcs ${entry.itemCode} (${entry.supplierName})")
             }
-            if (remainingLoose > 0) {
-                append(" [${remainingLoose} loose pcs remaining]")
-            }
         }
 
         val packGroup = PackGroupEntity(
             visitId = visitId,
-            packGroupCode = "MIX-${System.currentTimeMillis() % 10000}",
+            packGroupCode = "CASE-${System.currentTimeMillis() % 10000}",
             linkedEntryIds = linkedIdsString,
             combinedPieces = totalCombinedLoose,
-            resultingCases = maxOf(1, resultingCases),
+            resultingCases = resultingCases,
             remainingLoose = remainingLoose,
             note = summaryNote
         )
 
         val packGroupId = packGroupDao.insertPackGroup(packGroup)
 
-        // Update each entry so the note appears on customer report AND each supplier's copy!
+        // Update each entry with reciprocal note on Customer Report and each Supplier copy
         selectedEntries.forEach { entry ->
             val otherEntries = selectedEntries.filter { it.id != entry.id }
             val itemSpecificNote = if (otherEntries.isEmpty()) {
                 "Packed in ${packGroup.packGroupCode}: ${entry.loosePieces} pcs"
+            } else if (otherEntries.size == 1) {
+                val other = otherEntries.first()
+                "Packed with ${other.supplierName} (${other.itemCode} - ${other.loosePieces} pcs)"
             } else {
-                val othersDesc = otherEntries.joinToString(", ") { "${it.loosePieces} pcs ${it.itemCode} (${it.supplierName})" }
-                "Mixed Packing: ${entry.loosePieces} pcs packed with $othersDesc"
+                val othersDesc = otherEntries.joinToString(" & ") { "${it.supplierName} (${it.itemCode})" }
+                "Packed with $othersDesc"
             }
             purchaseEntryDao.updateMixedPackInfoWithOrderNo(entry.id, entry.orderNo, packGroupId, itemSpecificNote)
+
+            if (entry.orderNo.isNotBlank()) {
+                val existingTxn = transactionDao.getTransactionByOrderNo(entry.orderNo)
+                if (existingTxn != null) {
+                    transactionDao.updateTransaction(existingTxn.copy(mixedPackNote = itemSpecificNote))
+                }
+            }
         }
 
         return packGroupId
@@ -457,7 +534,15 @@ class HimatRepository(private val database: AppDatabase) {
     suspend fun deletePackGroup(packGroup: PackGroupEntity) {
         val entryIds = packGroup.linkedEntryIds.split(",").mapNotNull { it.trim().toLongOrNull() }
         entryIds.forEach { id ->
-            purchaseEntryDao.updateMixedPackInfo(id, null, null)
+            val entry = purchaseEntryDao.getEntryById(id)
+            val noteToKeep = if (entry?.mixedPackNote?.startsWith("Packed with", ignoreCase = true) == true || entry?.mixedPackNote?.startsWith("Mixed", ignoreCase = true) == true) null else entry?.mixedPackNote
+            purchaseEntryDao.updateMixedPackInfo(id, null, noteToKeep)
+            if (entry != null && entry.orderNo.isNotBlank()) {
+                val existingTxn = transactionDao.getTransactionByOrderNo(entry.orderNo)
+                if (existingTxn != null) {
+                    transactionDao.updateTransaction(existingTxn.copy(mixedPackNote = noteToKeep))
+                }
+            }
         }
         packGroupDao.deletePackGroup(packGroup)
     }

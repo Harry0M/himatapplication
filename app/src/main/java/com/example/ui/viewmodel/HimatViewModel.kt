@@ -1776,7 +1776,8 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         paymentStatus: String = "Pending",
         paymentMode: String = "Cash",
         paidAmount: Double = 0.0,
-        paymentRemarks: String = ""
+        paymentRemarks: String = "",
+        mixedPackNote: String? = null
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             val seqOrderNo = orderNo ?: repository.getNextOrderNumber()
@@ -1808,7 +1809,8 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 paymentStatus = paymentStatus,
                 paymentMode = paymentMode,
                 paidAmount = if (paymentStatus.equals("Received", ignoreCase = true) && paidAmount == 0.0) grandTotal else paidAmount,
-                paymentRemarks = paymentRemarks
+                paymentRemarks = paymentRemarks,
+                mixedPackNote = mixedPackNote
             )
             val entryId = repository.savePurchaseEntry(entry)
             val savedEntry = entry.copy(id = entryId)
@@ -1839,6 +1841,7 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 paymentMode = paymentMode,
                 paidAmount = savedEntry.paidAmount,
                 paymentRemarks = paymentRemarks,
+                mixedPackNote = mixedPackNote,
                 transactionDate = visit?.date ?: SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
             )
             val txnId = repository.saveTransaction(txn)
@@ -1860,6 +1863,7 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         paymentMode: String,
         paidAmount: Double,
         paymentRemarks: String,
+        mixedPackNote: String? = entry.mixedPackNote,
         onSuccess: (() -> Unit)? = null
     ) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -1873,8 +1877,9 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 else -> paidAmount
             }
 
-            val resolvedCaseCount = newCaseCount ?: if (newCaseSize > 0 && entry.caseCount == 0 && entry.loosePieces == 0) newPieces / newCaseSize else entry.caseCount
-            val resolvedLoosePieces = newLoosePieces ?: if (newCaseSize > 0 && entry.caseCount == 0 && entry.loosePieces == 0) newPieces % newCaseSize else entry.loosePieces
+            // Respect user's explicit caseCount and loosePieces directly
+            val resolvedCaseCount = newCaseCount ?: entry.caseCount
+            val resolvedLoosePieces = newLoosePieces ?: entry.loosePieces
 
             val toUpdate = entry.copy(
                 pieces = newPieces,
@@ -1888,7 +1893,8 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 paymentStatus = paymentStatus,
                 paymentMode = paymentMode,
                 paidAmount = resolvedPaidAmount,
-                paymentRemarks = paymentRemarks
+                paymentRemarks = paymentRemarks,
+                mixedPackNote = mixedPackNote
             )
 
             val updated = repository.updatePurchaseEntryDetails(toUpdate)
@@ -1992,14 +1998,18 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
     fun createMixedPack(
         visitId: Long,
         selectedEntries: List<PurchaseEntryEntity>,
-        targetCaseSize: Int,
+        targetCaseSize: Int = 24,
+        caseCount: Int = 1,
+        customNote: String? = null,
         onSuccess: () -> Unit
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             val packGroupId = repository.createMixedPackGroup(
                 visitId = visitId,
                 selectedEntries = selectedEntries,
-                targetCaseSize = targetCaseSize
+                targetCaseSize = targetCaseSize,
+                caseCount = caseCount,
+                customNote = customNote
             )
             // Sync all updated entries to RTDB
             selectedEntries.forEach { entry ->

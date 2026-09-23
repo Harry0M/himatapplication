@@ -118,6 +118,7 @@ fun AddStopScreen(
     var paymentStatus by remember { mutableStateOf("Pending") }
     var paymentMode by remember { mutableStateOf("Cash") }
     var paymentRemarks by remember { mutableStateOf("") }
+    var mixedPackNote by remember { mutableStateOf("") }
 
     var showSupplierSheet by remember { mutableStateOf(false) }
 
@@ -188,7 +189,8 @@ fun AddStopScreen(
                                         paymentStatus = paymentStatus,
                                         paymentMode = paymentMode,
                                         paidAmount = if (paymentStatus == "Received") (pieces * rate) + ((pieces * rate * (gstRateText.toDoubleOrNull() ?: 5.0)) / 100.0) else 0.0,
-                                        paymentRemarks = paymentRemarks
+                                        paymentRemarks = paymentRemarks,
+                                        mixedPackNote = mixedPackNote.trim().takeIf { it.isNotBlank() }
                                     )
                                     onSaveSuccess()
                                 }
@@ -652,6 +654,22 @@ fun AddStopScreen(
                                 }
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = mixedPackNote,
+                            onValueChange = { mixedPackNote = it },
+                            label = { Text("Packing Remarks / Packed With (Optional)", fontSize = 11.sp) },
+                            placeholder = { Text("e.g. Packed with Shree Ambica 5 pcs", fontSize = 11.5.sp) },
+                            textStyle = TextStyle(fontSize = 12.sp),
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = NavyPrimary,
+                                unfocusedBorderColor = Color(0xFFE2E8F0)
+                            )
+                        )
                     }
                 }
 
