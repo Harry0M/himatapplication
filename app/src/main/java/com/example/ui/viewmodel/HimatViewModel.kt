@@ -1906,21 +1906,21 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 rtdbService.syncTransaction(txn)
             }
 
-            if (oldGroupId != null && oldGroupId != 0L && resolvedLoosePieces == 0) {
+            if (oldGroupId != null && oldGroupId != 0L) {
                 val group = repository.getPackGroupById(oldGroupId)
                 if (group == null) {
                     rtdbService.deletePackGroup(oldGroupId)
+                    // Refresh and sync partner entries
+                    val visitEntries = repository.getEntriesByVisit(entry.visitId).first()
+                    visitEntries.forEach { ve ->
+                        rtdbService.syncPurchaseEntry(ve)
+                        val vTxn = repository.getTransactionByOrderNo(ve.orderNo)
+                        if (vTxn != null) {
+                            rtdbService.syncTransaction(vTxn)
+                        }
+                    }
                 } else {
                     rtdbService.syncPackGroup(group)
-                }
-                // Refresh and sync partner entries
-                val visitEntries = repository.getEntriesByVisit(entry.visitId).first()
-                visitEntries.forEach { ve ->
-                    rtdbService.syncPurchaseEntry(ve)
-                    val vTxn = repository.getTransactionByOrderNo(ve.orderNo)
-                    if (vTxn != null) {
-                        rtdbService.syncTransaction(vTxn)
-                    }
                 }
             }
 
@@ -2058,6 +2058,10 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 val updatedEntry = repository.getEntryById(id)
                 if (updatedEntry != null) {
                     rtdbService.syncPurchaseEntry(updatedEntry)
+                    val txn = repository.getTransactionByOrderNo(updatedEntry.orderNo)
+                    if (txn != null) {
+                        rtdbService.syncTransaction(txn)
+                    }
                 }
             }
             launch(Dispatchers.Main) {

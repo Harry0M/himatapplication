@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.Undo
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
@@ -630,8 +631,24 @@ fun VisitDetailScreen(
     }
 
     editingEntry?.let { entry ->
+        val associatedGroup = packGroups.find { group ->
+            group.id == entry.packGroupId ||
+            group.linkedEntryIds.split(",").mapNotNull { it.trim().toLongOrNull() }.contains(entry.id)
+        }
+        val partnerEntries = if (associatedGroup != null) {
+            val partnerIds = associatedGroup.linkedEntryIds.split(",").mapNotNull { it.trim().toLongOrNull() }
+            entries.filter { it.id in partnerIds && it.id != entry.id }
+        } else emptyList()
+
         EditStopBottomSheet(
             entry = entry,
+            packGroup = associatedGroup,
+            partnerEntries = partnerEntries,
+            onUnpackGroup = { group ->
+                viewModel.deletePackGroup(group) {
+                    editingEntry = editingEntry?.copy(packGroupId = null, mixedPackNote = null)
+                }
+            },
             onDismiss = { editingEntry = null },
             onSave = { updatedPieces, updatedRate, updatedCaseSize, updatedCases, updatedLoose, status, transp, expDate, payStatus, payMode, paidAmt, remarks, mixedNote ->
                 viewModel.updatePurchaseEntry(
@@ -1551,6 +1568,9 @@ fun ManagePackGroupsBottomSheet(
 @Composable
 fun EditStopBottomSheet(
     entry: PurchaseEntryEntity,
+    packGroup: PackGroupEntity? = null,
+    partnerEntries: List<PurchaseEntryEntity> = emptyList(),
+    onUnpackGroup: ((PackGroupEntity) -> Unit)? = null,
     onDismiss: () -> Unit,
     onSave: (
         pieces: Int,
@@ -1585,6 +1605,7 @@ fun EditStopBottomSheet(
     }
     var paymentRemarks by remember(entry) { mutableStateOf(entry.paymentRemarks) }
     var mixedPackNoteText by remember(entry) { mutableStateOf(entry.mixedPackNote ?: "") }
+    var showRepackConfirmDialog by remember { mutableStateOf(false) }
 
     // Live calculations
     val pieces = piecesText.toIntOrNull() ?: 0
@@ -1598,7 +1619,33 @@ fun EditStopBottomSheet(
     val gstAmount = (baseAmount * entry.gstRate) / 100.0
     val grandTotal = baseAmount + gstAmount
 
+    val isPacked = packGroup != null || (entry.packGroupId != null && entry.packGroupId != 0L) || !entry.mixedPackNote.isNullOrBlank()
+
+    val isPackagingOrQtyChanged = pieces != entry.pieces ||
+        caseCount != entry.caseCount ||
+        loosePieces != entry.loosePieces ||
+        caseSize != entry.caseSize
+
     val isValid = pieces > 0 && rate > 0
+
+    val performSave = {
+        val parsedPaidAmount = paidAmountText.toDoubleOrNull() ?: 0.0
+        onSave(
+            pieces,
+            rate,
+            caseSize,
+            caseCount,
+            loosePieces,
+            deliveryStatus,
+            transporter,
+            expectedDeliveryDate,
+            paymentStatus,
+            paymentMode,
+            parsedPaidAmount,
+            paymentRemarks,
+            mixedPackNoteText.trim().takeIf { it.isNotBlank() }
+        )
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1638,30 +1685,83 @@ fun EditStopBottomSheet(
                 }
             }
 
-            if (entry.packGroupId != null) {
-                Spacer(modifier = Modifier.height(8.dp))
+            if (isPacked) {
+                Spacer(modifier = Modifier.height(10.dp))
                 Surface(
-                    color = Color(0xFFF0FDF4),
-                    shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                    color = Color(0xFFFEF3C7),
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.5.dp, Color(0xFFF59E0B)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
-                        modifier = Modifier.padding(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp)
                     ) {
-                        Icon(
-                            Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            tint = Color(0xFF15803D),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = Color(0xFFD97706),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Notice: Loose Pcs Already Packed (${entry.loosePieces} pcs)",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF92400E)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        val partnerDesc = if (partnerEntries.isNotEmpty()) {
+                            "Packed together with: " + partnerEntries.joinToString(", ") { "${it.supplierName} (${it.itemCode} - ${it.loosePieces} pcs)" }
+                        } else if (!entry.mixedPackNote.isNullOrBlank()) {
+                            entry.mixedPackNote!!
+                        } else {
+                            "Mixed Carton"
+                        }
                         Text(
-                            text = "Currently in Mixed Pack (${entry.mixedPackNote ?: "Grouped"}).",
+                            text = partnerDesc,
                             fontSize = 11.5.sp,
-                            color = Color(0xFF15803D)
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF78350F)
                         )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "• Do NOT change loose pcs to 0 here — they are already tracked as packed!\n• If you edit pieces or packaging, this mixed carton will be unpacked so you can cleanly repack from the Trip screen.",
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp,
+                            color = Color(0xFF92400E)
+                        )
+                        if (packGroup != null && onUnpackGroup != null) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    onUnpackGroup(packGroup)
+                                },
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB45309)),
+                                border = BorderStroke(1.dp, Color(0xFFD97706)),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.height(34.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Undo,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = Color(0xFFB45309)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Unpack This Group to Repack",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1754,6 +1854,28 @@ fun EditStopBottomSheet(
                         unfocusedBorderColor = Color(0xFFE2E8F0)
                     )
                 )
+            }
+
+            if (isPacked) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(start = 2.dp)
+                ) {
+                    Icon(
+                        Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = Color(0xFF15803D),
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "${entry.loosePieces} loose pcs packed in mixed case (leave as-is unless order changed)",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF15803D)
+                    )
+                }
             }
 
             // Calculation Strip
@@ -2025,22 +2147,11 @@ fun EditStopBottomSheet(
 
                 Button(
                     onClick = {
-                        val parsedPaidAmount = paidAmountText.toDoubleOrNull() ?: 0.0
-                        onSave(
-                            pieces,
-                            rate,
-                            caseSize,
-                            caseCount,
-                            loosePieces,
-                            deliveryStatus,
-                            transporter,
-                            expectedDeliveryDate,
-                            paymentStatus,
-                            paymentMode,
-                            parsedPaidAmount,
-                            paymentRemarks,
-                            mixedPackNoteText.trim().takeIf { it.isNotBlank() }
-                        )
+                        if (isPacked && isPackagingOrQtyChanged) {
+                            showRepackConfirmDialog = true
+                        } else {
+                            performSave()
+                        }
                     },
                     enabled = isValid,
                     colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
@@ -2058,6 +2169,55 @@ fun EditStopBottomSheet(
                 }
             }
         }
+    }
+
+    if (showRepackConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showRepackConfirmDialog = false },
+            icon = {
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = Color(0xFFD97706),
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "Repack Required",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp,
+                    color = NavyPrimary
+                )
+            },
+            text = {
+                Text(
+                    text = "These ${entry.loosePieces} loose pieces were auto-packed into a mixed case.\n\nBecause you changed the quantity or packaging, this mixed case will be unpacked.\n\nAfter saving, please use 'Pack Loose Pcs' on the Trip screen to repack them with the updated count.",
+                    fontSize = 13.5.sp,
+                    lineHeight = 19.sp,
+                    color = TextPrimary
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showRepackConfirmDialog = false
+                        performSave()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Unpack & Save", color = GoldAccent, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRepackConfirmDialog = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(16.dp)
+        )
     }
 }
 
