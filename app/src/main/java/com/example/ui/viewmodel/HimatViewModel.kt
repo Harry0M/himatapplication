@@ -1897,12 +1897,31 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 mixedPackNote = mixedPackNote
             )
 
+            val oldGroupId = entry.packGroupId
             val updated = repository.updatePurchaseEntryDetails(toUpdate)
             rtdbService.syncPurchaseEntry(updated)
 
             val txn = repository.getTransactionByOrderNo(updated.orderNo)
             if (txn != null) {
                 rtdbService.syncTransaction(txn)
+            }
+
+            if (oldGroupId != null && oldGroupId != 0L && resolvedLoosePieces == 0) {
+                val group = repository.getPackGroupById(oldGroupId)
+                if (group == null) {
+                    rtdbService.deletePackGroup(oldGroupId)
+                } else {
+                    rtdbService.syncPackGroup(group)
+                }
+                // Refresh and sync partner entries
+                val visitEntries = repository.getEntriesByVisit(entry.visitId).first()
+                visitEntries.forEach { ve ->
+                    rtdbService.syncPurchaseEntry(ve)
+                    val vTxn = repository.getTransactionByOrderNo(ve.orderNo)
+                    if (vTxn != null) {
+                        rtdbService.syncTransaction(vTxn)
+                    }
+                }
             }
 
             launch(Dispatchers.Main) {

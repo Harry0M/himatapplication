@@ -340,60 +340,72 @@ class HimatRepository(private val database: AppDatabase) {
         var finalPackGroupId = entry.packGroupId
         var finalMixedPackNote = entry.mixedPackNote
 
-        if (loosePieces == 0 && entry.packGroupId != null && entry.packGroupId != 0L) {
-            val oldGroupId = entry.packGroupId!!
+        if (loosePieces == 0) {
             finalPackGroupId = null
             // Clear auto-generated packing note if it was an auto note
             if (finalMixedPackNote != null && (finalMixedPackNote.startsWith("Packed with", ignoreCase = true) || finalMixedPackNote.startsWith("Mixed", ignoreCase = true))) {
                 finalMixedPackNote = null
             }
-            // Remove entry from the pack group
-            val group = packGroupDao.getPackGroupById(oldGroupId)
-            if (group != null) {
-                val remainingIds = group.linkedEntryIds.split(",")
-                    .mapNotNull { it.trim().toLongOrNull() }
-                    .filter { it != entry.id }
 
-                if (remainingIds.size <= 1) {
-                    // Dissolve group because a mixed pack requires at least 2 entries
-                    if (remainingIds.size == 1) {
-                        val singleEntryId = remainingIds.first()
-                        val singleEntry = purchaseEntryDao.getEntryById(singleEntryId)
-                        if (singleEntry != null && (singleEntry.mixedPackNote?.startsWith("Packed with", ignoreCase = true) == true || singleEntry.mixedPackNote?.startsWith("Mixed", ignoreCase = true) == true)) {
-                            purchaseEntryDao.updateMixedPackInfo(singleEntryId, null, null)
-                        } else {
-                            purchaseEntryDao.updateMixedPackInfo(singleEntryId, null, singleEntry?.mixedPackNote)
+            if (entry.packGroupId != null && entry.packGroupId != 0L) {
+                val oldGroupId = entry.packGroupId!!
+                // Remove entry from the pack group
+                val group = packGroupDao.getPackGroupById(oldGroupId)
+                if (group != null) {
+                    val remainingIds = group.linkedEntryIds.split(",")
+                        .mapNotNull { it.trim().toLongOrNull() }
+                        .filter { it != entry.id }
+
+                    if (remainingIds.size <= 1) {
+                        // Dissolve group because a mixed pack requires at least 2 entries
+                        if (remainingIds.size == 1) {
+                            val singleEntryId = remainingIds.first()
+                            val singleEntry = purchaseEntryDao.getEntryById(singleEntryId)
+                            val noteToKeep = if (singleEntry != null && (singleEntry.mixedPackNote?.startsWith("Packed with", ignoreCase = true) == true || singleEntry.mixedPackNote?.startsWith("Mixed", ignoreCase = true) == true)) null else singleEntry?.mixedPackNote
+                            purchaseEntryDao.updateMixedPackInfo(singleEntryId, null, noteToKeep)
+                            if (singleEntry != null && singleEntry.orderNo.isNotBlank()) {
+                                val existingTxn = transactionDao.getTransactionByOrderNo(singleEntry.orderNo)
+                                if (existingTxn != null) {
+                                    transactionDao.updateTransaction(existingTxn.copy(mixedPackNote = noteToKeep))
+                                }
+                            }
                         }
-                    }
-                    packGroupDao.deletePackGroup(group)
-                } else {
-                    // Update remaining entries in the group
-                    val updatedIdsStr = remainingIds.joinToString(",")
-                    val remainingEntries = remainingIds.mapNotNull { purchaseEntryDao.getEntryById(it) }
-                    val newCombinedPieces = remainingEntries.sumOf { it.loosePieces }
-                    val newCases = if (caseSize > 0) maxOf(1, newCombinedPieces / caseSize) else 1
-                    val newRemainingLoose = if (caseSize > 0) newCombinedPieces % caseSize else 0
+                        packGroupDao.deletePackGroup(group)
+                    } else {
+                        // Update remaining entries in the group
+                        val updatedIdsStr = remainingIds.joinToString(",")
+                        val remainingEntries = remainingIds.mapNotNull { purchaseEntryDao.getEntryById(it) }
+                        val newCombinedPieces = remainingEntries.sumOf { it.loosePieces }
+                        val newCases = if (caseSize > 0) maxOf(1, newCombinedPieces / caseSize) else 1
+                        val newRemainingLoose = if (caseSize > 0) newCombinedPieces % caseSize else 0
 
-                    packGroupDao.insertPackGroup(
-                        group.copy(
-                            linkedEntryIds = updatedIdsStr,
-                            combinedPieces = newCombinedPieces,
-                            resultingCases = newCases,
-                            remainingLoose = newRemainingLoose
+                        packGroupDao.insertPackGroup(
+                            group.copy(
+                                linkedEntryIds = updatedIdsStr,
+                                combinedPieces = newCombinedPieces,
+                                resultingCases = newCases,
+                                remainingLoose = newRemainingLoose
+                            )
                         )
-                    )
 
-                    // Re-generate reciprocal notes for the remaining entries
-                    remainingEntries.forEach { remEntry ->
-                        val others = remainingEntries.filter { it.id != remEntry.id }
-                        val othersDesc = if (others.size == 1) {
-                            val o = others.first()
-                            "${o.supplierName} (${o.itemCode} - ${o.loosePieces} pcs)"
-                        } else {
-                            others.joinToString(" & ") { "${it.supplierName} (${it.itemCode})" }
+                        // Re-generate reciprocal notes for the remaining entries
+                        remainingEntries.forEach { remEntry ->
+                            val others = remainingEntries.filter { it.id != remEntry.id }
+                            val othersDesc = if (others.size == 1) {
+                                val o = others.first()
+                                "${o.supplierName} (${o.itemCode} - ${o.loosePieces} pcs)"
+                            } else {
+                                others.joinToString(" & ") { "${it.supplierName} (${it.itemCode})" }
+                            }
+                            val note = "Packed with $othersDesc"
+                            purchaseEntryDao.updateMixedPackInfoWithOrderNo(remEntry.id, remEntry.orderNo, group.id, note)
+                            if (remEntry.orderNo.isNotBlank()) {
+                                val existingTxn = transactionDao.getTransactionByOrderNo(remEntry.orderNo)
+                                if (existingTxn != null) {
+                                    transactionDao.updateTransaction(existingTxn.copy(mixedPackNote = note))
+                                }
+                            }
                         }
-                        val note = "Packed with $othersDesc"
-                        purchaseEntryDao.updateMixedPackInfoWithOrderNo(remEntry.id, remEntry.orderNo, group.id, note)
                     }
                 }
             }

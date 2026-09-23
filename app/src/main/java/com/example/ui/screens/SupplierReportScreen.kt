@@ -486,13 +486,17 @@ fun SupplierReportScreen(
                                     )
 
                                     // Packing
-                                    val pack = if (item.loosePieces > 0) "${item.caseCount}c+${item.loosePieces}L" else "${item.caseCount}c"
+                                    val isPacked = (item.packGroupId != null && item.packGroupId != 0L) || !item.mixedPackNote.isNullOrBlank()
+                                    val pack = if (item.loosePieces > 0) {
+                                        if (isPacked) "${item.caseCount}c+${item.loosePieces}L (Mixed)"
+                                        else "${item.caseCount}c+${item.loosePieces}L"
+                                    } else "${item.caseCount}c"
                                     Text(
                                         text = pack,
-                                        fontSize = 10.sp,
+                                        fontSize = 9.5.sp,
                                         fontWeight = FontWeight.Medium,
                                         textAlign = TextAlign.Center,
-                                        color = if (item.loosePieces > 0) Color(0xFFD97706) else Color(0xFF15803D),
+                                        color = if (item.loosePieces > 0) (if (isPacked) Color(0xFF2563EB) else Color(0xFFD97706)) else Color(0xFF15803D),
                                         modifier = Modifier.weight(1.0f)
                                     )
 

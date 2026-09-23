@@ -82,6 +82,15 @@ fun CustomerReportScreen(
     val totalCases = entries.sumOf { it.caseCount }
     val totalLoose = entries.sumOf { it.loosePieces }
 
+    val packedEntryIds = packGroups.flatMap { group ->
+        group.linkedEntryIds.split(",").mapNotNull { it.trim().toLongOrNull() }
+    }.toSet()
+    val mixedCases = packGroups.sumOf { it.resultingCases }
+    val totalAllCases = totalCases + mixedCases
+    val remainingLoose = entries.filter {
+        it.id !in packedEntryIds && (it.packGroupId == null || it.packGroupId == 0L) && it.mixedPackNote.isNullOrBlank()
+    }.sumOf { it.loosePieces } + packGroups.sumOf { it.remainingLoose }
+
     Scaffold(
         bottomBar = {
             Surface(
@@ -357,8 +366,12 @@ fun CustomerReportScreen(
                                         Text(item.itemCode, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, modifier = Modifier.weight(1f))
                                         Text("${item.pieces}", fontSize = 11.sp, modifier = Modifier.width(35.dp))
                                         Text("₹${item.rate.toInt()}", fontSize = 11.sp, modifier = Modifier.width(45.dp))
-                                        val pack = if (item.loosePieces > 0) "${item.caseCount}c+${item.loosePieces}L" else "${item.caseCount}c"
-                                        Text(pack, fontSize = 10.sp, color = if (item.loosePieces > 0) Color(0xFFD97706) else Color(0xFF15803D), modifier = Modifier.width(55.dp))
+                                        val isPacked = (item.packGroupId != null && item.packGroupId != 0L) || (item.id in packedEntryIds) || !item.mixedPackNote.isNullOrBlank()
+                                        val pack = if (item.loosePieces > 0) {
+                                            if (isPacked) "${item.caseCount}c+${item.loosePieces}L (Mixed)"
+                                            else "${item.caseCount}c+${item.loosePieces}L"
+                                        } else "${item.caseCount}c"
+                                        Text(pack, fontSize = 9.5.sp, fontWeight = FontWeight.Medium, color = if (item.loosePieces > 0) (if (isPacked) Color(0xFF2563EB) else Color(0xFFD97706)) else Color(0xFF15803D), modifier = Modifier.width(60.dp))
                                         Text(PdfGenerator.formatInr(item.totalAmount), fontWeight = FontWeight.SemiBold, fontSize = 11.sp, modifier = Modifier.width(65.dp))
                                     }
 
@@ -407,7 +420,12 @@ fun CustomerReportScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text("Packing Summary:", fontSize = 12.sp, color = TextSecondary)
-                                    Text("$totalCases Cases + $totalLoose Loose Pcs", fontSize = 11.5.sp, color = NavyPrimary, fontWeight = FontWeight.SemiBold)
+                                    val summaryText = if (mixedCases > 0) {
+                                        "$totalAllCases Cases ($totalCases Full + $mixedCases Mixed) • ${if (remainingLoose > 0) "$remainingLoose Loose Pcs" else "0 Loose (All Packed ✓)"}"
+                                    } else {
+                                        "$totalCases Cases + $totalLoose Loose Pcs"
+                                    }
+                                    Text(summaryText, fontSize = 11.5.sp, color = NavyPrimary, fontWeight = FontWeight.SemiBold)
                                 }
 
                                 Divider(modifier = Modifier.padding(vertical = 8.dp))
