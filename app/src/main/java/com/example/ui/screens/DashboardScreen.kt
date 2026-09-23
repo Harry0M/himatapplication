@@ -118,6 +118,7 @@ fun DashboardScreen(
     val rawEntries by viewModel.allEntries.collectAsStateWithLifecycle()
     val customers by viewModel.visibleCustomers.collectAsStateWithLifecycle()
     val suppliers by viewModel.visibleSuppliers.collectAsStateWithLifecycle()
+    val allPackGroups by viewModel.allPackGroups.collectAsStateWithLifecycle()
 
     // 1. Role-Based Visibility (Admin sees all; Employee sees strictly only their own)
     val isAdmin = remember(role) { role.equals("Admin", ignoreCase = true) }
@@ -198,8 +199,33 @@ fun DashboardScreen(
     // Dynamic metrics
     val totalPieces = remember(filteredEntries) { filteredEntries.sumOf { it.pieces } }
     val totalCases = remember(filteredEntries) { filteredEntries.sumOf { it.caseCount } }
-    val looseEntries = remember(filteredEntries) { filteredEntries.filter { it.loosePieces > 0 } }
-    val totalLoosePcs = remember(looseEntries) { looseEntries.sumOf { it.loosePieces } }
+    // Accurate Loose Pack Status: check if entries are already fit into pack groups
+    val packedEntryIds = remember(allPackGroups) {
+        allPackGroups.flatMap { group ->
+            group.linkedEntryIds.split(",").mapNotNull { it.trim().toLongOrNull() }
+        }.toSet()
+    }
+
+    val isEntryPacked: (PurchaseEntryEntity) -> Boolean = remember(packedEntryIds) {
+        { entry ->
+            (entry.packGroupId != null && entry.packGroupId != 0L) ||
+            (entry.id in packedEntryIds) ||
+            !entry.mixedPackNote.isNullOrBlank()
+        }
+    }
+
+    val unfixedLooseEntries = remember(filteredEntries, isEntryPacked) {
+        filteredEntries.filter { it.loosePieces > 0 && !isEntryPacked(it) }
+    }
+
+    val filteredVisitIds = remember(filteredVisits) { filteredVisits.map { it.id }.toSet() }
+    val relevantPackGroups = remember(allPackGroups, filteredVisitIds) {
+        allPackGroups.filter { it.visitId in filteredVisitIds }
+    }
+
+    val totalUnfixedLoose = remember(unfixedLooseEntries, relevantPackGroups) {
+        unfixedLooseEntries.sumOf { it.loosePieces } + relevantPackGroups.sumOf { it.remainingLoose }
+    }
     val grandTotalAmount = remember(filteredEntries) { filteredEntries.sumOf { it.grandTotalWithGst } }
     val activeVisits = remember(filteredVisits) { filteredVisits.filter { it.status.equals("Active", ignoreCase = true) } }
 
@@ -442,7 +468,7 @@ fun DashboardScreen(
                         DashboardMetricCard(
                             title = "Procured Volume",
                             value = "${String.format("%,d", totalPieces)} Pcs",
-                            subtitle = "$totalCases Cases • $totalLoosePcs Loose",
+                            subtitle = if (totalUnfixedLoose > 0) "$totalCases Cases • $totalUnfixedLoose Loose" else "$totalCases Cases Packed",
                             accentColor = Color(0xFF059669),
                             icon = Icons.Default.Inventory,
                             modifier = Modifier.weight(1f),
@@ -488,12 +514,12 @@ fun DashboardScreen(
                 }
             }
 
-            // 4. Loose Pieces Packing Alert Banner (if applicable)
-            if (looseEntries.isNotEmpty()) {
+            // 4. Loose Pieces Packing Alert Banner (ONLY if there are genuine UNFIXED loose pieces)
+            if (totalUnfixedLoose > 0 && unfixedLooseEntries.isNotEmpty()) {
                 item {
                     IncompleteCaseBanner(
-                        looseCount = totalLoosePcs,
-                        ordersCount = looseEntries.size,
+                        looseCount = totalUnfixedLoose,
+                        ordersCount = unfixedLooseEntries.size,
                         onMixedPackClick = {
                             val activeVisit = baseVisits.firstOrNull { it.status == "Active" } ?: baseVisits.firstOrNull()
                             if (activeVisit != null) {
