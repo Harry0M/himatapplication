@@ -706,7 +706,10 @@ fun DashboardScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                Row(
+                                    modifier = Modifier.weight(1f, fill = false),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
                                     Icon(
                                         imageVector = Icons.Default.Assessment,
                                         contentDescription = null,
@@ -715,17 +718,28 @@ fun DashboardScreen(
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = "Retailer Procurement Aggregates",
+                                        text = "Retailer Procurement",
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 14.5.sp,
-                                        color = NavyPrimary
+                                        fontSize = 14.sp,
+                                        color = NavyPrimary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
-                                Text(
-                                    text = "${retailerAggregates.size} Retailers",
-                                    fontSize = 11.sp,
-                                    color = TextSecondary
-                                )
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color(0xFFF1F5F9),
+                                    modifier = Modifier.padding(start = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "${retailerAggregates.size} ${if (retailerAggregates.size == 1) "Retailer" else "Retailers"}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = TextSecondary,
+                                        maxLines = 1,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
+                                }
                             }
 
                             Spacer(modifier = Modifier.height(8.dp))
@@ -1184,7 +1198,10 @@ fun DashboardPieChart(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.weight(1f, fill = false),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Icon(
                         imageVector = Icons.Default.PieChart,
                         contentDescription = null,
@@ -1193,30 +1210,40 @@ fun DashboardPieChart(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = if (pieMode == "source") "Source Split (Mfr vs Whls)" else "Dispatch Status Pipeline",
+                        text = if (pieMode == "source") "Source Split" else "Dispatch Status",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 14.5.sp,
-                        color = NavyPrimary
+                        fontSize = 14.sp,
+                        color = NavyPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
+
+                Spacer(modifier = Modifier.width(8.dp))
 
                 Surface(
                     shape = CircleShape,
                     color = Color(0xFFF1F5F9),
-                    border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    modifier = Modifier.height(28.dp)
                 ) {
-                    Row(modifier = Modifier.padding(2.dp)) {
+                    Row(
+                        modifier = Modifier.padding(2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Box(
                             modifier = Modifier
                                 .clip(CircleShape)
                                 .background(if (pieMode == "source") NavyPrimary else Color.Transparent)
                                 .clickable { pieMode = "source" }
-                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                                .padding(horizontal = 7.dp, vertical = 2.dp),
+                            contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = "Source",
-                                fontSize = 10.5.sp,
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
+                                maxLines = 1,
                                 color = if (pieMode == "source") Color.White else TextSecondary
                             )
                         }
@@ -1225,12 +1252,14 @@ fun DashboardPieChart(
                                 .clip(CircleShape)
                                 .background(if (pieMode == "pipeline") NavyPrimary else Color.Transparent)
                                 .clickable { pieMode = "pipeline" }
-                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                                .padding(horizontal = 7.dp, vertical = 2.dp),
+                            contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = "Dispatch",
-                                fontSize = 10.5.sp,
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
+                                maxLines = 1,
                                 color = if (pieMode == "pipeline") Color.White else TextSecondary
                             )
                         }
