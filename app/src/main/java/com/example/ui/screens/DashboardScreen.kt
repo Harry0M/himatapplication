@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -23,12 +24,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.ChevronRight
@@ -37,15 +37,14 @@ import androidx.compose.material.icons.filled.CurrencyRupee
 import androidx.compose.material.icons.filled.Inventory
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.People
-import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PieChart
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Store
-import androidx.compose.material.icons.filled.TrendingUp
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -58,10 +57,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -71,10 +74,12 @@ import com.example.data.local.entity.PurchaseEntryEntity
 import com.example.data.local.entity.VisitEntity
 import com.example.ui.components.IncompleteCaseBanner
 import com.example.ui.components.StatusBadge
+import com.example.ui.components.SupplierTypeBadge
 import com.example.ui.dialogs.CustomDateRangePickerDialog
+import com.example.ui.theme.ManufacturerBadge
 import com.example.ui.theme.NavyPrimary
-import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import com.example.ui.theme.WholesalerBadge
 import com.example.ui.viewmodel.AppScreen
 import com.example.ui.viewmodel.HimatViewModel
 import com.example.util.PdfGenerator
@@ -91,6 +96,14 @@ data class DashboardBarItem(
     val orderCount: Int
 )
 
+data class PieChartSlice(
+    val name: String,
+    val value: Float,
+    val formattedValue: String,
+    val color: Color,
+    val percentage: Float
+)
+
 @Composable
 fun DashboardScreen(
     viewModel: HimatViewModel,
@@ -99,19 +112,39 @@ fun DashboardScreen(
     onOpenVisit: (VisitEntity) -> Unit,
     onBack: () -> Unit = { onNavigate(AppScreen.DASHBOARD) }
 ) {
-    val visits by viewModel.visibleVisits.collectAsStateWithLifecycle()
-    val entries by viewModel.visibleEntries.collectAsStateWithLifecycle()
+    val role by viewModel.currentRole.collectAsStateWithLifecycle()
+    val currentEmployee by viewModel.currentEmployee.collectAsStateWithLifecycle()
+    val rawVisits by viewModel.allVisits.collectAsStateWithLifecycle()
+    val rawEntries by viewModel.allEntries.collectAsStateWithLifecycle()
     val customers by viewModel.visibleCustomers.collectAsStateWithLifecycle()
     val suppliers by viewModel.visibleSuppliers.collectAsStateWithLifecycle()
 
-    // 1. Time Filter State
+    // 1. Role-Based Visibility (Admin sees all; Employee sees strictly only their own)
+    val isAdmin = remember(role) { role.equals("Admin", ignoreCase = true) }
+
+    val baseVisits = remember(rawVisits, isAdmin, currentEmployee) {
+        rawVisits.filter { !it.isDeleted }.filter { visit ->
+            if (isAdmin || currentEmployee == null) true
+            else visit.employeeId == currentEmployee?.id || visit.employeeName.equals(currentEmployee?.name, ignoreCase = true)
+        }
+    }
+
+    val allowedVisitIds = remember(baseVisits) { baseVisits.map { it.id }.toSet() }
+
+    val baseEntries = remember(rawEntries, allowedVisitIds, isAdmin) {
+        rawEntries.filter { !it.isDeleted }.filter { entry ->
+            if (isAdmin) true
+            else entry.visitId in allowedVisitIds
+        }
+    }
+
+    // 2. Time Filter State
     var selectedPeriod by remember { mutableStateOf("This Month") }
     var customStartDateMillis by remember { mutableStateOf<Long?>(null) }
     var customEndDateMillis by remember { mutableStateOf<Long?>(null) }
     var customDateLabel by remember { mutableStateOf<String?>(null) }
     var showCustomDatePickerDialog by remember { mutableStateOf(false) }
 
-    // Precalculate boundary timestamps
     val (todayStart, yesterdayStart, weekStart, monthStart) = remember {
         val todayCal = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 0)
@@ -132,7 +165,6 @@ fun DashboardScreen(
         listOf(tStart, yStart, wStart, mStart)
     }
 
-    // Helper predicate to check if time falls into selected period
     fun isInPeriod(time: Long): Boolean {
         return when (selectedPeriod) {
             "Today" -> time >= todayStart
@@ -148,22 +180,22 @@ fun DashboardScreen(
         }
     }
 
-    // Fast order counts for the filter chips
-    val todayCount = remember(entries, todayStart) { entries.count { !it.isDeleted && it.createdAt >= todayStart } }
-    val yesterdayCount = remember(entries, yesterdayStart, todayStart) { entries.count { !it.isDeleted && it.createdAt in yesterdayStart until todayStart } }
-    val weekCount = remember(entries, weekStart) { entries.count { !it.isDeleted && it.createdAt >= weekStart } }
-    val monthCount = remember(entries, monthStart) { entries.count { !it.isDeleted && it.createdAt >= monthStart } }
-    val allCount = remember(entries) { entries.count { !it.isDeleted } }
+    // Order counts for filter chips
+    val todayCount = remember(baseEntries, todayStart) { baseEntries.count { it.createdAt >= todayStart } }
+    val yesterdayCount = remember(baseEntries, yesterdayStart, todayStart) { baseEntries.count { it.createdAt in yesterdayStart until todayStart } }
+    val weekCount = remember(baseEntries, weekStart) { baseEntries.count { it.createdAt >= weekStart } }
+    val monthCount = remember(baseEntries, monthStart) { baseEntries.count { it.createdAt >= monthStart } }
+    val allCount = remember(baseEntries) { baseEntries.size }
 
-    // Filtered data memoized for large datasets
-    val filteredEntries = remember(entries, selectedPeriod, customStartDateMillis, customEndDateMillis) {
-        entries.filter { !it.isDeleted && isInPeriod(it.createdAt) }
+    // Dynamic Filtered Data in current period
+    val filteredEntries = remember(baseEntries, selectedPeriod, customStartDateMillis, customEndDateMillis) {
+        baseEntries.filter { isInPeriod(it.createdAt) }
     }
-    val filteredVisits = remember(visits, selectedPeriod, customStartDateMillis, customEndDateMillis) {
-        visits.filter { !it.isDeleted && isInPeriod(it.createdAt) }
+    val filteredVisits = remember(baseVisits, selectedPeriod, customStartDateMillis, customEndDateMillis) {
+        baseVisits.filter { isInPeriod(it.createdAt) }
     }
 
-    // Dynamic metrics based on the selected period
+    // Dynamic metrics
     val totalPieces = remember(filteredEntries) { filteredEntries.sumOf { it.pieces } }
     val totalCases = remember(filteredEntries) { filteredEntries.sumOf { it.caseCount } }
     val looseEntries = remember(filteredEntries) { filteredEntries.filter { it.loosePieces > 0 } }
@@ -171,30 +203,49 @@ fun DashboardScreen(
     val grandTotalAmount = remember(filteredEntries) { filteredEntries.sumOf { it.grandTotalWithGst } }
     val activeVisits = remember(filteredVisits) { filteredVisits.filter { it.status.equals("Active", ignoreCase = true) } }
 
-    // Dispatch & Pipeline stats in period
+    // Dispatch & Pipeline stats
     val pendingCount = remember(filteredEntries) { filteredEntries.count { it.deliveryStatus.equals("Pending", ignoreCase = true) } }
     val packedCount = remember(filteredEntries) { filteredEntries.count { it.deliveryStatus.equals("Packed", ignoreCase = true) } }
     val dispatchedCount = remember(filteredEntries) { filteredEntries.count { it.deliveryStatus.equals("Dispatched", ignoreCase = true) } }
     val deliveredCount = remember(filteredEntries) { filteredEntries.count { it.deliveryStatus.equals("Delivered", ignoreCase = true) } }
     val inTransitCount = pendingCount + packedCount + dispatchedCount
 
-    // Top suppliers in period
+    // Sourcing Split: Manufacturer vs Wholesaler
+    val manufacturerEntries = remember(filteredEntries) { filteredEntries.filter { it.supplierType.equals("Manufacturer", ignoreCase = true) } }
+    val wholesalerEntries = remember(filteredEntries) { filteredEntries.filter { it.supplierType.equals("Wholesaler", ignoreCase = true) } }
+    val mfrPcs = remember(manufacturerEntries) { manufacturerEntries.sumOf { it.pieces } }
+    val wholesalePcs = remember(wholesalerEntries) { wholesalerEntries.sumOf { it.pieces } }
+    val mfrAmount = remember(manufacturerEntries) { manufacturerEntries.sumOf { it.grandTotalWithGst } }
+    val wholesaleAmount = remember(wholesalerEntries) { wholesalerEntries.sumOf { it.grandTotalWithGst } }
+
+    // Top Suppliers ranking in period
     val topSuppliers = remember(filteredEntries) {
         filteredEntries
             .groupBy { it.supplierName.ifBlank { "Direct Purchase" } }
             .map { (name, list) ->
-                Triple(name, list.sumOf { it.pieces }, list.sumOf { it.grandTotalWithGst })
+                val supType = list.firstOrNull()?.supplierType ?: "Wholesaler"
+                Tuple4(name, list.sumOf { it.pieces }, list.sumOf { it.grandTotalWithGst }, list.size, supType)
             }
             .sortedByDescending { it.second }
-            .take(4)
+            .take(5)
     }
 
-    // Chart data computation
-    val chartData = remember(filteredEntries, selectedPeriod, customStartDateMillis, customEndDateMillis) {
+    // Retailer aggregates in period
+    val retailerAggregates = remember(filteredVisits, filteredEntries) {
+        filteredVisits.groupBy { it.customerName }.map { (custName, vList) ->
+            val vIds = vList.map { it.id }.toSet()
+            val vEntries = filteredEntries.filter { it.visitId in vIds }
+            val pcs = vEntries.sumOf { it.pieces }
+            val amt = vEntries.sumOf { it.grandTotalWithGst }
+            Triple(custName, pcs, amt)
+        }.sortedByDescending { it.second }.take(6)
+    }
+
+    // Cylindrical Chart data
+    val cylindricalChartData = remember(filteredEntries, selectedPeriod, customStartDateMillis, customEndDateMillis) {
         buildTrendChartData(selectedPeriod, filteredEntries, customStartDateMillis, customEndDateMillis)
     }
 
-    // Custom Date Range Picker Dialog
     if (showCustomDatePickerDialog) {
         CustomDateRangePickerDialog(
             initialStartMillis = customStartDateMillis,
@@ -215,77 +266,55 @@ fun DashboardScreen(
             .fillMaxSize()
             .background(Color(0xFFF6F8FB))
     ) {
-        // Modern Flat Top Bar matching Visits & Deliveries
+        // NO HEADER TITLE OR BUTTONS. Start directly with Role Scope & Time Filter Pills
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 8.dp),
+                .padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
                 shape = CircleShape,
-                color = Color.White,
-                shadowElevation = 0.dp,
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                modifier = Modifier.size(38.dp)
+                color = if (isAdmin) Color(0xFFEFF6FF) else Color(0xFFF0FDF4),
+                border = BorderStroke(1.dp, if (isAdmin) Color(0xFFBFDBFE) else Color(0xFFBBF7D0))
             ) {
-                IconButton(onClick = onBack, modifier = Modifier.size(38.dp)) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = NavyPrimary,
-                        modifier = Modifier.size(20.dp)
+                        imageVector = if (isAdmin) Icons.Default.Security else Icons.Default.Person,
+                        contentDescription = null,
+                        tint = if (isAdmin) Color(0xFF1D4ED8) else Color(0xFF15803D),
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(5.dp))
+                    Text(
+                        text = if (isAdmin) "Admin: All Reports" else "My Reports (${currentEmployee?.name ?: "Sales"})",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isAdmin) Color(0xFF1E40AF) else Color(0xFF166534)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.width(10.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Operations Dashboard",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = NavyPrimary,
-                    letterSpacing = (-0.2).sp
-                )
-                Text(
-                    text = when (selectedPeriod) {
-                        "Today" -> "Today's Market Activity"
-                        "Yesterday" -> "Yesterday's Performance"
-                        "This Week" -> "Last 7 Days Overview"
-                        "This Month" -> "Current Month Analytics"
-                        "Custom" -> customDateLabel ?: "Custom Date Range"
-                        else -> "All-Time Aggregate"
-                    },
-                    fontSize = 11.5.sp,
-                    color = TextSecondary
-                )
-            }
-
-            Button(
-                onClick = onOpenNewVisit,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
-                shape = RoundedCornerShape(10.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Icon(
-                    Icons.Default.Add,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = "New Trip",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp
-                )
-            }
+            Text(
+                text = when (selectedPeriod) {
+                    "Today" -> "Today"
+                    "Yesterday" -> "Yesterday"
+                    "This Week" -> "Last 7 Days"
+                    "This Month" -> "This Month"
+                    "Custom" -> customDateLabel ?: "Custom"
+                    else -> "All-Time"
+                },
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = TextSecondary
+            )
         }
 
-        // Time Period Filter Pill Chips (Matching VisitsScreen & DeliveriesScreen)
+        // Time Period Filter Chips
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -376,10 +405,34 @@ fun DashboardScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 14.dp),
-            contentPadding = PaddingValues(top = 8.dp, bottom = 28.dp),
+            contentPadding = PaddingValues(top = 4.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // 1. Primary KPI Metric Cards (2x2 Grid)
+            // 1. CHARTS RIGHT AT THE START: Rounded Cylindrical Bar Chart
+            item {
+                DashboardCylindricalChart(
+                    periodLabel = selectedPeriod,
+                    chartData = cylindricalChartData
+                )
+            }
+
+            // 2. CHARTS RIGHT AT THE START: Native Compose Pie / Donut Chart
+            item {
+                DashboardPieChart(
+                    totalPieces = totalPieces,
+                    totalOrders = filteredEntries.size,
+                    mfrPcs = mfrPcs,
+                    wholesalePcs = wholesalePcs,
+                    mfrAmount = mfrAmount,
+                    wholesaleAmount = wholesaleAmount,
+                    pendingCount = pendingCount,
+                    packedCount = packedCount,
+                    dispatchedCount = dispatchedCount,
+                    deliveredCount = deliveredCount
+                )
+            }
+
+            // 3. REPORTS SECTION: Primary KPI Metric Summary Cards
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(
@@ -393,7 +446,7 @@ fun DashboardScreen(
                             accentColor = Color(0xFF059669),
                             icon = Icons.Default.Inventory,
                             modifier = Modifier.weight(1f),
-                            onClick = { onNavigate(AppScreen.REPORTS) }
+                            onClick = { onNavigate(AppScreen.PURCHASE_ORDERS) }
                         )
 
                         DashboardMetricCard(
@@ -435,14 +488,14 @@ fun DashboardScreen(
                 }
             }
 
-            // 2. Loose Pieces Packing Alert Banner (if applicable)
+            // 4. Loose Pieces Packing Alert Banner (if applicable)
             if (looseEntries.isNotEmpty()) {
                 item {
                     IncompleteCaseBanner(
                         looseCount = totalLoosePcs,
                         ordersCount = looseEntries.size,
                         onMixedPackClick = {
-                            val activeVisit = visits.firstOrNull { it.status == "Active" } ?: visits.firstOrNull()
+                            val activeVisit = baseVisits.firstOrNull { it.status == "Active" } ?: baseVisits.firstOrNull()
                             if (activeVisit != null) {
                                 onOpenVisit(activeVisit)
                             } else {
@@ -453,15 +506,7 @@ fun DashboardScreen(
                 }
             }
 
-            // 3. Interactive Trend Chart (Volume & Spend)
-            item {
-                DashboardTrendChart(
-                    periodLabel = selectedPeriod,
-                    chartData = chartData
-                )
-            }
-
-            // 4. Dispatch & Transport Status Pipeline
+            // 5. REPORTS SECTION: Source Distribution (Manufacturer vs Wholesaler Split Report)
             item {
                 Card(
                     shape = RoundedCornerShape(14.dp),
@@ -476,99 +521,63 @@ fun DashboardScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
-                                Text(
-                                    text = "Dispatch & Transport Status",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.5.sp,
-                                    color = NavyPrimary
-                                )
-                                Text(
-                                    text = "Consignment tracking in $selectedPeriod",
-                                    fontSize = 11.sp,
-                                    color = TextSecondary
-                                )
-                            }
                             Text(
-                                text = "${filteredEntries.size} Orders",
+                                text = "Source Distribution Report",
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp,
+                                fontSize = 14.5.sp,
                                 color = NavyPrimary
                             )
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // Segmented multi-colored pipeline bar
-                        val totalOrders = filteredEntries.size
-                        if (totalOrders > 0) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(8.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFFF1F5F9))
-                            ) {
-                                if (pendingCount > 0) {
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(pendingCount.toFloat())
-                                            .fillMaxHeight()
-                                            .background(Color(0xFFD97706))
-                                    )
-                                }
-                                if (packedCount > 0) {
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(packedCount.toFloat())
-                                            .fillMaxHeight()
-                                            .background(Color(0xFF2563EB))
-                                    )
-                                }
-                                if (dispatchedCount > 0) {
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(dispatchedCount.toFloat())
-                                            .fillMaxHeight()
-                                            .background(Color(0xFF0D9488))
-                                    )
-                                }
-                                if (deliveredCount > 0) {
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(deliveredCount.toFloat())
-                                            .fillMaxHeight()
-                                            .background(Color(0xFF059669))
-                                    )
-                                }
-                            }
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(8.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFFE2E8F0))
+                            Text(
+                                text = "${filteredEntries.size} orders",
+                                fontSize = 11.5.sp,
+                                color = TextSecondary
                             )
                         }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        val mfrRatio = if (grandTotalAmount > 0) (mfrAmount / grandTotalAmount).toFloat() else 0.5f
+                        LinearProgressIndicator(
+                            progress = { mfrRatio.coerceIn(0f, 1f) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(8.dp)
+                                .clip(CircleShape),
+                            color = ManufacturerBadge,
+                            trackColor = WholesalerBadge
+                        )
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // Status Count Badges
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            PipelineStatusBadge(label = "Pending", count = pendingCount, color = Color(0xFFD97706))
-                            PipelineStatusBadge(label = "Packed", count = packedCount, color = Color(0xFF2563EB))
-                            PipelineStatusBadge(label = "Dispatched", count = dispatchedCount, color = Color(0xFF0D9488))
-                            PipelineStatusBadge(label = "Delivered", count = deliveredCount, color = Color(0xFF059669))
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(modifier = Modifier.size(8.dp).background(ManufacturerBadge, CircleShape))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Manufacturers (Direct)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = NavyPrimary)
+                                }
+                                Text("₹${PdfGenerator.formatInr(mfrAmount)}", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = ManufacturerBadge)
+                                Text("$mfrPcs Pcs • ${manufacturerEntries.size} orders", fontSize = 11.sp, color = TextSecondary)
+                            }
+
+                            Column(horizontalAlignment = Alignment.End) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(modifier = Modifier.size(8.dp).background(WholesalerBadge, CircleShape))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Wholesalers / Hubs", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = NavyPrimary)
+                                }
+                                Text("₹${PdfGenerator.formatInr(wholesaleAmount)}", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = WholesalerBadge)
+                                Text("$wholesalePcs Pcs • ${wholesalerEntries.size} orders", fontSize = 11.sp, color = TextSecondary)
+                            }
                         }
                     }
                 }
             }
 
-            // 5. Top Suppliers in Selected Period
+            // 6. REPORTS SECTION: Top Sourcing Partners (Suppliers Ranking Report)
             if (topSuppliers.isNotEmpty()) {
                 item {
                     Card(
@@ -593,14 +602,14 @@ fun DashboardScreen(
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = "Top Suppliers in Period",
+                                        text = "Top Sourcing Partners (Suppliers)",
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 14.5.sp,
                                         color = NavyPrimary
                                     )
                                 }
                                 Text(
-                                    text = "Share of Volume",
+                                    text = "Volume",
                                     fontSize = 11.sp,
                                     color = TextSecondary
                                 )
@@ -609,22 +618,28 @@ fun DashboardScreen(
                             Spacer(modifier = Modifier.height(10.dp))
 
                             val maxPcs = topSuppliers.maxOfOrNull { it.second }?.coerceAtLeast(1) ?: 1
-                            topSuppliers.forEach { (name, pcs, amt) ->
+                            topSuppliers.forEach { (name, pcs, amt, orderCnt, supType) ->
                                 Column(modifier = Modifier.padding(vertical = 4.dp)) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(
-                                            text = name,
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = 12.5.sp,
-                                            color = NavyPrimary,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f)
-                                        )
+                                        Row(
+                                            modifier = Modifier.weight(1f),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = name,
+                                                fontWeight = FontWeight.SemiBold,
+                                                fontSize = 12.5.sp,
+                                                color = NavyPrimary,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            SupplierTypeBadge(type = supType)
+                                        }
                                         Text(
                                             text = "$pcs Pcs • ₹${PdfGenerator.formatInr(amt)}",
                                             fontWeight = FontWeight.Bold,
@@ -649,57 +664,82 @@ fun DashboardScreen(
                 }
             }
 
-            // 6. Quick Operations Directory
-            item {
-                Text(
-                    text = "Directory & Operations",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    color = NavyPrimary
-                )
-            }
+            // 7. REPORTS SECTION: Retailer Procurement Aggregates Report
+            if (retailerAggregates.isNotEmpty()) {
+                item {
+                    Card(
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Assessment,
+                                        contentDescription = null,
+                                        tint = NavyPrimary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Retailer Procurement Aggregates",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.5.sp,
+                                        color = NavyPrimary
+                                    )
+                                }
+                                Text(
+                                    text = "${retailerAggregates.size} Retailers",
+                                    fontSize = 11.sp,
+                                    color = TextSecondary
+                                )
+                            }
 
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    DashboardQuickLink(
-                        title = "Retailers",
-                        count = "${customers.size}",
-                        icon = Icons.Default.People,
-                        color = Color(0xFF0284C7),
-                        modifier = Modifier.weight(1f),
-                        onClick = { onNavigate(AppScreen.CUSTOMER_MASTER) }
-                    )
-                    DashboardQuickLink(
-                        title = "Suppliers",
-                        count = "${suppliers.size}",
-                        icon = Icons.Default.Store,
-                        color = Color(0xFF7C3AED),
-                        modifier = Modifier.weight(1f),
-                        onClick = { onNavigate(AppScreen.SUPPLIER_MASTER) }
-                    )
-                    DashboardQuickLink(
-                        title = "Deliveries",
-                        count = "$inTransitCount",
-                        icon = Icons.Default.LocalShipping,
-                        color = Color(0xFF0D9488),
-                        modifier = Modifier.weight(1f),
-                        onClick = { onNavigate(AppScreen.DELIVERIES) }
-                    )
-                    DashboardQuickLink(
-                        title = "Orders",
-                        count = "${filteredEntries.size}",
-                        icon = Icons.AutoMirrored.Filled.ReceiptLong,
-                        color = Color(0xFFE11D48),
-                        modifier = Modifier.weight(1f),
-                        onClick = { onNavigate(AppScreen.PURCHASE_ORDERS) }
-                    )
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            retailerAggregates.forEach { (custName, pcs, amt) ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = custName,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 12.5.sp,
+                                            color = NavyPrimary
+                                        )
+                                        Text(
+                                            text = "$pcs Pieces sourced",
+                                            fontSize = 11.sp,
+                                            color = TextSecondary
+                                        )
+                                    }
+                                    Text(
+                                        text = "₹${PdfGenerator.formatInr(amt)}",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.5.sp,
+                                        color = Color(0xFF059669)
+                                    )
+                                }
+                                HorizontalDivider(color = Color(0xFFF1F5F9))
+                            }
+                        }
+                    }
                 }
             }
 
-            // 7. Recent Market Visits Section
+            // 8. Recent Market Visits Section
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -742,7 +782,7 @@ fun DashboardScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = "No market visits recorded in this period. Tap '+ New Trip' to begin or switch time filter.",
+                            text = "No market visits recorded for this period.",
                             fontSize = 12.5.sp,
                             color = TextSecondary,
                             modifier = Modifier.padding(16.dp)
@@ -751,7 +791,7 @@ fun DashboardScreen(
                 }
             } else {
                 items(filteredVisits.take(5)) { visit ->
-                    val visitEntries = entries.filter { it.visitId == visit.id }
+                    val visitEntries = filteredEntries.filter { it.visitId == visit.id }
                     val tripPcs = visitEntries.sumOf { it.pieces }
                     val cust = customers.find { it.id == visit.customerId || it.firmName.equals(visit.customerName, true) || it.name.equals(visit.customerName, true) }
                     val photoUrl = cust?.let { it.purchaserPhotoUri.ifBlank { it.shopPhotoUri } }?.takeIf { it.isNotBlank() }
@@ -770,8 +810,11 @@ fun DashboardScreen(
     }
 }
 
+/**
+ * 3D-styled Rounded Cylindrical Bar Chart
+ */
 @Composable
-fun DashboardTrendChart(
+fun DashboardCylindricalChart(
     periodLabel: String,
     chartData: List<DashboardBarItem>,
     modifier: Modifier = Modifier
@@ -809,26 +852,19 @@ fun DashboardTrendChart(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.TrendingUp,
-                            contentDescription = null,
-                            tint = NavyPrimary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Procurement Trend",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.5.sp,
-                            color = NavyPrimary
-                        )
-                    }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.TrendingUp,
+                        contentDescription = null,
+                        tint = NavyPrimary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = if (selectedMetric == "pieces") "Periodic volume in pieces" else "Periodic spend in ₹",
-                        fontSize = 11.sp,
-                        color = TextSecondary
+                        text = "Procurement Trend",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.5.sp,
+                        color = NavyPrimary
                     )
                 }
 
@@ -913,7 +949,7 @@ fun DashboardTrendChart(
                         }
                     } else {
                         Text(
-                            text = "Tap any bar to inspect",
+                            text = "Tap cylinder to inspect",
                             fontSize = 12.sp,
                             color = TextSecondary
                         )
@@ -939,7 +975,7 @@ fun DashboardTrendChart(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Bars representation
+            // 3D Rounded Cylindrical Bars Representation
             if (chartData.all { it.pieces == 0 && it.amount == 0.0 }) {
                 Box(
                     modifier = Modifier
@@ -974,7 +1010,7 @@ fun DashboardTrendChart(
                     chartData.forEachIndexed { index, item ->
                         val isSelected = index == selectedIndex
                         val curVal = if (selectedMetric == "pieces") item.pieces.toFloat() else item.amount.toFloat()
-                        val heightFraction = if (maxVal > 0) (curVal / maxVal).coerceIn(0.04f, 1f) else 0.04f
+                        val heightFraction = if (maxVal > 0) (curVal / maxVal).coerceIn(0.06f, 1f) else 0.06f
 
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -997,20 +1033,49 @@ fun DashboardTrendChart(
                                 Spacer(modifier = Modifier.height(12.dp))
                             }
 
+                            // Cylindrical 3D Bar with rounded ends & metallic reflection gradient
+                            val cylinderWidth = if (chartData.size > 7) 14.dp else 22.dp
                             Box(
                                 modifier = Modifier
-                                    .width(if (chartData.size > 7) 14.dp else 22.dp)
+                                    .width(cylinderWidth)
                                     .fillMaxHeight(heightFraction)
-                                    .clip(RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp))
+                                    .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp, bottomStart = 6.dp, bottomEnd = 6.dp))
                                     .background(
-                                        if (isSelected) {
-                                            if (selectedMetric == "pieces") Color(0xFF059669) else NavyPrimary
-                                        } else {
-                                            if (selectedMetric == "pieces") Color(0xFF34D399).copy(alpha = 0.65f)
-                                            else Color(0xFF93C5FD).copy(alpha = 0.65f)
-                                        }
-                                    )
-                            )
+                                        brush = Brush.horizontalGradient(
+                                            colors = if (isSelected) {
+                                                if (selectedMetric == "pieces") listOf(
+                                                    Color(0xFF047857), // deep emerald
+                                                    Color(0xFF34D399), // highlight center
+                                                    Color(0xFF064E3B)  // dark shadow edge
+                                                ) else listOf(
+                                                    Color(0xFF1E3A8A), // deep navy
+                                                    Color(0xFF60A5FA), // light blue highlight
+                                                    Color(0xFF0F172A)  // dark shadow edge
+                                                )
+                                            } else {
+                                                if (selectedMetric == "pieces") listOf(
+                                                    Color(0xFF059669).copy(alpha = 0.6f),
+                                                    Color(0xFF6EE7B7).copy(alpha = 0.85f),
+                                                    Color(0xFF047857).copy(alpha = 0.6f)
+                                                ) else listOf(
+                                                    Color(0xFF3B82F6).copy(alpha = 0.6f),
+                                                    Color(0xFF93C5FD).copy(alpha = 0.85f),
+                                                    Color(0xFF1D4ED8).copy(alpha = 0.6f)
+                                                )
+                                            }
+                                        )
+                                    ),
+                                contentAlignment = Alignment.TopCenter
+                            ) {
+                                // 3D Top Cap Ellipse
+                                Box(
+                                    modifier = Modifier
+                                        .padding(top = 1.dp)
+                                        .size(width = cylinderWidth * 0.75f, height = 3.5.dp)
+                                        .clip(CircleShape)
+                                        .background(Color.White.copy(alpha = if (isSelected) 0.65f else 0.4f))
+                                )
+                            }
 
                             Spacer(modifier = Modifier.height(4.dp))
 
@@ -1022,6 +1087,252 @@ fun DashboardTrendChart(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Native Jetpack Compose Canvas Pie / Donut Chart
+ */
+@Composable
+fun DashboardPieChart(
+    totalPieces: Int,
+    totalOrders: Int,
+    mfrPcs: Int,
+    wholesalePcs: Int,
+    mfrAmount: Double,
+    wholesaleAmount: Double,
+    pendingCount: Int,
+    packedCount: Int,
+    dispatchedCount: Int,
+    deliveredCount: Int,
+    modifier: Modifier = Modifier
+) {
+    var pieMode by remember { mutableStateOf("source") } // "source" (Mfr vs Whls) or "pipeline" (Delivery Status)
+
+    val slices = remember(pieMode, mfrPcs, wholesalePcs, pendingCount, packedCount, dispatchedCount, deliveredCount) {
+        if (pieMode == "source") {
+            val total = (mfrPcs + wholesalePcs).coerceAtLeast(1).toFloat()
+            listOf(
+                PieChartSlice(
+                    name = "Manufacturers",
+                    value = mfrPcs.toFloat(),
+                    formattedValue = "$mfrPcs Pcs (₹${PdfGenerator.formatInr(mfrAmount)})",
+                    color = ManufacturerBadge,
+                    percentage = if (totalPieces > 0) (mfrPcs * 100f / totalPieces) else 50f
+                ),
+                PieChartSlice(
+                    name = "Wholesalers",
+                    value = wholesalePcs.toFloat(),
+                    formattedValue = "$wholesalePcs Pcs (₹${PdfGenerator.formatInr(wholesaleAmount)})",
+                    color = WholesalerBadge,
+                    percentage = if (totalPieces > 0) (wholesalePcs * 100f / totalPieces) else 50f
+                )
+            )
+        } else {
+            val total = (pendingCount + packedCount + dispatchedCount + deliveredCount).coerceAtLeast(1).toFloat()
+            listOf(
+                PieChartSlice("Delivered", deliveredCount.toFloat(), "$deliveredCount orders", Color(0xFF059669), deliveredCount * 100f / total),
+                PieChartSlice("Dispatched", dispatchedCount.toFloat(), "$dispatchedCount orders", Color(0xFF0D9488), dispatchedCount * 100f / total),
+                PieChartSlice("Packed", packedCount.toFloat(), "$packedCount orders", Color(0xFF2563EB), packedCount * 100f / total),
+                PieChartSlice("Pending", pendingCount.toFloat(), "$pendingCount orders", Color(0xFFD97706), pendingCount * 100f / total)
+            )
+        }
+    }
+
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            // Header with Pie Mode Toggle
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.PieChart,
+                        contentDescription = null,
+                        tint = NavyPrimary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (pieMode == "source") "Source Split (Mfr vs Whls)" else "Dispatch Status Pipeline",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.5.sp,
+                        color = NavyPrimary
+                    )
+                }
+
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0xFFF1F5F9),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                ) {
+                    Row(modifier = Modifier.padding(2.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(if (pieMode == "source") NavyPrimary else Color.Transparent)
+                                .clickable { pieMode = "source" }
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                text = "Source",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (pieMode == "source") Color.White else TextSecondary
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(if (pieMode == "pipeline") NavyPrimary else Color.Transparent)
+                                .clickable { pieMode = "pipeline" }
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                text = "Dispatch",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (pieMode == "pipeline") Color.White else TextSecondary
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Pie Chart Canvas & Legend Row
+            val hasData = if (pieMode == "source") (mfrPcs + wholesalePcs) > 0 else totalOrders > 0
+            if (!hasData) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(110.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "No data recorded for pie chart distribution",
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    // Donut Canvas with center total
+                    Box(
+                        modifier = Modifier.size(125.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            var startAngle = -90f
+                            val canvasSize = size.minDimension
+                            val arcSize = Size(canvasSize, canvasSize)
+                            val topLeft = Offset((size.width - canvasSize) / 2f, (size.height - canvasSize) / 2f)
+
+                            slices.forEach { slice ->
+                                val sweep = (slice.percentage / 100f) * 360f
+                                if (sweep > 0.5f) {
+                                    drawArc(
+                                        color = slice.color,
+                                        startAngle = startAngle,
+                                        sweepAngle = sweep,
+                                        useCenter = true,
+                                        size = arcSize,
+                                        topLeft = topLeft
+                                    )
+                                    startAngle += sweep
+                                }
+                            }
+
+                            // Donut Center Cutout
+                            drawCircle(
+                                color = Color.White,
+                                radius = canvasSize * 0.32f,
+                                center = center
+                            )
+                        }
+
+                        // Center Metric inside Donut Hole
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = if (pieMode == "source") "$totalPieces" else "$totalOrders",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 13.sp,
+                                color = NavyPrimary
+                            )
+                            Text(
+                                text = if (pieMode == "source") "Pcs" else "Orders",
+                                fontSize = 9.sp,
+                                color = TextSecondary,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    // Legend Column
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        slices.forEach { slice ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(9.dp)
+                                        .background(slice.color, CircleShape)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Column {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = slice.name,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = NavyPrimary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "${slice.percentage.toInt()}%",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = slice.color
+                                        )
+                                    }
+                                    Text(
+                                        text = slice.formattedValue,
+                                        fontSize = 10.sp,
+                                        color = TextSecondary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -1464,83 +1775,10 @@ private fun DashboardMetricCard(
     }
 }
 
-@Composable
-private fun PipelineStatusBadge(
-    label: String,
-    count: Int,
-    color: Color
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Surface(
-            shape = RoundedCornerShape(8.dp),
-            color = color.copy(alpha = 0.12f),
-            modifier = Modifier.padding(bottom = 3.dp)
-        ) {
-            Text(
-                text = "$count",
-                fontWeight = FontWeight.Bold,
-                fontSize = 12.5.sp,
-                color = color,
-                modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
-            )
-        }
-        Text(
-            text = label,
-            fontSize = 10.5.sp,
-            fontWeight = FontWeight.Medium,
-            color = TextSecondary
-        )
-    }
-}
-
-@Composable
-private fun DashboardQuickLink(
-    title: String,
-    count: String,
-    icon: ImageVector,
-    color: Color,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .clickable { onClick() }
-    ) {
-        Column(
-            modifier = Modifier.padding(10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(color.copy(alpha = 0.12f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = color,
-                    modifier = Modifier.size(17.dp)
-                )
-            }
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = title,
-                fontSize = 11.5.sp,
-                fontWeight = FontWeight.Bold,
-                color = NavyPrimary
-            )
-            Text(
-                text = count,
-                fontSize = 10.5.sp,
-                color = TextSecondary
-            )
-        }
-    }
-}
+data class Tuple4<A, B, C, D, E>(
+    val first: A,
+    val second: B,
+    val third: C,
+    val fourth: D,
+    val fifth: E
+)

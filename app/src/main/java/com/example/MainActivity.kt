@@ -813,7 +813,13 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
                 }
 
                 AppScreen.REPORTS -> {
-                    ReportsScreen(viewModel = viewModel)
+                    DashboardScreen(
+                        viewModel = viewModel,
+                        onNavigate = { viewModel.navigateTo(it) },
+                        onOpenNewVisit = { showCreateVisitDialog = true },
+                        onOpenVisit = { viewModel.openVisitDetail(it) },
+                        onBack = { viewModel.navigateTo(AppScreen.DASHBOARD) }
+                    )
                 }
 
                 AppScreen.PAYMENTS -> {
