@@ -95,23 +95,7 @@ export function generateCustomerDayReportHtml(data: CustomerReportData): string 
     })
   })
 
-  let packGroupsHtml = ""
-  if (packGroups.length > 0) {
-    packGroupsHtml = `
-      <div class="mixed-pack-box">
-        <h4>Mixed Packing Group Summary</h4>
-        ${packGroups
-          .map(
-            (pg) => `
-          <div class="pg-item">
-            <strong>${pg.packGroupCode || "PACK"}:</strong> ${pg.note || "Combined loose cartons"}
-          </div>
-        `
-          )
-          .join("")}
-      </div>
-    `
-  }
+
 
   const customerGstin = customer?.gstin || customer?.gstNumber || "Unregistered / Consumer"
   const customerPhone = customer?.phone || "—"
@@ -407,7 +391,6 @@ export function generateCustomerDayReportHtml(data: CustomerReportData): string 
 
   <div class="bottom-section">
     <div>
-      ${packGroupsHtml}
       <div class="terms-box">
         <strong>Terms & Conditions:</strong>
         <ul>
@@ -428,10 +411,6 @@ export function generateCustomerDayReportHtml(data: CustomerReportData): string 
           <div class="summary-row">
             <span class="label-sub">Garment GST (5%):</span>
             <span class="font-bold">₹${formatInr(totalGst)}</span>
-          </div>
-          <div class="summary-row">
-            <span class="label-sub">Packing Breakdown:</span>
-            <span class="font-bold" style="color: #132338;">${totalCases} Full Cases + ${totalLoose} Loose</span>
           </div>
         </div>
         <div class="summary-banner">
@@ -509,7 +488,6 @@ export function generateSupplierInvoiceHtml(data: SupplierInvoiceData): string {
         <td class="font-bold">${item.itemCode}</td>
         <td class="text-center font-bold">${item.pieces}</td>
         <td class="text-right">₹${formatInr(rate)}</td>
-        <td class="text-center">${item.caseSize || "—"} pcs/cs</td>
         <td class="text-center">${packSplit}</td>
         <td class="text-center font-bold" style="color: ${statusColor};">${statusText}</td>
         <td class="text-right font-bold">₹${formatInr(Number(item.totalAmount) || 0)}</td>
@@ -519,7 +497,7 @@ export function generateSupplierInvoiceHtml(data: SupplierInvoiceData): string {
       itemsHtml += `
         <tr class="pack-note-row">
           <td></td>
-          <td colspan="7" class="pack-note-text">PACKING INSTRUCTION: ${item.mixedPackNote}</td>
+          <td colspan="6" class="pack-note-text">PACKING INSTRUCTION: ${item.mixedPackNote}</td>
         </tr>
       `
     }
@@ -771,11 +749,10 @@ export function generateSupplierInvoiceHtml(data: SupplierInvoiceData): string {
     <thead>
       <tr>
         <th style="width: 10%;">ORDER #</th>
-        <th style="width: 18%;">ITEM / STYLE CODE</th>
+        <th style="width: 24%;">ITEM / STYLE CODE</th>
         <th style="width: 7%; text-align: center;">PCS</th>
-        <th style="width: 10%; text-align: right;">RATE</th>
-        <th style="width: 11%; text-align: center;">CASE SIZE</th>
-        <th style="width: 17%; text-align: center;">PACKING</th>
+        <th style="width: 12%; text-align: right;">RATE</th>
+        <th style="width: 20%; text-align: center;">PACKING</th>
         <th style="width: 12%; text-align: center;">STATUS</th>
         <th style="width: 15%; text-align: right;">AMOUNT</th>
       </tr>
@@ -801,7 +778,7 @@ export function generateSupplierInvoiceHtml(data: SupplierInvoiceData): string {
         <div class="summary-content">
           <div class="summary-row">
             <span class="label-sub">Total Quantity:</span>
-            <span class="font-bold">${totalPieces} Pcs (${totalCases} Cases, ${totalLoose} Loose)</span>
+            <span class="font-bold">${totalPieces} Pcs</span>
           </div>
           <div class="summary-row">
             <span class="label-sub">Taxable Subtotal:</span>

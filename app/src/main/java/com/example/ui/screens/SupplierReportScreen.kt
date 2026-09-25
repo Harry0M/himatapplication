@@ -468,14 +468,25 @@ fun SupplierReportScreen(
                                         )
                                     }
 
-                                    // Pieces
-                                    Text(
-                                        text = "${item.pieces}",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier.weight(0.7f)
-                                    )
+                                    // Pieces (Dedicated visual pill badge so Quantity never mixes with Item)
+                                    Box(
+                                        modifier = Modifier.weight(0.7f),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Surface(
+                                            color = Color(0xFFEFF6FF),
+                                            shape = RoundedCornerShape(4.dp),
+                                            border = androidx.compose.foundation.BorderStroke(0.8.dp, Color(0xFFBFDBFE))
+                                        ) {
+                                            Text(
+                                                text = "${item.pieces} p",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 11.sp,
+                                                color = Color(0xFF1D4ED8),
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
 
                                     // Rate
                                     Text(
@@ -486,17 +497,13 @@ fun SupplierReportScreen(
                                     )
 
                                     // Packing
-                                    val isPacked = (item.packGroupId != null && item.packGroupId != 0L) || !item.mixedPackNote.isNullOrBlank()
-                                    val pack = if (item.loosePieces > 0) {
-                                        if (isPacked) "${item.caseCount}c+${item.loosePieces}L (Mixed)"
-                                        else "${item.caseCount}c+${item.loosePieces}L"
-                                    } else "${item.caseCount}c"
+                                    val pack = if (item.loosePieces > 0) "${item.caseCount}c+${item.loosePieces}L" else "${item.caseCount}c"
                                     Text(
                                         text = pack,
-                                        fontSize = 9.5.sp,
+                                        fontSize = 10.sp,
                                         fontWeight = FontWeight.Medium,
                                         textAlign = TextAlign.Center,
-                                        color = if (item.loosePieces > 0) (if (isPacked) Color(0xFF2563EB) else Color(0xFFD97706)) else Color(0xFF15803D),
+                                        color = if (item.loosePieces > 0) Color(0xFFD97706) else Color(0xFF15803D),
                                         modifier = Modifier.weight(1.0f)
                                     )
 
@@ -551,7 +558,7 @@ fun SupplierReportScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text("Total Quantity:", fontSize = 11.5.sp, color = TextSecondary)
-                                    Text("$totalPieces Pcs ($totalCases Cases, $totalLoose Loose)", fontWeight = FontWeight.Bold, fontSize = 11.5.sp)
+                                    Text("$totalPieces Pcs", fontWeight = FontWeight.Bold, fontSize = 11.5.sp)
                                 }
                                 Spacer(modifier = Modifier.height(3.dp))
                                 Row(

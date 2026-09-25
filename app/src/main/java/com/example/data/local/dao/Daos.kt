@@ -7,6 +7,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import com.example.data.local.entity.BrandEntity
+import com.example.data.local.entity.ChequePdcEntity
 import com.example.data.local.entity.CustomerEntity
 import com.example.data.local.entity.EmployeeEntity
 import com.example.data.local.entity.GarmentItemEntity
@@ -560,6 +561,48 @@ interface LeadDao {
 
     @Query("DELETE FROM leads WHERE id = :id")
     suspend fun deleteLeadById(id: Long)
+}
+
+@Dao
+interface ChequePdcDao {
+    @Query("SELECT * FROM cheques_pdc WHERE isDeleted = 0 ORDER BY chequeDate ASC, id DESC")
+    fun getAllCheques(): Flow<List<ChequePdcEntity>>
+
+    @Query("SELECT * FROM cheques_pdc WHERE isDeleted = 0 AND partyType = :partyType ORDER BY chequeDate ASC")
+    fun getChequesByPartyType(partyType: String): Flow<List<ChequePdcEntity>>
+
+    @Query("SELECT * FROM cheques_pdc WHERE isDeleted = 0 AND partyType = 'Customer' AND partyId = :customerId ORDER BY chequeDate ASC")
+    fun getChequesByCustomer(customerId: Long): Flow<List<ChequePdcEntity>>
+
+    @Query("SELECT * FROM cheques_pdc WHERE isDeleted = 0 AND partyType = 'Supplier' AND partyId = :supplierId ORDER BY chequeDate ASC")
+    fun getChequesBySupplier(supplierId: Long): Flow<List<ChequePdcEntity>>
+
+    @Query("SELECT * FROM cheques_pdc WHERE isDeleted = 0 AND chequeDate = :date ORDER BY id DESC")
+    fun getChequesByDate(date: String): Flow<List<ChequePdcEntity>>
+
+    @Query("SELECT * FROM cheques_pdc WHERE isDeleted = 0 AND status = :status ORDER BY chequeDate ASC")
+    fun getChequesByStatus(status: String): Flow<List<ChequePdcEntity>>
+
+    @Query("SELECT * FROM cheques_pdc WHERE id = :id LIMIT 1")
+    suspend fun getChequeById(id: Long): ChequePdcEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCheque(cheque: ChequePdcEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(cheques: List<ChequePdcEntity>)
+
+    @Update
+    suspend fun updateCheque(cheque: ChequePdcEntity)
+
+    @Query("UPDATE cheques_pdc SET status = :status, clearedDate = :clearedDate WHERE id = :id")
+    suspend fun updateStatus(id: Long, status: String, clearedDate: String = "")
+
+    @Delete
+    suspend fun deleteCheque(cheque: ChequePdcEntity)
+
+    @Query("DELETE FROM cheques_pdc WHERE id = :id")
+    suspend fun deleteChequeById(id: Long)
 }
 
 

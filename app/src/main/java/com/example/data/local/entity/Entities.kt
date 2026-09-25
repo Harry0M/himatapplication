@@ -46,6 +46,7 @@ data class CustomerEntity(
     val dob: String = "",
     val religion: String = "",
     val aadharPhotoUri: String = "",
+    val aadharBackPhotoUri: String = "",
     val gstCertPhotoUri: String = "",
     val panPhotoUri: String = "",
     val shopPhotoUri: String = "",
@@ -486,6 +487,7 @@ data class CustomerRegistrationRequestEntity(
     val gstCertPhotoUri: String = "",
     val panPhotoUri: String = "",
     val aadharPhotoUri: String = "",
+    val aadharBackPhotoUri: String = "",
     val notes: String = "",
     val status: String = "PENDING", // PENDING, APPROVED, REJECTED
     val phoneVerified: Boolean = true,
@@ -533,6 +535,10 @@ data class SupplierRegistrationRequestEntity(
     val shopPhotoUri: String = "",
     val gstCertPhotoUri: String = "",
     val panPhotoUri: String = "",
+    val idProofPhotoUri: String = "",
+    val idProofBackPhotoUri: String = "",
+    val aadharPhotoUri: String = "",
+    val aadharBackPhotoUri: String = "",
     val notes: String = "",
     val status: String = "PENDING", // PENDING, APPROVED, REJECTED
     val phoneVerified: Boolean = true,
@@ -546,5 +552,29 @@ data class SupplierRegistrationRequestEntity(
 typealias Lead = LeadEntity
 typealias CustomerRegistrationRequest = CustomerRegistrationRequestEntity
 typealias SupplierRegistrationRequest = SupplierRegistrationRequestEntity
+
+@IgnoreExtraProperties
+@Entity(tableName = "cheques_pdc")
+data class ChequePdcEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val chequeNo: String = "",          // Cheque Number (CH N)
+    val bankName: String = "",          // Bank Name
+    val amount: Double = 0.0,           // Amount in INR
+    val chequeDate: String = "",        // Date on cheque / Deposit date (yyyy-MM-dd)
+    val partyType: String = "Customer", // "Customer" or "Supplier"
+    val partyId: Long = 0,              // Linked Customer/Supplier ID
+    val partyName: String = "",         // Customer Shop/Name or Supplier Firm/Name
+    val status: String = "Pending",     // "Pending", "Deposited", "Cleared", "Bounced", "Returned"
+    val depositDate: String = "",       // When deposited to bank
+    val clearedDate: String = "",       // When cleared/passed
+    val notes: String = "",             // Bill ref, bank account, remarks
+    val photoUri: String = "",          // Optional cheque photo
+    val isDeleted: Boolean = false,
+    val deletedAt: Long? = null,
+    val deletedBy: String = "",
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+typealias ChequePdc = ChequePdcEntity
 
 

@@ -4,6 +4,7 @@ import com.example.data.local.entity.CustomerRegistrationRequestEntity
 import com.example.data.local.entity.SupplierRegistrationRequestEntity
 import com.example.data.local.entity.LeadEntity
 import com.example.data.local.entity.BrandEntity
+import com.example.data.local.entity.ChequePdcEntity
 import com.example.data.local.entity.CustomerEntity
 import com.example.data.local.entity.EmployeeEntity
 import com.example.data.local.entity.MarketEntity
@@ -628,6 +629,38 @@ class FirebaseRtdbService(
         }
     }
 
+    suspend fun syncChequePdc(cheque: ChequePdcEntity) = withContext(Dispatchers.IO) {
+        try {
+            rootRef.child("cheques_pdc").child(cheque.id.toString()).setValue(cheque)
+        } catch (_: Exception) {}
+    }
+
+    suspend fun deleteChequePdc(chequeId: Long) = withContext(Dispatchers.IO) {
+        try {
+            rootRef.child("cheques_pdc").child(chequeId.toString()).removeValue()
+            rootRef.child("deletion_requests").child("cheques_pdc_$chequeId").removeValue()
+        } catch (_: Exception) {}
+    }
+
+    suspend fun softDeleteChequePdc(cheque: ChequePdcEntity, deletedBy: String, email: String, role: String) = withContext(Dispatchers.IO) {
+        try {
+            val updated = cheque.copy(
+                isDeleted = true,
+                deletedAt = System.currentTimeMillis(),
+                deletedBy = deletedBy
+            )
+            rootRef.child("cheques_pdc").child(cheque.id.toString()).setValue(updated)
+            recordDeletionRequest(
+                collection = "cheques_pdc",
+                itemId = cheque.id,
+                itemSummary = "Cheque #${cheque.chequeNo}: ${cheque.bankName} (₹${cheque.amount})",
+                deletedBy = deletedBy,
+                email = email,
+                role = role
+            )
+        } catch (_: Exception) {}
+    }
+
     suspend fun approveRegistrationRequest(
         requestId: String,
         newCustomerId: Long,
@@ -692,6 +725,7 @@ class FirebaseRtdbService(
             BrandEntity::class -> "brands"
             TransporterEntity::class -> "transporters"
             MarketEntity::class -> "markets"
+            ChequePdcEntity::class -> "cheques_pdc"
             else -> ""
         }
         for (child in children) {
@@ -758,6 +792,10 @@ class FirebaseRtdbService(
                             id = if (item.id <= 0L && keyLong > 0L) keyLong else item.id,
                             isDeleted = effectivelyDeleted || item.isDeleted
                         )
+                        is ChequePdcEntity -> item.copy(
+                            id = if (item.id <= 0L && keyLong > 0L) keyLong else item.id,
+                            isDeleted = effectivelyDeleted || item.isDeleted
+                        )
                         else -> item
                     }
                     val isValidId = when (fixedItem) {
@@ -772,6 +810,7 @@ class FirebaseRtdbService(
                         is BrandEntity -> fixedItem.id > 0L
                         is TransporterEntity -> fixedItem.id > 0L
                         is MarketEntity -> fixedItem.id > 0L
+                        is ChequePdcEntity -> fixedItem.id > 0L
                         else -> true
                     }
                     if (isValidId) {
@@ -947,6 +986,17 @@ class FirebaseRtdbService(
         })
     }
 
+    suspend fun fetchChequesPdc(): List<ChequePdcEntity> = suspendCancellableCoroutine { cont ->
+        rootRef.child("cheques_pdc").addListenerForSingleValueEvent(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                if (cont.isActive) cont.resumeWith(Result.success(snapshot.extractList<ChequePdcEntity>()))
+            }
+            override fun onCancelled(error: DatabaseError) {
+                if (cont.isActive) cont.resumeWith(Result.success(emptyList()))
+            }
+        })
+    }
+
 
     // Realtime Downstream Listeners
     fun listenToEmployees(onUpdate: (List<EmployeeEntity>) -> Unit): ValueEventListener {
@@ -1076,6 +1126,17 @@ class FirebaseRtdbService(
         return listener
     }
 
+    fun listenToChequesPdc(onUpdate: (List<ChequePdcEntity>) -> Unit): ValueEventListener {
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                onUpdate(snapshot.extractList<ChequePdcEntity>())
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        }
+        rootRef.child("cheques_pdc").addValueEventListener(listener)
+        return listener
+    }
+
     private fun DataSnapshot.toLead(): LeadEntity? {
         val key = key ?: return null
         val leadId = child("id").getValue(String::class.java)?.takeIf { it.isNotBlank() }
@@ -1150,6 +1211,7 @@ class FirebaseRtdbService(
             gstCertPhotoUri = child("gstCertPhotoUri").getValue(String::class.java) ?: "",
             panPhotoUri = child("panPhotoUri").getValue(String::class.java) ?: "",
             aadharPhotoUri = child("aadharPhotoUri").getValue(String::class.java) ?: "",
+            aadharBackPhotoUri = child("aadharBackPhotoUri").getValue(String::class.java) ?: "",
             notes = child("notes").getValue(String::class.java) ?: "",
             status = child("status").getValue(String::class.java) ?: "PENDING",
             phoneVerified = child("phoneVerified").getValue(Boolean::class.java) ?: true,
@@ -1272,6 +1334,14 @@ class FirebaseRtdbService(
             shopPhotoUri = child("shopPhotoUri").getValue(String::class.java) ?: "",
             gstCertPhotoUri = child("gstCertPhotoUri").getValue(String::class.java) ?: "",
             panPhotoUri = child("panPhotoUri").getValue(String::class.java) ?: "",
+            idProofPhotoUri = child("idProofPhotoUri").getValue(String::class.java)
+                ?: child("aadharPhotoUri").getValue(String::class.java) ?: "",
+            idProofBackPhotoUri = child("idProofBackPhotoUri").getValue(String::class.java)
+                ?: child("aadharBackPhotoUri").getValue(String::class.java) ?: "",
+            aadharPhotoUri = child("aadharPhotoUri").getValue(String::class.java)
+                ?: child("idProofPhotoUri").getValue(String::class.java) ?: "",
+            aadharBackPhotoUri = child("aadharBackPhotoUri").getValue(String::class.java)
+                ?: child("idProofBackPhotoUri").getValue(String::class.java) ?: "",
             notes = child("notes").getValue(String::class.java) ?: "",
             status = child("status").getValue(String::class.java) ?: "PENDING",
             phoneVerified = child("phoneVerified").getValue(Boolean::class.java) ?: true,

@@ -3,13 +3,9 @@ import {
   IndianRupee,
   Truck,
   MapPin,
-  Package,
   CheckCircle2,
   Search,
-  Plus,
-  Trash2,
   X,
-  Layers,
   User,
   Clock
 } from "lucide-react"
@@ -21,23 +17,18 @@ import { Badge } from "../components/ui/Badge"
 import { Tabs } from "../components/ui/Tabs"
 import { Dialog } from "../components/ui/Dialog"
 import { Input } from "../components/ui/Input"
-import { PurchaseEntry, PackGroup } from "../types"
+import { PurchaseEntry } from "../types"
 
 export function PendingHubView() {
   const {
     visits,
     entries,
-    packGroups,
     pendingPaymentsCount,
     totalPendingDues,
     pendingDeliveriesCount,
     activeTripsCount,
-    looseEntriesCount,
-    totalLoosePieces,
     updatePayment,
     updateDelivery,
-    createPackGroup,
-    deletePackGroup,
     pendingRegistrationRequestsCount,
     registrationRequests,
   } = useData()
@@ -59,28 +50,6 @@ export function PendingHubView() {
   const [transporter, setTransporter] = useState<string>("")
   const [lrNo, setLrNo] = useState<string>("")
 
-  // Mixed Packing Dialog states
-  const [isPackDialogOpen, setIsPackDialogOpen] = useState<boolean>(false)
-  const [selectedEntryIds, setSelectedEntryIds] = useState<number[]>([])
-  const [targetCaseSize, setTargetCaseSize] = useState<number>(24)
-  const [packCustomNote, setPackCustomNote] = useState<string>("")
-
-  // Packed Entry IDs
-  const packedEntryIds = React.useMemo(() => {
-    const set = new Set<number>()
-    packGroups.forEach((g) => {
-      if (g.linkedEntryIds) {
-        g.linkedEntryIds.split(",").forEach((idStr) => {
-          const num = Number(idStr.trim())
-          if (!isNaN(num) && num > 0) {
-            set.add(num)
-          }
-        })
-      }
-    })
-    return set
-  }, [packGroups])
-
   // 1. Pending Payments
   const pendingPayments = React.useMemo(() => {
     return entries.filter(
@@ -99,20 +68,6 @@ export function PendingHubView() {
   const activeTrips = React.useMemo(() => {
     return visits.filter((v) => v.status?.toLowerCase() === "active")
   }, [visits])
-
-  // 4. Loose Entries (unpacked only)
-  const looseEntries = React.useMemo(() => {
-    return entries.filter((e) => {
-      const loose = Number(e.loosePieces) || 0
-      if (loose <= 0) return false
-      const isPackGroupAssigned =
-        e.packGroupId !== undefined && e.packGroupId !== null && Number(e.packGroupId) > 0
-      const hasMixedNote =
-        typeof e.mixedPackNote === "string" && e.mixedPackNote.trim().length > 0
-      const isInPackGroup = packedEntryIds.has(Number(e.id))
-      return !isPackGroupAssigned && !hasMixedNote && !isInPackGroup
-    })
-  }, [entries, packedEntryIds])
 
   // Filter with Search
   const q = search.trim().toLowerCase()
@@ -137,13 +92,6 @@ export function PendingHubView() {
       v.customerName?.toLowerCase().includes(q) ||
       v.visitCode?.toLowerCase().includes(q) ||
       v.employeeName?.toLowerCase().includes(q)
-  )
-  const filteredLoose = looseEntries.filter(
-    (e) =>
-      !q ||
-      e.orderNo?.toLowerCase().includes(q) ||
-      e.itemCode?.toLowerCase().includes(q) ||
-      e.supplierName?.toLowerCase().includes(q)
   )
 
   const handleOpenPaymentDialog = (entry: PurchaseEntry) => {
@@ -176,47 +124,11 @@ export function PendingHubView() {
     setDeliveryEntry(null)
   }
 
-  const handleOpenPackModal = (entry?: PurchaseEntry) => {
-    if (entry) {
-      setSelectedEntryIds([entry.id])
-    } else {
-      setSelectedEntryIds(looseEntries.map((e) => e.id))
-    }
-    setTargetCaseSize(24)
-    setPackCustomNote("")
-    setIsPackDialogOpen(true)
-  }
-
-  const handleToggleEntrySelection = (id: number) => {
-    setSelectedEntryIds((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
-    )
-  }
-
-  const handleCreateMixedPack = async () => {
-    const selected = looseEntries.filter((e) => selectedEntryIds.includes(e.id))
-    if (selected.length === 0) return
-    const visitId = selected[0].visitId || 1
-    await createPackGroup(visitId, selected, targetCaseSize, packCustomNote.trim() || undefined)
-    setIsPackDialogOpen(false)
-    setSelectedEntryIds([])
-  }
-
   const totalActionsCount =
     pendingPayments.length +
     pendingDeliveries.length +
     activeTrips.length +
-    looseEntries.length +
     pendingRegistrationRequestsCount
-
-  // Pack group calculation preview
-  const selectedEntriesForPacking = looseEntries.filter((e) => selectedEntryIds.includes(e.id))
-  const previewTotalLoose = selectedEntriesForPacking.reduce(
-    (sum, e) => sum + (Number(e.loosePieces) || 0),
-    0
-  )
-  const previewCases = targetCaseSize > 0 ? Math.floor(previewTotalLoose / targetCaseSize) : 1
-  const previewRemainingLoose = targetCaseSize > 0 ? previewTotalLoose % targetCaseSize : 0
 
   return (
     <div className="space-y-6">
@@ -257,8 +169,6 @@ export function PendingHubView() {
               { value: "payments", label: "Payments", count: pendingPayments.length },
               { value: "deliveries", label: "Deliveries", count: pendingDeliveries.length },
               { value: "trips", label: "Trips", count: activeTrips.length },
-              { value: "loose", label: "Loose Packs", count: looseEntries.length },
-              { value: "packed", label: "Mixed Cases", count: packGroups.length },
             ]}
           />
         </div>
@@ -286,8 +196,8 @@ export function PendingHubView() {
         </div>
       )}
 
-      {/* 4 Overview Mini Cards */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {/* 3 Overview Mini Cards */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div
           onClick={() => setFilterTab(filterTab === "payments" ? "all" : "payments")}
           className={`cursor-pointer rounded-2xl border p-4 transition-all ${
@@ -334,22 +244,6 @@ export function PendingHubView() {
           </div>
           <div className="mt-2 text-xl font-bold">{activeTrips.length}</div>
           <p className="text-[10px] mt-1 opacity-80">Market trips ongoing</p>
-        </div>
-
-        <div
-          onClick={() => setFilterTab(filterTab === "loose" ? "all" : "loose")}
-          className={`cursor-pointer rounded-2xl border p-4 transition-all ${
-            filterTab === "loose"
-              ? "border-zinc-900 bg-zinc-900 text-white dark:border-white dark:bg-white dark:text-black"
-              : "border-zinc-200/80 bg-white hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-950"
-          }`}
-        >
-          <div className="flex items-center justify-between text-xs opacity-70">
-            <span>Loose Packs</span>
-            <Package className="h-4 w-4" />
-          </div>
-          <div className="mt-2 text-xl font-bold">{totalLoosePieces} pcs</div>
-          <p className="text-[10px] mt-1 opacity-80">{looseEntries.length} orders need cases</p>
         </div>
       </div>
 
@@ -534,133 +428,6 @@ export function PendingHubView() {
           </div>
         )}
 
-        {/* 4. Loose Packs Section */}
-        {(filterTab === "all" || filterTab === "loose") && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <Package className="h-3.5 w-3.5 text-orange-500" />
-                <span>Loose Pieces Needing Mixed Case ({filteredLoose.length})</span>
-              </h3>
-              {filteredLoose.length > 0 && (
-                <Button
-                  size="sm"
-                  shape="pill"
-                  onClick={() => handleOpenPackModal()}
-                  className="h-7 text-xs font-semibold shadow-sm"
-                >
-                  <Layers className="h-3.5 w-3.5 mr-1" />
-                  Pack Into Mixed Case
-                </Button>
-              )}
-            </div>
-
-            {filteredLoose.length === 0 ? (
-              filterTab === "loose" && (
-                <Card className="p-8 text-center rounded-2xl">
-                  <CheckCircle2 className="h-6 w-6 text-emerald-500 mx-auto mb-2" />
-                  <p className="text-xs font-bold text-zinc-800 dark:text-zinc-200">
-                    All loose pieces are packed!
-                  </p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
-                    There are no unbundled loose garments pending in any order.
-                  </p>
-                </Card>
-              )
-            ) : (
-              <div className="grid gap-3 md:grid-cols-2">
-                {filteredLoose.map((entry) => (
-                  <Card key={entry.id} className="p-4 rounded-2xl">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
-                          Order #{entry.orderNo} • {entry.itemCode}
-                        </p>
-                        <p className="text-[11px] text-muted-foreground mt-0.5">
-                          🏭 {entry.supplierName} • {entry.caseCount} full cases ({entry.caseSize}{" "}
-                          pcs/case)
-                        </p>
-                      </div>
-                      <Badge variant="warning">{entry.loosePieces} Loose Pcs</Badge>
-                    </div>
-                    <div className="mt-3 flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">
-                        Requires mixed packing to finalize shipment
-                      </span>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        shape="pill"
-                        onClick={() => handleOpenPackModal(entry)}
-                        className="h-7 text-[11px] font-semibold"
-                      >
-                        Pack Loose
-                      </Button>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 5. Mixed Cases (Packed Groups) Section */}
-        {(filterTab === "all" || filterTab === "packed") && packGroups.length > 0 && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <Layers className="h-3.5 w-3.5 text-emerald-500" />
-                <span>Packed Mixed Cases ({packGroups.length})</span>
-              </h3>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              {packGroups.map((group) => (
-                <Card key={group.id} className="p-4 rounded-2xl border-emerald-500/20 bg-emerald-500/5">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-zinc-900 dark:text-zinc-100">
-                          {group.packGroupCode || group.packCode}
-                        </span>
-                        <Badge variant="success">
-                          {group.combinedPieces || group.totalPieces} pcs combined
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-zinc-700 dark:text-zinc-300 mt-1.5 font-medium">
-                        {group.note}
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      shape="pill"
-                      onClick={() => deletePackGroup(group.id)}
-                      className="text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 h-7 w-7 p-0"
-                      title="Unpack Mixed Case"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                  <div className="mt-3 flex items-center justify-between text-[11px] text-muted-foreground border-t border-zinc-200/60 dark:border-zinc-800 pt-2">
-                    <span>
-                      Resulting Cases:{" "}
-                      <strong className="text-zinc-800 dark:text-zinc-200">
-                        {group.resultingCases || group.totalCases || 1}
-                      </strong>
-                    </span>
-                    <span>
-                      Remaining Loose:{" "}
-                      <strong className="text-zinc-800 dark:text-zinc-200">
-                        {group.remainingLoose || 0} pcs
-                      </strong>
-                    </span>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Empty State */}
         {totalActionsCount === 0 && (
           <Card className="py-12 text-center rounded-3xl">
@@ -821,105 +588,6 @@ export function PendingHubView() {
         </div>
       </Dialog>
 
-      {/* Pack Loose Pieces Dialog */}
-      <Dialog
-        open={isPackDialogOpen}
-        onOpenChange={setIsPackDialogOpen}
-        title="Create Mixed Case Pack"
-        description="Bundle multiple loose garments into complete shipment cartons"
-      >
-        <div className="space-y-4 pt-2">
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">
-              Select Loose Orders to Combine
-            </label>
-            <div className="mt-2 space-y-2 max-h-48 overflow-y-auto pr-1">
-              {looseEntries.map((entry) => {
-                const isSelected = selectedEntryIds.includes(entry.id)
-                return (
-                  <div
-                    key={entry.id}
-                    onClick={() => handleToggleEntrySelection(entry.id)}
-                    className={`flex items-center justify-between p-2.5 rounded-xl border cursor-pointer transition-all ${
-                      isSelected
-                        ? "border-zinc-900 bg-zinc-900/5 dark:border-white dark:bg-white/10"
-                        : "border-zinc-200 dark:border-zinc-800 hover:border-zinc-300"
-                    }`}
-                  >
-                    <div>
-                      <p className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
-                        Order #{entry.orderNo} • {entry.itemCode}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        🏭 {entry.supplierName}
-                      </p>
-                    </div>
-                    <Badge variant={isSelected ? "default" : "outline"}>
-                      {entry.loosePieces} pcs
-                    </Badge>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground">
-                Target Carton Size (pcs)
-              </label>
-              <Input
-                type="number"
-                value={targetCaseSize}
-                onChange={(e) => setTargetCaseSize(Number(e.target.value) || 24)}
-                min={1}
-                className="mt-1.5"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground">Packing Summary</label>
-              <div className="mt-1.5 h-10 px-3 rounded-lg border border-zinc-200 dark:border-zinc-800 flex items-center justify-between text-xs">
-                <span>Total: {previewTotalLoose} pcs</span>
-                <span className="font-bold">
-                  {previewCases} case{previewCases > 1 ? "s" : ""}
-                  {previewRemainingLoose > 0 ? ` + ${previewRemainingLoose} loose` : ""}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">
-              Custom Packing Note (Optional)
-            </label>
-            <Input
-              value={packCustomNote}
-              onChange={(e) => setPackCustomNote(e.target.value)}
-              placeholder="e.g. Mixed pack with Kurti & Shirting"
-              className="mt-1.5"
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button
-              variant="outline"
-              shape="pill"
-              size="sm"
-              onClick={() => setIsPackDialogOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              shape="pill"
-              size="sm"
-              onClick={handleCreateMixedPack}
-              disabled={selectedEntryIds.length === 0}
-            >
-              Create Mixed Pack ({previewTotalLoose} pcs)
-            </Button>
-          </div>
-        </div>
-      </Dialog>
     </div>
   )
 }

@@ -11,7 +11,8 @@ import {
   Filter,
   UserCheck,
   FileText,
-  Printer
+  Printer,
+  Pencil
 } from "lucide-react"
 import { useData } from "../context/DataContext"
 import { formatDate, formatInr } from "../lib/utils"
@@ -21,7 +22,7 @@ import { Badge } from "../components/ui/Badge"
 import { Dialog } from "../components/ui/Dialog"
 import { Input } from "../components/ui/Input"
 import { Tabs } from "../components/ui/Tabs"
-import { Visit, PurchaseEntry, Supplier } from "../types"
+import { Visit, PurchaseEntry, Supplier, Customer } from "../types"
 import { ReportViewerModal } from "../components/ui/ReportViewerModal"
 import {
   generateCustomerDayReportHtml,
@@ -42,6 +43,8 @@ export function VisitsView() {
     setSelectedEmployeeId,
     saveVisit,
     savePurchaseEntry,
+    saveCustomer,
+    saveSupplier,
   } = useData()
 
   const [search, setSearch] = useState<string>("")
@@ -60,6 +63,22 @@ export function VisitsView() {
   const [orderRate, setOrderRate] = useState<string>("")
   const [orderCaseSize, setOrderCaseSize] = useState<string>("24")
   const [orderTransporter, setOrderTransporter] = useState<string>("")
+  const [orderRemarks, setOrderRemarks] = useState<string>("")
+
+  // Edit Stop in Visit state
+  const [editingOrder, setEditingOrder] = useState<PurchaseEntry | null>(null)
+  const [editItemCode, setEditItemCode] = useState<string>("")
+  const [editPieces, setEditPieces] = useState<string>("")
+  const [editRate, setEditRate] = useState<string>("")
+  const [editCases, setEditCases] = useState<string>("")
+  const [editLoose, setEditLoose] = useState<string>("")
+  const [editCaseSize, setEditCaseSize] = useState<string>("24")
+  const [editRemarks, setEditRemarks] = useState<string>("")
+  const [editTransporter, setEditTransporter] = useState<string>("")
+  const [editDeliveryStatus, setEditDeliveryStatus] = useState<string>("Pending")
+  const [editPaymentStatus, setEditPaymentStatus] = useState<string>("Pending")
+  const [editPaymentMode, setEditPaymentMode] = useState<string>("Cash")
+  const [editPaidAmount, setEditPaidAmount] = useState<string>("0")
 
   // New Visit Form state
   const [customerName, setCustomerName] = useState<string>("")
@@ -67,6 +86,27 @@ export function VisitsView() {
   const [agentId, setAgentId] = useState<number>(employees[0]?.id || 1)
   const [agentName, setAgentName] = useState<string>(employees[0]?.name || "harry")
   const [visitDate, setVisitDate] = useState<string>(new Date().toISOString().split("T")[0])
+
+  // Quick Add Customer Modal
+  const [isQuickAddCustomerOpen, setIsQuickAddCustomerOpen] = useState<boolean>(false)
+  const [quickCustFirm, setQuickCustFirm] = useState<string>("")
+  const [quickCustOwner, setQuickCustOwner] = useState<string>("")
+  const [quickCustPhone, setQuickCustPhone] = useState<string>("")
+  const [quickCustCity, setQuickCustCity] = useState<string>("Ahmedabad")
+  const [quickCustType, setQuickCustType] = useState<string>("Credit")
+  const [quickCustCreditDays, setQuickCustCreditDays] = useState<string>("30")
+  const [quickCustError, setQuickCustError] = useState<string>("")
+
+  // Quick Add Supplier Modal
+  const [isQuickAddSupplierOpen, setIsQuickAddSupplierOpen] = useState<boolean>(false)
+  const [quickSupName, setQuickSupName] = useState<string>("")
+  const [quickSupContact, setQuickSupContact] = useState<string>("")
+  const [quickSupPhone, setQuickSupPhone] = useState<string>("")
+  const [quickSupCity, setQuickSupCity] = useState<string>("Ahmedabad")
+  const [quickSupMarket, setQuickSupMarket] = useState<string>("")
+  const [quickSupType, setQuickSupType] = useState<string>("Manufacturer")
+  const [quickSupCaseSize, setQuickSupCaseSize] = useState<string>("24")
+  const [quickSupError, setQuickSupError] = useState<string>("")
 
   // PDF / Report Viewer modal state
   const [reportModal, setReportModal] = useState<{
@@ -111,6 +151,96 @@ export function VisitsView() {
       v.employeeName?.toLowerCase().includes(q)
     )
   })
+
+  const handleSaveQuickCustomer = async () => {
+    const cleanFirm = quickCustFirm.trim()
+    const cleanOwner = quickCustOwner.trim()
+    const cleanPhone = quickCustPhone.trim()
+    const cleanCity = quickCustCity.trim() || "Ahmedabad"
+
+    if (!cleanFirm && !cleanOwner) {
+      setQuickCustError("Please enter Shop/Firm or Owner Name")
+      return
+    }
+    if (!cleanPhone) {
+      setQuickCustError("Please enter Mobile Number")
+      return
+    }
+
+    const maxId = customers.reduce((max, c) => Math.max(max, Number(c.id) || 0), 0)
+    const newId = maxId + 1
+    const effectiveName = cleanOwner || cleanFirm
+    const effectiveFirm = cleanFirm || cleanOwner
+
+    const newCust: Customer = {
+      id: newId,
+      customerId: `CUST-${newId}`,
+      name: effectiveName,
+      firmName: effectiveFirm,
+      phone: cleanPhone,
+      city: cleanCity,
+      customerType: quickCustType,
+      creditDays: Number(quickCustCreditDays) || 30,
+      creditLimit: 0,
+      notes: "Quick created during Market Visit creation",
+      createdAt: Date.now(),
+    }
+
+    await saveCustomer(newCust)
+    setCustomerId(newId)
+    setCustomerName(effectiveName)
+    setIsQuickAddCustomerOpen(false)
+    setQuickCustFirm("")
+    setQuickCustOwner("")
+    setQuickCustPhone("")
+    setQuickCustError("")
+  }
+
+  const handleSaveQuickSupplier = async () => {
+    const cleanName = quickSupName.trim()
+    const cleanPhone = quickSupPhone.trim()
+    const cleanCity = quickSupCity.trim() || "Ahmedabad"
+    const cleanMarket = quickSupMarket.trim()
+    const cleanContact = quickSupContact.trim()
+
+    if (cleanName.length < 2) {
+      setQuickSupError("Supplier name must be at least 2 characters")
+      return
+    }
+    const parsedCaseSize = Number(quickSupCaseSize) || 24
+    if (parsedCaseSize <= 0) {
+      setQuickSupError("Case size must be greater than 0")
+      return
+    }
+
+    const maxId = suppliers.reduce((max, s) => Math.max(max, Number(s.id) || 0), 0)
+    const newId = maxId + 1
+
+    const newSup: Supplier = {
+      id: newId,
+      supplierId: `SUP-${newId}`,
+      name: cleanName,
+      firmName: cleanName,
+      type: quickSupType,
+      contactPerson: cleanContact,
+      phone: cleanPhone,
+      city: cleanCity,
+      marketArea: cleanMarket,
+      defaultCaseSize: parsedCaseSize,
+      notes: "Quick created during visit stop",
+      createdAt: Date.now(),
+    }
+
+    await saveSupplier(newSup)
+    setOrderSupplierId(newId)
+    setOrderCaseSize(String(parsedCaseSize))
+    setIsQuickAddSupplierOpen(false)
+    setQuickSupName("")
+    setQuickSupContact("")
+    setQuickSupPhone("")
+    setQuickSupMarket("")
+    setQuickSupError("")
+  }
 
   const handleCreateVisit = async () => {
     if (!customerName.trim()) return
@@ -179,6 +309,7 @@ export function VisitsView() {
       grandTotalWithGst: grandTotal,
       deliveryStatus: "Pending",
       transporter: orderTransporter.trim() || undefined,
+      mixedPackNote: orderRemarks.trim() || undefined,
       paymentStatus: "Pending",
       paidAmount: 0,
       createdAt: Date.now(),
@@ -192,6 +323,59 @@ export function VisitsView() {
     setOrderLoose("")
     setOrderRate("")
     setOrderTransporter("")
+    setOrderRemarks("")
+  }
+
+  const handleOpenEditStop = (entry: PurchaseEntry) => {
+    setEditingOrder(entry)
+    setEditItemCode(entry.itemCode || "")
+    setEditPieces(String(entry.pieces || ""))
+    setEditRate(String(entry.rate || entry.pricePerPiece || ""))
+    setEditCases(String(entry.caseCount ?? ""))
+    setEditLoose(String(entry.loosePieces ?? ""))
+    setEditCaseSize(String(entry.caseSize || "24"))
+    setEditRemarks(entry.mixedPackNote || "")
+    setEditTransporter(entry.transporter || "")
+    setEditDeliveryStatus(entry.deliveryStatus || "Pending")
+    setEditPaymentStatus(entry.paymentStatus || "Pending")
+    setEditPaymentMode(entry.paymentMode || "Cash")
+    setEditPaidAmount(String(entry.paidAmount || "0"))
+  }
+
+  const handleSaveEditStop = async () => {
+    if (!editingOrder) return
+    const pcs = parseInt(editPieces, 10) || 0
+    const rt = parseFloat(editRate) || 0
+    const cs = parseInt(editCaseSize, 10) || 24
+    const csCount = editCases !== "" ? parseInt(editCases, 10) || 0 : (cs > 0 ? Math.floor(pcs / cs) : 0)
+    const lsPcs = editLoose !== "" ? parseInt(editLoose, 10) || 0 : (cs > 0 ? pcs % cs : 0)
+    const baseTotal = pcs * rt
+    const gstAmt = (baseTotal * (editingOrder.gstPercent || 5)) / 100
+    const grandTotal = baseTotal + gstAmt
+
+    const updatedEntry: PurchaseEntry = {
+      ...editingOrder,
+      itemCode: editItemCode.trim().toUpperCase(),
+      pieces: pcs,
+      rate: rt,
+      pricePerPiece: rt,
+      caseSize: cs,
+      caseCount: csCount,
+      loosePieces: lsPcs,
+      totalAmount: baseTotal,
+      gstAmount: gstAmt,
+      grandTotalWithGst: grandTotal,
+      transporter: editTransporter.trim() || undefined,
+      deliveryStatus: editDeliveryStatus,
+      paymentStatus: editPaymentStatus,
+      paymentMode: editPaymentMode,
+      paidAmount: parseFloat(editPaidAmount) || 0,
+      mixedPackNote: editRemarks.trim() || null,
+      packGroupId: lsPcs === 0 ? null : editingOrder.packGroupId,
+    }
+
+    await savePurchaseEntry(updatedEntry)
+    setEditingOrder(null)
   }
 
   // Visit entries breakdown
@@ -576,6 +760,7 @@ export function VisitsView() {
                         setOrderLoose("")
                         setOrderRate("")
                         setOrderTransporter("")
+                        setOrderRemarks("")
                         setIsAddOrderOpen(true)
                       }}
                       className="h-6 text-[10px] px-2 font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm gap-1"
@@ -613,6 +798,11 @@ export function VisitsView() {
                           <p className="text-[11px] text-muted-foreground">
                             🏭 {e.supplierName} • {e.pieces} pcs ({e.caseCount} cases, {e.loosePieces} loose)
                           </p>
+                          {e.mixedPackNote && (
+                            <p className="text-[10.5px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">
+                              ↳ Note: {e.mixedPackNote}
+                            </p>
+                          )}
                           <div className="flex items-center gap-2 mt-1">
                             <span className="text-emerald-600 font-semibold text-[10px]">
                               Done: ₹{formatInr(paid)}
@@ -631,6 +821,17 @@ export function VisitsView() {
                             <Badge variant={e.paymentStatus?.toLowerCase() === "paid" ? "success" : "outline"} className="text-[10px]">
                               {e.paymentStatus || "Unpaid"}
                             </Badge>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              shape="pill"
+                              onClick={() => handleOpenEditStop(e)}
+                              className="h-6 text-[10px] px-2 text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                              title="Edit Stop Details"
+                            >
+                              <Pencil className="h-3 w-3 mr-0.5" />
+                              Edit
+                            </Button>
                             <Button
                               variant="ghost"
                               size="sm"
@@ -684,9 +885,18 @@ export function VisitsView() {
       >
         <div className="space-y-4 pt-2">
           <div>
-            <label className="text-xs font-medium text-muted-foreground">
-              Select or Enter Customer / Buyer
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium text-muted-foreground">
+                Select or Enter Customer / Buyer
+              </label>
+              <button
+                type="button"
+                onClick={() => setIsQuickAddCustomerOpen(true)}
+                className="text-[11px] font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400"
+              >
+                + Create New
+              </button>
+            </div>
             <select
               value={customerId}
               onChange={(e) => {
@@ -772,9 +982,18 @@ export function VisitsView() {
         >
           <div className="space-y-3.5 pt-2 text-xs">
             <div>
-              <label className="text-xs font-medium text-muted-foreground">
-                Select Supplier / Wholesaler *
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-muted-foreground">
+                  Select Supplier / Wholesaler *
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsQuickAddSupplierOpen(true)}
+                  className="text-[11px] font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                >
+                  + Create New
+                </button>
+              </div>
               <select
                 value={orderSupplierId}
                 onChange={(e) => {
@@ -872,6 +1091,16 @@ export function VisitsView() {
               />
             </div>
 
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Packing Remarks / Note (Optional)</label>
+              <Input
+                value={orderRemarks}
+                onChange={(e) => setOrderRemarks(e.target.value)}
+                placeholder="e.g. Packed with Order HT-1002 / Wholesaler X"
+                className="mt-1"
+              />
+            </div>
+
             {/* Live Calculation Preview */}
             <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/60 p-3">
               <div className="flex items-center justify-between text-xs font-bold text-zinc-900 dark:text-zinc-100">
@@ -882,9 +1111,9 @@ export function VisitsView() {
                   {!orderCases && !orderLoose && `${Number(orderPieces) || 0} Pcs`}
                 </span>
               </div>
-              {Number(orderLoose) > 0 && (
-                <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
-                  ⚠️ {orderLoose} loose pieces remaining. Can be packed with other bills in Mixed Pack.
+              {orderRemarks.trim() && (
+                <p className="text-[11px] text-zinc-600 dark:text-zinc-400 mt-1">
+                  ↳ Note: {orderRemarks.trim()}
                 </p>
               )}
             </div>
@@ -910,6 +1139,365 @@ export function VisitsView() {
           </div>
         </Dialog>
       )}
+
+      {/* Edit Stop Dialog */}
+      {editingOrder && (
+        <Dialog
+          open={!!editingOrder}
+          onOpenChange={(open) => !open && setEditingOrder(null)}
+          title={`Edit Stop: #${editingOrder.orderNo} • ${editingOrder.supplierName}`}
+          description={`Trip: ${selectedVisit?.visitCode} • Buyer: ${selectedVisit?.customerName}`}
+        >
+          <div className="space-y-3 pt-2">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Item / Design Code</label>
+              <Input
+                value={editItemCode}
+                onChange={(e) => setEditItemCode(e.target.value.toUpperCase())}
+                placeholder="e.g. KURTI-102"
+                className="mt-1"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Total Pieces (Pcs)</label>
+                <Input
+                  type="number"
+                  value={editPieces}
+                  onChange={(e) => setEditPieces(e.target.value)}
+                  placeholder="e.g. 50"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Rate (₹/pc)</label>
+                <Input
+                  type="number"
+                  value={editRate}
+                  onChange={(e) => setEditRate(e.target.value)}
+                  placeholder="e.g. 450"
+                  className="mt-1"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Cases</label>
+                <Input
+                  type="number"
+                  value={editCases}
+                  onChange={(e) => setEditCases(e.target.value)}
+                  placeholder="e.g. 2"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Loose (Pcs)</label>
+                <Input
+                  type="number"
+                  value={editLoose}
+                  onChange={(e) => setEditLoose(e.target.value)}
+                  placeholder="e.g. 0"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Case Size</label>
+                <Input
+                  type="number"
+                  value={editCaseSize}
+                  onChange={(e) => setEditCaseSize(e.target.value)}
+                  placeholder="24"
+                  className="mt-1"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Packing Remarks / Note (Optional)</label>
+              <Input
+                value={editRemarks}
+                onChange={(e) => setEditRemarks(e.target.value)}
+                placeholder="e.g. Packed with Order HT-1002 / Wholesaler X"
+                className="mt-1"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Transporter</label>
+              <Input
+                value={editTransporter}
+                onChange={(e) => setEditTransporter(e.target.value)}
+                placeholder="e.g. V-Trans, Navata"
+                className="mt-1"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Delivery Status</label>
+                <select
+                  value={editDeliveryStatus}
+                  onChange={(e) => setEditDeliveryStatus(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-zinc-200 bg-white p-2 text-xs font-medium text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
+                >
+                  <option value="Pending">Pending</option>
+                  <option value="Packed">Packed</option>
+                  <option value="Dispatched">Dispatched</option>
+                  <option value="Delivered">Delivered</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Payment Status</label>
+                <select
+                  value={editPaymentStatus}
+                  onChange={(e) => setEditPaymentStatus(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-zinc-200 bg-white p-2 text-xs font-medium text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
+                >
+                  <option value="Pending">Pending</option>
+                  <option value="Partial">Partial</option>
+                  <option value="Paid">Paid</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Live calculation preview */}
+            <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/60 p-3">
+              <div className="flex items-center justify-between text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                <span>Total: ₹{formatInr((Number(editPieces) || 0) * (Number(editRate) || 0))}</span>
+                <span>
+                  {editCases ? `${editCases} Cases` : ""}{" "}
+                  {editLoose !== "" ? `+ ${editLoose} Loose` : ""}
+                  {!editCases && editLoose === "" && `${Number(editPieces) || 0} Pcs`}
+                </span>
+              </div>
+              {editRemarks.trim() && (
+                <p className="text-[11px] text-zinc-600 dark:text-zinc-400 mt-1">
+                  ↳ Note: {editRemarks.trim()}
+                </p>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                shape="pill"
+                size="sm"
+                onClick={() => setEditingOrder(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                shape="pill"
+                size="sm"
+                disabled={!editItemCode.trim() || !editPieces}
+                onClick={handleSaveEditStop}
+              >
+                Save Changes
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+      )}
+
+      {/* Quick Add Customer Dialog */}
+      <Dialog
+        open={isQuickAddCustomerOpen}
+        onOpenChange={setIsQuickAddCustomerOpen}
+        title="Quick Add Customer / Retailer"
+        description="Create customer profile and auto-select for this visit"
+      >
+        <div className="space-y-3 pt-2 text-xs">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Shop / Firm Name *</label>
+            <Input
+              value={quickCustFirm}
+              onChange={(e) => {
+                setQuickCustFirm(e.target.value)
+                setQuickCustError("")
+              }}
+              placeholder="e.g. Modern Dresses / New Cloth Store"
+              className="mt-1"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2.5">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Owner Name</label>
+              <Input
+                value={quickCustOwner}
+                onChange={(e) => {
+                  setQuickCustOwner(e.target.value)
+                  setQuickCustError("")
+                }}
+                placeholder="Owner / Proprietor"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Mobile Number *</label>
+              <Input
+                value={quickCustPhone}
+                onChange={(e) => {
+                  setQuickCustPhone(e.target.value)
+                  setQuickCustError("")
+                }}
+                placeholder="10-digit phone"
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">City</label>
+              <Input
+                value={quickCustCity}
+                onChange={(e) => setQuickCustCity(e.target.value)}
+                placeholder="Ahmedabad"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Type</label>
+              <select
+                value={quickCustType}
+                onChange={(e) => setQuickCustType(e.target.value as "Credit" | "Cash")}
+                className="mt-1 w-full rounded-lg border border-zinc-200 bg-white p-2 text-xs font-medium text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
+              >
+                <option value="Credit">Credit</option>
+                <option value="Cash">Cash</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Credit Days</label>
+              <Input
+                type="number"
+                value={quickCustCreditDays}
+                onChange={(e) => setQuickCustCreditDays(e.target.value)}
+                placeholder="30"
+                className="mt-1"
+              />
+            </div>
+          </div>
+          {quickCustError && (
+            <p className="text-[11px] font-semibold text-rose-500">{quickCustError}</p>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              shape="pill"
+              onClick={() => setIsQuickAddCustomerOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button size="sm" shape="pill" onClick={handleSaveQuickCustomer}>
+              Save & Select
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Quick Add Supplier Dialog */}
+      <Dialog
+        open={isQuickAddSupplierOpen}
+        onOpenChange={setIsQuickAddSupplierOpen}
+        title="Quick Add Supplier / Wholesaler"
+        description="Create supplier profile and auto-select for this stop"
+      >
+        <div className="space-y-3 pt-2 text-xs">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Firm / Mill Name *</label>
+            <Input
+              value={quickSupName}
+              onChange={(e) => {
+                setQuickSupName(e.target.value)
+                setQuickSupError("")
+              }}
+              placeholder="e.g. Royal Mills / Shyam Fabrics"
+              className="mt-1"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2.5">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Contact Person</label>
+              <Input
+                value={quickSupContact}
+                onChange={(e) => setQuickSupContact(e.target.value)}
+                placeholder="Owner / Manager"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Phone Number</label>
+              <Input
+                value={quickSupPhone}
+                onChange={(e) => setQuickSupPhone(e.target.value)}
+                placeholder="10-digit mobile"
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Market / Area</label>
+              <Input
+                value={quickSupMarket}
+                onChange={(e) => setQuickSupMarket(e.target.value)}
+                placeholder="Ring Road"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">City</label>
+              <Input
+                value={quickSupCity}
+                onChange={(e) => setQuickSupCity(e.target.value)}
+                placeholder="Ahmedabad"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Type</label>
+              <select
+                value={quickSupType}
+                onChange={(e) => setQuickSupType(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-zinc-200 bg-white p-2 text-xs font-medium text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
+              >
+                <option value="Manufacturer">Manufacturer</option>
+                <option value="Wholesaler">Wholesaler</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Default Case Size (Pcs)</label>
+            <Input
+              type="number"
+              value={quickSupCaseSize}
+              onChange={(e) => setQuickSupCaseSize(e.target.value)}
+              placeholder="24"
+              className="mt-1 max-w-[120px]"
+            />
+          </div>
+          {quickSupError && (
+            <p className="text-[11px] font-semibold text-rose-500">{quickSupError}</p>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              shape="pill"
+              onClick={() => setIsQuickAddSupplierOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button size="sm" shape="pill" onClick={handleSaveQuickSupplier}>
+              Save & Select
+            </Button>
+          </div>
+        </div>
+      </Dialog>
 
       {/* Report Viewer Modal */}
       <ReportViewerModal

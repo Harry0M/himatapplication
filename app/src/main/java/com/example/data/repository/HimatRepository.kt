@@ -2,6 +2,7 @@ package com.example.data.repository
 
 import com.example.data.local.AppDatabase
 import com.example.data.local.entity.BrandEntity
+import com.example.data.local.entity.ChequePdcEntity
 import com.example.data.local.entity.CustomerEntity
 import com.example.data.local.entity.LeadEntity
 import com.example.data.local.entity.EmployeeEntity
@@ -37,6 +38,29 @@ class HimatRepository(private val database: AppDatabase) {
     private val transporterDao = database.transporterDao()
     private val marketDao = database.marketDao()
     private val leadDao = database.leadDao()
+    private val chequePdcDao = database.chequePdcDao()
+
+    // Cheques PDC
+    val allChequesPdc: Flow<List<ChequePdcEntity>> = chequePdcDao.getAllCheques()
+    fun getChequesByPartyType(partyType: String): Flow<List<ChequePdcEntity>> = chequePdcDao.getChequesByPartyType(partyType)
+    fun getChequesByCustomer(customerId: Long): Flow<List<ChequePdcEntity>> = chequePdcDao.getChequesByCustomer(customerId)
+    fun getChequesBySupplier(supplierId: Long): Flow<List<ChequePdcEntity>> = chequePdcDao.getChequesBySupplier(supplierId)
+    fun getChequesByDate(date: String): Flow<List<ChequePdcEntity>> = chequePdcDao.getChequesByDate(date)
+    fun getChequesByStatus(status: String): Flow<List<ChequePdcEntity>> = chequePdcDao.getChequesByStatus(status)
+    suspend fun getChequeById(id: Long): ChequePdcEntity? = chequePdcDao.getChequeById(id)
+    suspend fun saveChequePdc(cheque: ChequePdcEntity): Long {
+        return if (cheque.id == 0L) {
+            chequePdcDao.insertCheque(cheque)
+        } else {
+            chequePdcDao.updateCheque(cheque)
+            cheque.id
+        }
+    }
+    suspend fun updateChequePdcStatus(id: Long, status: String, clearedDate: String = "") {
+        chequePdcDao.updateStatus(id, status, clearedDate)
+    }
+    suspend fun deleteChequePdc(cheque: ChequePdcEntity) = chequePdcDao.deleteCheque(cheque)
+    suspend fun deleteChequePdcById(id: Long) = chequePdcDao.deleteChequeById(id)
 
     // Leads
     val allLeads: Flow<List<LeadEntity>> = leadDao.getAllLeads()
@@ -294,10 +318,10 @@ class HimatRepository(private val database: AppDatabase) {
         val gstAmount = (totalAmount * entry.gstRate) / 100.0
         val grandTotal = totalAmount + gstAmount
 
-        // Auto Case / Loose calculation only as fallback if both were 0 and pieces > 0
+        // Respect user-specified Case / Loose values directly as-is
         val caseSize = if (entry.caseSize > 0) entry.caseSize else 24
-        val caseCount = if (entry.caseCount > 0 || entry.loosePieces > 0) entry.caseCount else (if (caseSize > 0) entry.pieces / caseSize else 0)
-        val loosePieces = if (entry.caseCount > 0 || entry.loosePieces > 0) entry.loosePieces else (if (caseSize > 0) entry.pieces % caseSize else 0)
+        val caseCount = entry.caseCount
+        val loosePieces = entry.loosePieces
 
         val processedEntry = entry.copy(
             totalAmount = totalAmount,
@@ -332,53 +356,8 @@ class HimatRepository(private val database: AppDatabase) {
         val grandTotal = totalAmount + gstAmount
 
         val caseSize = if (entry.caseSize > 0) entry.caseSize else 24
-        // Keep whatever caseCount and loosePieces user specified without forced recalculation
         val caseCount = entry.caseCount
         val loosePieces = entry.loosePieces
-
-        // Check if this entry was part of a packGroup
-        val existingEntry = purchaseEntryDao.getEntryById(entry.id)
-        val oldGroupId = entry.packGroupId ?: existingEntry?.packGroupId
-        var finalPackGroupId = entry.packGroupId
-        var finalMixedPackNote = entry.mixedPackNote
-
-        val isQuantityChanged = existingEntry != null && (
-            existingEntry.pieces != entry.pieces ||
-            existingEntry.loosePieces != loosePieces ||
-            existingEntry.caseCount != caseCount ||
-            existingEntry.caseSize != caseSize
-        )
-
-        if ((loosePieces == 0 || isQuantityChanged) && oldGroupId != null && oldGroupId != 0L) {
-            finalPackGroupId = null
-            if (finalMixedPackNote != null && (finalMixedPackNote.startsWith("Packed with", ignoreCase = true) || finalMixedPackNote.startsWith("Mixed", ignoreCase = true))) {
-                finalMixedPackNote = null
-            }
-            // Dissolve the pack group completely so all partner entries return to unpacked loose pieces cleanly
-            val group = packGroupDao.getPackGroupById(oldGroupId)
-            if (group != null) {
-                val groupEntryIds = group.linkedEntryIds.split(",").mapNotNull { it.trim().toLongOrNull() }
-                groupEntryIds.forEach { linkedId ->
-                    val linkedEntry = purchaseEntryDao.getEntryById(linkedId)
-                    if (linkedEntry != null) {
-                        val noteToKeep = if (linkedEntry.mixedPackNote?.startsWith("Packed with", ignoreCase = true) == true || linkedEntry.mixedPackNote?.startsWith("Mixed", ignoreCase = true) == true) null else linkedEntry.mixedPackNote
-                        purchaseEntryDao.updateMixedPackInfo(linkedId, null, noteToKeep)
-                        if (linkedEntry.orderNo.isNotBlank()) {
-                            val existingTxn = transactionDao.getTransactionByOrderNo(linkedEntry.orderNo)
-                            if (existingTxn != null) {
-                                transactionDao.updateTransaction(existingTxn.copy(mixedPackNote = noteToKeep))
-                            }
-                        }
-                    }
-                }
-                packGroupDao.deletePackGroup(group)
-            }
-        } else if (loosePieces == 0) {
-            finalPackGroupId = null
-            if (finalMixedPackNote != null && (finalMixedPackNote.startsWith("Packed with", ignoreCase = true) || finalMixedPackNote.startsWith("Mixed", ignoreCase = true))) {
-                finalMixedPackNote = null
-            }
-        }
 
         val processedEntry = entry.copy(
             totalAmount = totalAmount,
@@ -386,9 +365,7 @@ class HimatRepository(private val database: AppDatabase) {
             grandTotalWithGst = grandTotal,
             caseSize = caseSize,
             caseCount = caseCount,
-            loosePieces = loosePieces,
-            packGroupId = finalPackGroupId,
-            mixedPackNote = finalMixedPackNote
+            loosePieces = loosePieces
         )
 
         purchaseEntryDao.updateEntry(processedEntry)
@@ -410,8 +387,7 @@ class HimatRepository(private val database: AppDatabase) {
                     paymentStatus = processedEntry.paymentStatus,
                     paymentMode = processedEntry.paymentMode,
                     paidAmount = processedEntry.paidAmount,
-                    paymentRemarks = processedEntry.paymentRemarks,
-                    mixedPackNote = processedEntry.mixedPackNote
+                    paymentRemarks = processedEntry.paymentRemarks
                 )
                 transactionDao.updateTransaction(updatedTxn)
             }
@@ -454,17 +430,14 @@ class HimatRepository(private val database: AppDatabase) {
     suspend fun createMixedPackGroup(
         visitId: Long,
         selectedEntries: List<PurchaseEntryEntity>,
-        targetCaseSize: Int = 24,
-        caseCount: Int = 1,
+        targetCaseSize: Int,
         customNote: String? = null
     ): Long {
         if (selectedEntries.isEmpty()) return 0L
 
         val totalCombinedLoose = selectedEntries.sumOf { it.loosePieces }
-        val resultingCases = maxOf(1, caseCount)
-        val remainingLoose = if (targetCaseSize > 0 && resultingCases * targetCaseSize < totalCombinedLoose) {
-            totalCombinedLoose - (resultingCases * targetCaseSize)
-        } else 0
+        val resultingCases = if (targetCaseSize > 0) totalCombinedLoose / targetCaseSize else 1
+        val remainingLoose = if (targetCaseSize > 0) totalCombinedLoose % targetCaseSize else 0
 
         val linkedIdsString = selectedEntries.joinToString(",") { it.id.toString() }
         val summaryNote = customNote ?: buildString {
@@ -473,40 +446,33 @@ class HimatRepository(private val database: AppDatabase) {
                 if (index > 0) append(" + ")
                 append("${entry.loosePieces} pcs ${entry.itemCode} (${entry.supplierName})")
             }
+            if (remainingLoose > 0) {
+                append(" [${remainingLoose} loose pcs remaining]")
+            }
         }
 
         val packGroup = PackGroupEntity(
             visitId = visitId,
-            packGroupCode = "CASE-${System.currentTimeMillis() % 10000}",
+            packGroupCode = "MIX-${System.currentTimeMillis() % 10000}",
             linkedEntryIds = linkedIdsString,
             combinedPieces = totalCombinedLoose,
-            resultingCases = resultingCases,
+            resultingCases = maxOf(1, resultingCases),
             remainingLoose = remainingLoose,
             note = summaryNote
         )
 
         val packGroupId = packGroupDao.insertPackGroup(packGroup)
 
-        // Update each entry with reciprocal note on Customer Report and each Supplier copy
+        // Update each entry so the note appears on customer report AND each supplier's copy!
         selectedEntries.forEach { entry ->
             val otherEntries = selectedEntries.filter { it.id != entry.id }
             val itemSpecificNote = if (otherEntries.isEmpty()) {
                 "Packed in ${packGroup.packGroupCode}: ${entry.loosePieces} pcs"
-            } else if (otherEntries.size == 1) {
-                val other = otherEntries.first()
-                "Packed with ${other.supplierName} (${other.itemCode} - ${other.loosePieces} pcs)"
             } else {
-                val othersDesc = otherEntries.joinToString(" & ") { "${it.supplierName} (${it.itemCode})" }
-                "Packed with $othersDesc"
+                val othersDesc = otherEntries.joinToString(", ") { "${it.loosePieces} pcs ${it.itemCode} (${it.supplierName})" }
+                "Mixed Packing: ${entry.loosePieces} pcs packed with $othersDesc"
             }
             purchaseEntryDao.updateMixedPackInfoWithOrderNo(entry.id, entry.orderNo, packGroupId, itemSpecificNote)
-
-            if (entry.orderNo.isNotBlank()) {
-                val existingTxn = transactionDao.getTransactionByOrderNo(entry.orderNo)
-                if (existingTxn != null) {
-                    transactionDao.updateTransaction(existingTxn.copy(mixedPackNote = itemSpecificNote))
-                }
-            }
         }
 
         return packGroupId
@@ -515,15 +481,7 @@ class HimatRepository(private val database: AppDatabase) {
     suspend fun deletePackGroup(packGroup: PackGroupEntity) {
         val entryIds = packGroup.linkedEntryIds.split(",").mapNotNull { it.trim().toLongOrNull() }
         entryIds.forEach { id ->
-            val entry = purchaseEntryDao.getEntryById(id)
-            val noteToKeep = if (entry?.mixedPackNote?.startsWith("Packed with", ignoreCase = true) == true || entry?.mixedPackNote?.startsWith("Mixed", ignoreCase = true) == true) null else entry?.mixedPackNote
-            purchaseEntryDao.updateMixedPackInfo(id, null, noteToKeep)
-            if (entry != null && entry.orderNo.isNotBlank()) {
-                val existingTxn = transactionDao.getTransactionByOrderNo(entry.orderNo)
-                if (existingTxn != null) {
-                    transactionDao.updateTransaction(existingTxn.copy(mixedPackNote = noteToKeep))
-                }
-            }
+            purchaseEntryDao.updateMixedPackInfo(id, null, null)
         }
         packGroupDao.deletePackGroup(packGroup)
     }
@@ -685,6 +643,18 @@ class HimatRepository(private val database: AppDatabase) {
         val localLeads = leadDao.getAllLeads().first()
         localLeads.filter { it.leadId.isNotBlank() && it.leadId !in cloudLeadIds }.forEach {
             leadDao.deleteLead(it)
+        }
+    }
+
+    suspend fun syncChequesFromCloud(cheques: List<ChequePdcEntity>) {
+        val valid = cheques.filter { it.id > 0L && !it.isDeleted }.distinctBy { it.id }
+        if (valid.isNotEmpty()) {
+            chequePdcDao.insertAll(valid)
+        }
+        val cloudIds = valid.map { it.id }.toSet()
+        val localRecords = chequePdcDao.getAllCheques().first()
+        localRecords.filter { it.id > 0L && it.id !in cloudIds }.forEach {
+            chequePdcDao.deleteChequeById(it.id)
         }
     }
 

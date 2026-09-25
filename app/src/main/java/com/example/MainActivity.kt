@@ -45,9 +45,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.components.HimatTopBar
 import com.example.ui.dialogs.CreateVisitDialog
 import com.example.ui.dialogs.MixedPackDialog
+import com.example.ui.dialogs.RegistrationShareBottomSheet
 import com.example.ui.dialogs.RoleSwitcherDialog
 import com.example.ui.screens.AddEditMasterScreen
 import com.example.ui.screens.AddStopScreen
+import com.example.ui.screens.ChequePdcScreen
 import com.example.ui.screens.CustomerDetailScreen
 import com.example.ui.screens.BrandDetailScreen
 import com.example.ui.screens.CustomerReportScreen
@@ -326,6 +328,7 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
     var showCreateVisitDialog by remember { mutableStateOf(false) }
     var showRoleSwitcherDialog by remember { mutableStateOf(false) }
     var showMixedPackDialog by remember { mutableStateOf(false) }
+    var showRegistrationShareSheet by remember { mutableStateOf(false) }
 
     val isDetailOrDocumentScreen = currentScreen in listOf(
         AppScreen.VISIT_DETAIL,
@@ -347,7 +350,8 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
         AppScreen.PROFILE,
         AppScreen.LEADS,
         AppScreen.PURCHASE_ORDERS,
-        AppScreen.CUSTOMER_ORDERS_REPORT
+        AppScreen.CUSTOMER_ORDERS_REPORT,
+        AppScreen.CHEQUE_PDC
     )
 
     // Screens that display their own integrated flat header
@@ -379,7 +383,8 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
         AppScreen.PROFILE,
         AppScreen.LEADS,
         AppScreen.PURCHASE_ORDERS,
-        AppScreen.CUSTOMER_ORDERS_REPORT
+        AppScreen.CUSTOMER_ORDERS_REPORT,
+        AppScreen.CHEQUE_PDC
     )
 
     // Handle Android system back button smoothly
@@ -439,7 +444,8 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
                 HimatTopBar(
                     role = currentRole,
                     salesmanName = currentEmployee?.name,
-                    onOpenProfile = { viewModel.navigateTo(AppScreen.PROFILE) }
+                    onOpenProfile = { viewModel.navigateTo(AppScreen.PROFILE) },
+                    onOpenShareInvite = { showRegistrationShareSheet = true }
                 )
             }
         },
@@ -881,6 +887,13 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
                         }
                     )
                 }
+
+                AppScreen.CHEQUE_PDC -> {
+                    ChequePdcScreen(
+                        viewModel = viewModel,
+                        onBack = { viewModel.navigateTo(AppScreen.DASHBOARD) }
+                    )
+                }
             }
         }
     }
@@ -896,6 +909,9 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
                 viewModel.createVisit(customer, employee, notes) {
                     showCreateVisitDialog = false
                 }
+            },
+            onQuickCreateCustomer = { newCust ->
+                viewModel.saveCustomer(newCust)
             }
         )
     }
@@ -924,25 +940,32 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
 
     if (showMixedPackDialog) {
         selectedVisit?.let { visit ->
+            val packedEntryIds = visitPackGroups.flatMap { group ->
+                group.linkedEntryIds.split(",").mapNotNull { it.trim().toLongOrNull() }
+            }.toSet()
+            val incompleteEntries = visitEntries.filter {
+                it.loosePieces > 0 && it.packGroupId == null && it.id !in packedEntryIds
+            }
             MixedPackDialog(
-                allEntries = visitEntries,
-                packGroups = visitPackGroups,
+                incompleteEntries = incompleteEntries,
                 onDismiss = { showMixedPackDialog = false },
-                onPack = { selected, caseCount, customNote ->
+                onPack = { selected, targetCaseSize ->
                     viewModel.createMixedPack(
                         visitId = visit.id,
                         selectedEntries = selected,
-                        caseCount = caseCount,
-                        customNote = customNote,
+                        targetCaseSize = targetCaseSize,
                         onSuccess = {
                             showMixedPackDialog = false
                         }
                     )
-                },
-                onUnpackGroup = { group ->
-                    viewModel.deletePackGroup(group)
                 }
             )
         }
+    }
+
+    if (showRegistrationShareSheet) {
+        RegistrationShareBottomSheet(
+            onDismiss = { showRegistrationShareSheet = false }
+        )
     }
 }

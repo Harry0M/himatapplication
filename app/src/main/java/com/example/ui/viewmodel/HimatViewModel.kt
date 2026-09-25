@@ -14,6 +14,7 @@ import com.example.data.remote.FirebaseStorageService
 import com.google.firebase.auth.FirebaseUser
 import com.example.data.local.AppDatabase
 import com.example.data.local.entity.BrandEntity
+import com.example.data.local.entity.ChequePdcEntity
 import com.example.data.local.entity.CustomerEntity
 import com.example.data.local.entity.CustomerRegistrationRequestEntity
 import com.example.data.local.entity.SupplierRegistrationRequestEntity
@@ -82,7 +83,8 @@ enum class AppScreen {
     PROFILE,
     LEADS,
     PURCHASE_ORDERS,
-    CUSTOMER_ORDERS_REPORT
+    CUSTOMER_ORDERS_REPORT,
+    CHEQUE_PDC
 }
 
 enum class MasterTab {
@@ -280,6 +282,15 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         list.count { it.status.uppercase() == "PENDING" }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
+    // Cheques PDC
+    val allChequesPdc: StateFlow<List<ChequePdcEntity>> = repository.allChequesPdc
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val dueTodayChequesCount: StateFlow<Int> = allChequesPdc.map { list ->
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        list.count { !it.isDeleted && it.chequeDate == today && (it.status.equals("Pending", ignoreCase = true) || it.status.equals("Due Today", ignoreCase = true)) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
     // Visible Streams (Filtered for Soft Deletion & Scoped by Employee Role)
     val visibleCustomers: StateFlow<List<CustomerEntity>> = allCustomers
         .map { list -> list.filter { !it.isDeleted } }
@@ -452,6 +463,13 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
             _supplierRegistrationRequests.value = reqs
         }
 
+        // Start listening to Cheques PDC
+        rtdbService.listenToChequesPdc { cheques ->
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.syncChequesFromCloud(cheques)
+            }
+        }
+
         // Start listening to Deletion Requests
         rtdbService.listenToDeletionRequests {
             viewModelScope.launch(Dispatchers.IO) {
@@ -465,6 +483,8 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 repository.syncBrandsFromCloud(brands)
                 val transporters = rtdbService.fetchTransporters()
                 repository.syncTransportersFromCloud(transporters)
+                val cheques = rtdbService.fetchChequesPdc()
+                repository.syncChequesFromCloud(cheques)
             }
         }
 
@@ -882,6 +902,9 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 val leads = rtdbService.fetchLeads()
                 repository.syncLeadsFromCloud(leads)
 
+                val cheques = rtdbService.fetchChequesPdc()
+                repository.syncChequesFromCloud(cheques)
+
                 val reqs = rtdbService.fetchRegistrationRequests()
                 _registrationRequests.value = reqs
 
@@ -1074,6 +1097,84 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // Cheque PDC Operations
+    fun saveChequePdc(
+        id: Long = 0L,
+        chequeNo: String,
+        bankName: String,
+        amount: Double,
+        chequeDate: String,
+        partyType: String,
+        partyId: Long,
+        partyName: String,
+        status: String = "Pending",
+        notes: String = "",
+        photoUri: String = "",
+        onComplete: () -> Unit = {}
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val effectiveId = if (id == 0L) System.currentTimeMillis() else id
+            val cheque = ChequePdcEntity(
+                id = effectiveId,
+                chequeNo = chequeNo.trim(),
+                bankName = bankName.trim(),
+                amount = amount,
+                chequeDate = chequeDate.trim(),
+                partyType = partyType,
+                partyId = partyId,
+                partyName = partyName.trim(),
+                status = status,
+                notes = notes.trim(),
+                photoUri = photoUri,
+                createdAt = if (id == 0L) System.currentTimeMillis() else 0L
+            )
+            repository.saveChequePdc(cheque)
+            rtdbService.syncChequePdc(cheque)
+            launch(Dispatchers.Main) {
+                onComplete()
+            }
+        }
+    }
+
+    fun updateChequePdcStatus(id: Long, newStatus: String, clearedDate: String = "", onComplete: () -> Unit = {}) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+            val finalClearedDate = if (newStatus.equals("Cleared", ignoreCase = true) && clearedDate.isBlank()) today else clearedDate
+            val depositDate = if (newStatus.equals("Deposited", ignoreCase = true)) today else ""
+            repository.updateChequePdcStatus(id, newStatus, finalClearedDate)
+            val existing = repository.getChequeById(id)
+            if (existing != null) {
+                val updated = existing.copy(
+                    status = newStatus,
+                    clearedDate = finalClearedDate,
+                    depositDate = if (depositDate.isNotBlank()) depositDate else existing.depositDate
+                )
+                rtdbService.syncChequePdc(updated)
+            }
+            launch(Dispatchers.Main) {
+                onComplete()
+            }
+        }
+    }
+
+    fun deleteChequePdc(id: Long, onComplete: () -> Unit = {}) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val user = currentUser.value
+            val emp = currentEmployee.value
+            val deletedBy = emp?.name ?: user?.displayName ?: "User"
+            val email = user?.email ?: ""
+            val role = currentRole.value
+            val existing = repository.getChequeById(id)
+            if (existing != null) {
+                repository.deleteChequePdcById(id)
+                rtdbService.deleteChequePdc(id)
+            }
+            launch(Dispatchers.Main) {
+                onComplete()
+            }
+        }
+    }
+
     // Customer Registration Requests Operations
     fun approveRegistrationRequest(
         request: CustomerRegistrationRequestEntity,
@@ -1124,6 +1225,7 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 gstCertPhotoUri = request.gstCertPhotoUri,
                 panPhotoUri = request.panPhotoUri,
                 aadharPhotoUri = request.aadharPhotoUri,
+                aadharBackPhotoUri = request.aadharBackPhotoUri,
                 religion = adminReligion.trim(),
                 customerType = creditType,
                 creditDays = creditDays,
@@ -1267,11 +1369,16 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Customer Operations
-    fun saveCustomer(customer: CustomerEntity) {
+    fun saveCustomer(customer: CustomerEntity, onSaved: ((CustomerEntity) -> Unit)? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             val generatedId = repository.saveCustomer(customer)
             val toSync = if (customer.id == 0L) customer.copy(id = generatedId) else customer
             rtdbService.syncCustomer(toSync)
+            onSaved?.let { cb ->
+                launch(Dispatchers.Main) {
+                    cb(toSync)
+                }
+            }
         }
     }
 
@@ -1309,7 +1416,8 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
     fun saveSupplier(
         supplier: SupplierEntity,
         onSuccess: (() -> Unit)? = null,
-        onError: ((String) -> Unit)? = null
+        onError: ((String) -> Unit)? = null,
+        onSaved: ((SupplierEntity) -> Unit)? = null
     ) {
         val validation = repository.validateSupplier(supplier)
         if (validation is ValidationResult.Invalid) {
@@ -1327,6 +1435,7 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 launch(Dispatchers.Main) {
                     _validationError.value = null
                     onSuccess?.invoke()
+                    onSaved?.invoke(toSync)
                 }
             } catch (e: Exception) {
                 launch(Dispatchers.Main) {
@@ -1804,13 +1913,13 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 caseSize = caseSize,
                 caseCount = resolvedCaseCount,
                 loosePieces = resolvedLoosePieces,
+                mixedPackNote = mixedPackNote?.trim()?.ifEmpty { null },
                 expectedDeliveryDate = expectedDeliveryDate,
                 transporter = transporter,
                 paymentStatus = paymentStatus,
                 paymentMode = paymentMode,
                 paidAmount = if (paymentStatus.equals("Received", ignoreCase = true) && paidAmount == 0.0) grandTotal else paidAmount,
-                paymentRemarks = paymentRemarks,
-                mixedPackNote = mixedPackNote
+                paymentRemarks = paymentRemarks
             )
             val entryId = repository.savePurchaseEntry(entry)
             val savedEntry = entry.copy(id = entryId)
@@ -1841,7 +1950,6 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 paymentMode = paymentMode,
                 paidAmount = savedEntry.paidAmount,
                 paymentRemarks = paymentRemarks,
-                mixedPackNote = mixedPackNote,
                 transactionDate = visit?.date ?: SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
             )
             val txnId = repository.saveTransaction(txn)
@@ -1863,7 +1971,7 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         paymentMode: String,
         paidAmount: Double,
         paymentRemarks: String,
-        mixedPackNote: String? = entry.mixedPackNote,
+        newMixedPackNote: String? = null,
         onSuccess: (() -> Unit)? = null
     ) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -1877,9 +1985,10 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 else -> paidAmount
             }
 
-            // Respect user's explicit caseCount and loosePieces directly
             val resolvedCaseCount = newCaseCount ?: entry.caseCount
             val resolvedLoosePieces = newLoosePieces ?: entry.loosePieces
+            val resolvedNote = newMixedPackNote?.trim()?.ifEmpty { null } ?: if (newMixedPackNote != null) null else entry.mixedPackNote
+            val resolvedPackGroupId = if (resolvedLoosePieces == 0) null else entry.packGroupId
 
             val toUpdate = entry.copy(
                 pieces = newPieces,
@@ -1887,41 +1996,23 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 caseSize = newCaseSize,
                 caseCount = resolvedCaseCount,
                 loosePieces = resolvedLoosePieces,
+                packGroupId = resolvedPackGroupId,
+                mixedPackNote = resolvedNote,
                 deliveryStatus = deliveryStatus,
                 transporter = transporter,
                 expectedDeliveryDate = expectedDeliveryDate,
                 paymentStatus = paymentStatus,
                 paymentMode = paymentMode,
                 paidAmount = resolvedPaidAmount,
-                paymentRemarks = paymentRemarks,
-                mixedPackNote = mixedPackNote
+                paymentRemarks = paymentRemarks
             )
 
-            val oldGroupId = entry.packGroupId
             val updated = repository.updatePurchaseEntryDetails(toUpdate)
             rtdbService.syncPurchaseEntry(updated)
 
             val txn = repository.getTransactionByOrderNo(updated.orderNo)
             if (txn != null) {
                 rtdbService.syncTransaction(txn)
-            }
-
-            if (oldGroupId != null && oldGroupId != 0L) {
-                val group = repository.getPackGroupById(oldGroupId)
-                if (group == null) {
-                    rtdbService.deletePackGroup(oldGroupId)
-                    // Refresh and sync partner entries
-                    val visitEntries = repository.getEntriesByVisit(entry.visitId).first()
-                    visitEntries.forEach { ve ->
-                        rtdbService.syncPurchaseEntry(ve)
-                        val vTxn = repository.getTransactionByOrderNo(ve.orderNo)
-                        if (vTxn != null) {
-                            rtdbService.syncTransaction(vTxn)
-                        }
-                    }
-                } else {
-                    rtdbService.syncPackGroup(group)
-                }
             }
 
             launch(Dispatchers.Main) {
@@ -2017,18 +2108,14 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
     fun createMixedPack(
         visitId: Long,
         selectedEntries: List<PurchaseEntryEntity>,
-        targetCaseSize: Int = 24,
-        caseCount: Int = 1,
-        customNote: String? = null,
+        targetCaseSize: Int,
         onSuccess: () -> Unit
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             val packGroupId = repository.createMixedPackGroup(
                 visitId = visitId,
                 selectedEntries = selectedEntries,
-                targetCaseSize = targetCaseSize,
-                caseCount = caseCount,
-                customNote = customNote
+                targetCaseSize = targetCaseSize
             )
             // Sync all updated entries to RTDB
             selectedEntries.forEach { entry ->
@@ -2058,10 +2145,6 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 val updatedEntry = repository.getEntryById(id)
                 if (updatedEntry != null) {
                     rtdbService.syncPurchaseEntry(updatedEntry)
-                    val txn = repository.getTransactionByOrderNo(updatedEntry.orderNo)
-                    if (txn != null) {
-                        rtdbService.syncTransaction(txn)
-                    }
                 }
             }
             launch(Dispatchers.Main) {

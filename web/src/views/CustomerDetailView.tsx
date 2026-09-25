@@ -306,7 +306,8 @@ export function CustomerDetailView({
 
   // KYC Photos List
   const kycDocs = [
-    { label: "Aadhaar Card Photo", uri: customer.aadharPhotoUri, key: "aadhar" },
+    { label: "Aadhaar Card Photo (Front)", uri: customer.aadharPhotoUri, key: "aadhar" },
+    { label: "Aadhaar Card Photo (Back)", uri: customer.aadharBackPhotoUri, key: "aadhar_back" },
     { label: "GST Registration Certificate", uri: customer.gstCertPhotoUri, key: "gst" },
     { label: "PAN Card Photo", uri: customer.panPhotoUri, key: "pan" },
     { label: "Shop Front / Signboard Photo", uri: customer.shopPhotoUri, key: "shop" },
@@ -731,11 +732,16 @@ export function CustomerDetailView({
                           <td className="py-2.5 px-3 text-right text-zinc-600 dark:text-zinc-400">
                             {entry.caseCount > 0 ? (
                               <span>
-                                {entry.caseCount} cs ({entry.caseSize || 24})
-                                {entry.loosePieces > 0 ? ` + ${entry.loosePieces}` : ""}
+                                {entry.caseCount} cs
+                                {entry.loosePieces > 0 ? ` + ${entry.loosePieces}L` : ""}
                               </span>
                             ) : (
                               <span>{entry.pieces} loose</span>
+                            )}
+                            {entry.mixedPackNote && (
+                              <span className="block text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                                ↳ Note: {entry.mixedPackNote}
+                              </span>
                             )}
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono text-zinc-600 dark:text-zinc-400">

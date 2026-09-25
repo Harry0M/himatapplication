@@ -292,6 +292,7 @@ fun AddEditMasterScreen(
     var custHomeAddress by remember(editingCustomer) { mutableStateOf(editingCustomer?.homeAddress ?: custDraft?.get("homeAddress")?.toString() ?: "") }
     var custPersonalLocation by remember(editingCustomer) { mutableStateOf(editingCustomer?.personalLocation ?: custDraft?.get("personalLocation")?.toString() ?: "") }
     var custAadharUri by remember(editingCustomer) { mutableStateOf(editingCustomer?.aadharPhotoUri ?: "") }
+    var custAadharBackUri by remember(editingCustomer) { mutableStateOf(editingCustomer?.aadharBackPhotoUri ?: "") }
     var custGstCertUri by remember(editingCustomer) { mutableStateOf(editingCustomer?.gstCertPhotoUri ?: "") }
     var custPanUri by remember(editingCustomer) { mutableStateOf(editingCustomer?.panPhotoUri ?: "") }
     var custShopPicUri by remember(editingCustomer) { mutableStateOf(editingCustomer?.shopPhotoUri ?: "") }
@@ -690,6 +691,7 @@ fun AddEditMasterScreen(
                     dob = custDob.trim(),
                     religion = custReligion.trim(),
                     aadharPhotoUri = custAadharUri,
+                    aadharBackPhotoUri = custAadharBackUri,
                     gstCertPhotoUri = custGstCertUri,
                     panPhotoUri = custPanUri,
                     shopPhotoUri = custShopPicUri,
@@ -1214,6 +1216,8 @@ fun AddEditMasterScreen(
                             onPersonalLocationChange = { custPersonalLocation = it },
                             aadharPhotoUri = custAadharUri,
                             onAadharPhotoChange = { custAadharUri = it },
+                            aadharBackPhotoUri = custAadharBackUri,
+                            onAadharBackPhotoChange = { custAadharBackUri = it },
                             gstCertPhotoUri = custGstCertUri,
                             onGstCertPhotoChange = { custGstCertUri = it },
                             panPhotoUri = custPanUri,
@@ -1534,6 +1538,8 @@ private fun CustomerMasterForm(
     onPersonalLocationChange: (String) -> Unit,
     aadharPhotoUri: String,
     onAadharPhotoChange: (String) -> Unit,
+    aadharBackPhotoUri: String,
+    onAadharBackPhotoChange: (String) -> Unit,
     gstCertPhotoUri: String,
     onGstCertPhotoChange: (String) -> Unit,
     panPhotoUri: String,
@@ -2386,12 +2392,21 @@ private fun CustomerMasterForm(
                     )
 
                     PhotoUploadCard(
-                        title = "Aadhaar Card Photo",
+                        title = "Aadhaar Card Photo (Front)",
                         uriString = aadharPhotoUri,
                         onUriSelected = onAadharPhotoChange,
                         onClear = { onAadharPhotoChange("") },
                         folder = "$safeCustFolder/kyc",
-                        prefix = "aadhar"
+                        prefix = "aadhar_front"
+                    )
+
+                    PhotoUploadCard(
+                        title = "Aadhaar Card Photo (Back)",
+                        uriString = aadharBackPhotoUri,
+                        onUriSelected = onAadharBackPhotoChange,
+                        onClear = { onAadharBackPhotoChange("") },
+                        folder = "$safeCustFolder/kyc",
+                        prefix = "aadhar_back"
                     )
 
                     PhotoUploadCard(

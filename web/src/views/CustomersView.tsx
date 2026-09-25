@@ -225,6 +225,7 @@ export function CustomersView() {
 
   // KYC & Photos (URLs / Paths)
   const [aadharPhotoUri, setAadharPhotoUri] = useState<string>("")
+  const [aadharBackPhotoUri, setAadharBackPhotoUri] = useState<string>("")
   const [gstCertPhotoUri, setGstCertPhotoUri] = useState<string>("")
   const [panPhotoUri, setPanPhotoUri] = useState<string>("")
   const [shopPhotoUri, setShopPhotoUri] = useState<string>("")
@@ -288,6 +289,7 @@ export function CustomersView() {
       setHasDraft(false)
     }
     setAadharPhotoUri("")
+    setAadharBackPhotoUri("")
     setGstCertPhotoUri("")
     setPanPhotoUri("")
     setShopPhotoUri("")
@@ -438,6 +440,7 @@ export function CustomersView() {
     setNotes(c.notes || "")
 
     setAadharPhotoUri(c.aadharPhotoUri || "")
+    setAadharBackPhotoUri(c.aadharBackPhotoUri || "")
     setGstCertPhotoUri(c.gstCertPhotoUri || "")
     setPanPhotoUri(c.panPhotoUri || "")
     setShopPhotoUri(c.shopPhotoUri || "")
@@ -513,6 +516,7 @@ export function CustomersView() {
       religion: religion.trim(),
       notes: notes.trim(),
       aadharPhotoUri: aadharPhotoUri.trim(),
+      aadharBackPhotoUri: aadharBackPhotoUri.trim(),
       gstCertPhotoUri: gstCertPhotoUri.trim(),
       panPhotoUri: panPhotoUri.trim(),
       shopPhotoUri: shopPhotoUri.trim(),
@@ -599,7 +603,7 @@ export function CustomersView() {
 
   const buildRegistrationInviteMessage = () => {
     const regUrl = getPublicRegistrationUrl()
-    return `नमस्कार!\nहिम्मत टेक्सटाइल (Himat Textile) के साथ नया व्यापारिक खाता खोलने के लिए कृपया नीचे दिए गए लिंक पर अपनी व्यावसायिक जानकारी एवं आवश्यक विवरण भरें:\n\n${regUrl}\n\nधन्यवाद!\nहिम्मत टेक्सटाइल, अहमदाबाद`
+    return `Hello!\nTo open a new business trade account with Himat Textile, please click the link below to submit your business details:\n\n${regUrl}\n\nThank you!\nHimat Textile, Ahmedabad`
   }
 
   const buildApprovalWelcomeMessage = (
@@ -608,12 +612,12 @@ export function CustomersView() {
     agentName?: string
   ) => {
     const custCode = createdId || req.createdCustomerId || ""
-    const salesman = agentName || req.assignedAgentName || "हिम्मत टेक्सटाइल टीम"
-    return `प्रिय ${req.name} जी (${req.firmName}),\nबधाई हो! हिम्मत टेक्सटाइल (Himat Textile) में आपका व्यापारिक खाता सफलतापूर्वक स्वीकृत (Approve) कर दिया गया है।\n\n🆔 ग्राहक क्रमांक (Customer ID): #CUST-${custCode}\n🤵 आपके प्रतिनिधि (Sales Agent): ${salesman}\n📦 खाता प्रकार: ${req.creditType || "Cash"} ${req.creditDays ? `(${req.creditDays} दिन)` : ""}\n\nकिसी भी आर्डर या जानकारी के लिए आप अपने प्रतिनिधि या हमारे कार्यालय से संपर्क कर सकते हैं।\n\nहार्दिक शुभकामनाएं!\nहिम्मत टेक्सटाइल, अहमदाबाद`
+    const salesman = agentName || req.assignedAgentName || "Himat Textile Team"
+    return `Dear ${req.name} (${req.firmName}),\nCongratulations! Your trade account with Himat Textile has been successfully approved.\n\n🆔 Customer ID: #CUST-${custCode}\n🤵 Assigned Sales Agent: ${salesman}\n📦 Account Type: ${req.creditType || "Cash"} ${req.creditDays ? `(${req.creditDays} days)` : ""}\n\nFor any orders or inquiries, please feel free to reach out to your sales agent or our office.\n\nWarm regards,\nHimat Textile, Ahmedabad`
   }
 
   const buildRejectionMessage = (req: CustomerRegistrationRequest) => {
-    return `प्रिय ${req.name} जी (${req.firmName}),\nहिम्मत टेक्सटाइल (Himat Textile) में आपके पंजीकरण आवेदन के संदर्भ में:\n\nवर्तमान में आपका आवेदन निम्नलिखित कारण से स्वीकृत नहीं हो सका है:\n"${req.rejectionReason || "अपूर्ण विवरण / सत्यापन समस्या"}"\n\nकृपया सही दस्तावेजों एवं विवरण के साथ पुनः आवेदन करें या अधिक जानकारी के लिए हमसे संपर्क करें।\n\nधन्यवाद!\nहिम्मत टेक्सटाइल`
+    return `Dear ${req.name} (${req.firmName}),\nRegarding your registration application with Himat Textile:\n\nCurrently, your application could not be approved due to the following reason:\n"${req.rejectionReason || "Incomplete details / verification issue"}"\n\nPlease submit again with updated documents or contact us for more information.\n\nThank you!\nHimat Textile`
   }
 
   const handleConfirmApproval = async () => {
@@ -778,7 +782,7 @@ export function CustomersView() {
               }`}
             >
               <User className="h-3.5 w-3.5" />
-              <span>User Requests (पंजीकरण)</span>
+              <span>User Requests</span>
               {pendingRegistrationRequestsCount > 0 ? (
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-white animate-pulse">
                   {pendingRegistrationRequestsCount} Pending
@@ -1498,7 +1502,7 @@ export function CustomersView() {
                         <Camera className="h-3.5 w-3.5 text-indigo-600" />
                         <span>KYC & Verification Document Gallery</span>
                       </h4>
-                      {!(activeDetailRequest.shopPhotoUri || activeDetailRequest.gstCertPhotoUri || activeDetailRequest.panPhotoUri || activeDetailRequest.aadharPhotoUri) ? (
+                      {!(activeDetailRequest.shopPhotoUri || activeDetailRequest.gstCertPhotoUri || activeDetailRequest.panPhotoUri || activeDetailRequest.aadharPhotoUri || activeDetailRequest.aadharBackPhotoUri) ? (
                         <p className="text-muted-foreground text-xs italic p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl">
                           No KYC documents or photos were attached during online self-registration.
                         </p>
@@ -1552,15 +1556,45 @@ export function CustomersView() {
                           {activeDetailRequest.aadharPhotoUri && (
                             <div className="space-y-1 text-center">
                               <div
-                                onClick={() => setLightbox({ open: true, url: activeDetailRequest.aadharPhotoUri!, title: `${activeDetailRequest.firmName} - Aadhaar Card Photo` })}
+                                onClick={() => setLightbox({ open: true, url: activeDetailRequest.aadharPhotoUri!, title: `${activeDetailRequest.firmName} - Aadhaar Card (Front Side)` })}
                                 className="group relative aspect-square rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-zinc-100 dark:bg-zinc-800 cursor-pointer shadow-xs hover:ring-2 hover:ring-indigo-500 transition-all"
                               >
-                                <img src={activeDetailRequest.aadharPhotoUri} alt="Aadhaar Card" className="h-full w-full object-cover group-hover:scale-105 transition-transform" />
+                                <img src={activeDetailRequest.aadharPhotoUri} alt="Aadhaar Front" className="h-full w-full object-cover group-hover:scale-105 transition-transform" />
                                 <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-xs font-semibold">
                                   <Eye className="h-4 w-4 mr-1" /> View
                                 </div>
                               </div>
-                              <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 block truncate">Aadhaar Card</span>
+                              <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 block truncate">Aadhaar (Front)</span>
+                            </div>
+                          )}
+
+                          {activeDetailRequest.aadharBackPhotoUri && (
+                            <div className="space-y-1 text-center">
+                              <div
+                                onClick={() => setLightbox({ open: true, url: activeDetailRequest.aadharBackPhotoUri!, title: `${activeDetailRequest.firmName} - Aadhaar Card (Back Side)` })}
+                                className="group relative aspect-square rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-zinc-100 dark:bg-zinc-800 cursor-pointer shadow-xs hover:ring-2 hover:ring-indigo-500 transition-all"
+                              >
+                                <img src={activeDetailRequest.aadharBackPhotoUri} alt="Aadhaar Back" className="h-full w-full object-cover group-hover:scale-105 transition-transform" />
+                                <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-xs font-semibold">
+                                  <Eye className="h-4 w-4 mr-1" /> View
+                                </div>
+                              </div>
+                              <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 block truncate">Aadhaar (Back)</span>
+                            </div>
+                          )}
+
+                          {activeDetailRequest.cancelChequePhotoUri && (
+                            <div className="space-y-1 text-center">
+                              <div
+                                onClick={() => setLightbox({ open: true, url: activeDetailRequest.cancelChequePhotoUri!, title: `${activeDetailRequest.firmName} - Cancelled Cheque` })}
+                                className="group relative aspect-square rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-zinc-100 dark:bg-zinc-800 cursor-pointer shadow-xs hover:ring-2 hover:ring-indigo-500 transition-all"
+                              >
+                                <img src={activeDetailRequest.cancelChequePhotoUri} alt="Cancelled Cheque" className="h-full w-full object-cover group-hover:scale-105 transition-transform" />
+                                <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-xs font-semibold">
+                                  <Eye className="h-4 w-4 mr-1" /> View
+                                </div>
+                              </div>
+                              <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 block truncate">Cancel Cheque</span>
                             </div>
                           )}
                         </div>
@@ -2231,11 +2265,19 @@ export function CustomersView() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <FileUpload
-                  label="Aadhaar Card Photo"
+                  label="Aadhaar Card Photo (Front Side)"
                   folder={`customers/${customerId || "temp"}/kyc`}
-                  prefix="aadhar"
+                  prefix="aadhar_front"
                   value={aadharPhotoUri}
                   onChange={setAadharPhotoUri}
+                />
+
+                <FileUpload
+                  label="Aadhaar Card Photo (Back Side)"
+                  folder={`customers/${customerId || "temp"}/kyc`}
+                  prefix="aadhar_back"
+                  value={aadharBackPhotoUri}
+                  onChange={setAadharBackPhotoUri}
                 />
 
                 <FileUpload
@@ -2471,7 +2513,7 @@ export function CustomersView() {
               {/* Assign Sales Agent */}
               <div className="space-y-1">
                 <label className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1">
-                  <span>Assign Sales Agent (कर्मचारी / सेल्समैन)</span>
+                  <span>Assign Sales Agent</span>
                   <span className="text-red-500 font-bold">*</span>
                 </label>
                 <select
@@ -2515,8 +2557,8 @@ export function CustomersView() {
                     }}
                     className="w-full h-8 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-2.5 text-xs"
                   >
-                    <option value="Cash">Cash (नकद)</option>
-                    <option value="Credit">Credit (उधार)</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Credit">Credit</option>
                   </select>
                 </div>
 
@@ -2624,7 +2666,7 @@ export function CustomersView() {
         <div className="space-y-3 pt-2 text-xs">
           <div className="space-y-1.5">
             <label className="font-semibold text-zinc-800 dark:text-zinc-200">
-              Reason for Rejection (अस्वीकृति का कारण)
+              Reason for Rejection
             </label>
             <textarea
               rows={3}

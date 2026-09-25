@@ -25,6 +25,7 @@ import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from "fi
 import { ref, set } from "firebase/database"
 import { auth, rtdb } from "../lib/firebase"
 import { FileUpload } from "../components/ui/FileUpload"
+import AutoGrowTextarea from "../components/ui/AutoGrowTextarea"
 import { GARMENT_CATEGORIES } from "../lib/constants"
 import { CustomerRegistrationRequest } from "../types"
 import { REGISTRATION_TRANSLATIONS, RegistrationLang } from "../lib/registrationI18n"
@@ -71,13 +72,15 @@ export function CustomerRegistrationView() {
     sameAsMobile: true,
     email: "",
 
-    // Step 3: KYC & Docs
+    // Step 3: KYC & Docs (all mandatory)
     gstin: "",
     panNumber: "",
     shopPhotoUri: "",
     gstCertPhotoUri: "",
     panPhotoUri: "",
     aadharPhotoUri: "",
+    aadharBackPhotoUri: "",
+    cancelChequePhotoUri: "",
 
     // Step 4: Transport & Bank
     preferredTransporterName: "",
@@ -244,6 +247,18 @@ export function CustomerRegistrationView() {
     formData.address.trim()
   )
 
+  // Step 3 completeness: all KYC documents are mandatory
+  const isKycComplete = Boolean(
+    formData.gstin.trim().length === 15 &&
+    formData.panNumber.trim().length >= 8 &&
+    formData.shopPhotoUri &&
+    formData.gstCertPhotoUri &&
+    formData.panPhotoUri &&
+    formData.aadharPhotoUri &&
+    formData.aadharBackPhotoUri &&
+    formData.cancelChequePhotoUri
+  )
+
   // Step Validation with localized error messages
   const validateCurrentStep = (targetStep?: number): boolean => {
     setErrorMessage(null)
@@ -271,6 +286,92 @@ export function CustomerRegistrationView() {
         return false
       }
     }
+
+    // Mandatory GSTIN check (enforced on Step 1 or whenever navigating past it)
+    if (currentStep === 1 || (targetStep && targetStep > 1)) {
+      const cleanGstin = formData.gstin.trim().toUpperCase()
+      if (!cleanGstin) {
+        setErrorMessage(
+          lang === "hi"
+            ? "कृपया अपना 15 अंकों का GSTIN नंबर दर्ज करें (अनिवार्य)"
+            : "Please enter your 15-character GSTIN number (Mandatory)"
+        )
+        return false
+      }
+      if (cleanGstin.length !== 15 || !isValidGstin(cleanGstin)) {
+        setErrorMessage(
+          lang === "hi"
+            ? "कृपया 15 अक्षरों का मान्य जीएसटी नंबर दर्ज करें (उदा. 24AAAAA0000A1Z5)"
+            : "Please enter a valid 15-character GSTIN (e.g. 24AAAAA0000A1Z5)"
+        )
+        return false
+      }
+    }
+
+    // Mandatory PAN check (enforced from Step 3 onwards, or on Skip to Submit)
+    if (currentStep >= 3 || (targetStep && targetStep >= 3)) {
+      if (formData.panNumber.trim().length < 8) {
+        setErrorMessage(
+          lang === "hi"
+            ? "कृपया पैन कार्ड नंबर दर्ज करें (अनिवार्य)"
+            : "Please enter the PAN Card number (Mandatory)"
+        )
+        return false
+      }
+    }
+
+    // Mandatory KYC documents check (Step 3 / Skip to Submit)
+    if (currentStep === 3 || (targetStep && targetStep >= 4)) {
+      if (!formData.shopPhotoUri) {
+        setErrorMessage(
+          lang === "hi"
+            ? "कृपया दुकान के बोर्ड/फ्रंट की फोटो अपलोड करें (अनिवार्य)"
+            : "Please upload the Shop Front / Signboard photo (Mandatory)"
+        )
+        return false
+      }
+      if (!formData.gstCertPhotoUri) {
+        setErrorMessage(
+          lang === "hi"
+            ? "कृपया जीएसटी प्रमाण पत्र / विजिटिंग कार्ड अपलोड करें (अनिवार्य)"
+            : "Please upload the GST Certificate / Visiting Card (Mandatory)"
+        )
+        return false
+      }
+      if (!formData.panPhotoUri) {
+        setErrorMessage(
+          lang === "hi"
+            ? "कृपया पैन कार्ड की फोटो अपलोड करें (अनिवार्य)"
+            : "Please upload the PAN Card photo (Mandatory)"
+        )
+        return false
+      }
+      if (!formData.aadharPhotoUri) {
+        setErrorMessage(
+          lang === "hi"
+            ? "कृपया आधार कार्ड (आगे की ओर) अपलोड करें (अनिवार्य)"
+            : "Please upload the Aadhaar / ID proof (front side) (Mandatory)"
+        )
+        return false
+      }
+      if (!formData.aadharBackPhotoUri) {
+        setErrorMessage(
+          lang === "hi"
+            ? "कृपया आधार कार्ड (पीछे की ओर) अपलोड करें (अनिवार्य)"
+            : "Please upload the Aadhaar / ID proof (back side) (Mandatory)"
+        )
+        return false
+      }
+      if (!formData.cancelChequePhotoUri) {
+        setErrorMessage(
+          lang === "hi"
+            ? "कृपया कैंसिल चेक अपलोड करें (अनिवार्य)"
+            : "Please upload a Cancelled Cheque (Mandatory)"
+        )
+        return false
+      }
+    }
+
     return true
   }
 
@@ -455,6 +556,8 @@ export function CustomerRegistrationView() {
         gstCertPhotoUri: formData.gstCertPhotoUri || "",
         panPhotoUri: formData.panPhotoUri || "",
         aadharPhotoUri: formData.aadharPhotoUri || "",
+        aadharBackPhotoUri: formData.aadharBackPhotoUri || "",
+        cancelChequePhotoUri: formData.cancelChequePhotoUri || "",
         notes: formData.notes.trim(),
         status: "PENDING",
         phoneVerified: true,
@@ -533,13 +636,13 @@ export function CustomerRegistrationView() {
 
           <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
             <a
-              href={`https://api.whatsapp.com/send?phone=919427028169&text=${whatsappMsg}`}
+              href={`https://api.whatsapp.com/send?phone=919873938095&text=${whatsappMsg}`}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-all"
             >
               <MessageSquare className="w-4 h-4" />
-              Notify Admin on WhatsApp
+              Inform via WhatsApp
             </a>
 
             <button
@@ -691,8 +794,9 @@ export function CustomerRegistrationView() {
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300">
                     {lang === "hi"
-                      ? "जीएसटी नंबर (वैकल्पिक)"
-                      : "GSTIN Number (Optional)"}
+                      ? "जीएसटी नंबर (अनिवार्य)"
+                      : "GSTIN Number (Mandatory)"}
+                    <span className="text-red-500"> *</span>
                   </label>
                   {formData.gstin && (
                     <button
@@ -810,10 +914,10 @@ export function CustomerRegistrationView() {
                 <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
                   Complete Shop / Office Address <span className="text-red-500">*</span>
                 </label>
-                <textarea
-                  rows={2}
+                <AutoGrowTextarea
+                  minRows={2}
                   value={formData.address}
-                  onChange={(e) => handleInputChange("address", e.target.value)}
+                  onChange={(val) => handleInputChange("address", val)}
                   placeholder="Shop number, market name, road, landmark..."
                   className="w-full p-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
@@ -1005,16 +1109,21 @@ export function CustomerRegistrationView() {
                 <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-emerald-600" />
                   <span>Step 3: Verification & KYC Documents</span>
+                  {isKycComplete && (
+                    <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">
+                      <Check className="w-3 h-3" /> All documents uploaded
+                    </span>
+                  )}
                 </h3>
                 <p className="text-xs text-zinc-500 mt-0.5">
-                  Provide GSTIN, PAN, and shop photos for verification.
+                  All documents marked * are mandatory for verification.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                    GSTIN Number (Optional)
+                    GSTIN Number (Mandatory) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -1023,6 +1132,9 @@ export function CustomerRegistrationView() {
                     onChange={(e) => {
                       const val = e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "")
                       handleInputChange("gstin", val)
+                      if (val.length === 15 && isValidGstin(val)) {
+                        handleGstLookup(val)
+                      }
                       if (val.length >= 12 && !formData.panNumber) {
                         const pan = extractPanFromGstin(val)
                         if (pan) handleInputChange("panNumber", pan)
@@ -1035,7 +1147,7 @@ export function CustomerRegistrationView() {
 
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                    PAN Number (Optional)
+                    PAN Number (Mandatory) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -1057,26 +1169,66 @@ export function CustomerRegistrationView() {
                     value={formData.shopPhotoUri}
                     onChange={(url) => handleInputChange("shopPhotoUri", url)}
                     description="Clear photo of your shop with board name visible"
+                    required
                   />
                 </div>
 
-                <div>
+                <div className="sm:col-span-2">
                   <FileUpload
                     label="GST Certificate or Visiting Card"
                     folder="kyc/gst"
                     prefix="gst_card"
                     value={formData.gstCertPhotoUri}
                     onChange={(url) => handleInputChange("gstCertPhotoUri", url)}
+                    required
                   />
                 </div>
 
                 <div>
                   <FileUpload
-                    label="Aadhaar / Owner ID Photo (Optional)"
+                    label="PAN Card Photo"
+                    folder="kyc/pan"
+                    prefix="pan_card"
+                    value={formData.panPhotoUri}
+                    onChange={(url) => handleInputChange("panPhotoUri", url)}
+                    description="Clear photo of the PAN card"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <FileUpload
+                    label="ID Proof / Aadhaar (Front Side)"
                     folder="kyc/id"
-                    prefix="aadhar"
+                    prefix="aadhar_front"
                     value={formData.aadharPhotoUri}
                     onChange={(url) => handleInputChange("aadharPhotoUri", url)}
+                    description="Front side of Aadhaar, Voter ID, etc."
+                    required
+                  />
+                </div>
+
+                <div>
+                  <FileUpload
+                    label="ID Proof / Aadhaar (Back Side)"
+                    folder="kyc/id"
+                    prefix="aadhar_back"
+                    value={formData.aadharBackPhotoUri}
+                    onChange={(url) => handleInputChange("aadharBackPhotoUri", url)}
+                    description="Back side with address details"
+                    required
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <FileUpload
+                    label="Cancelled Cheque (Bank Account Proof)"
+                    folder="kyc/bank"
+                    prefix="cancel_cheque"
+                    value={formData.cancelChequePhotoUri}
+                    onChange={(url) => handleInputChange("cancelChequePhotoUri", url)}
+                    description="Cheque with 'CANCELLED' written across it — shows A/C no. & IFSC"
+                    required
                   />
                 </div>
               </div>
@@ -1170,10 +1322,10 @@ export function CustomerRegistrationView() {
                 <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
                   Additional Notes / Instructions
                 </label>
-                <textarea
-                  rows={2}
+                <AutoGrowTextarea
+                  minRows={2}
                   value={formData.notes}
-                  onChange={(e) => handleInputChange("notes", e.target.value)}
+                  onChange={(val) => handleInputChange("notes", val)}
                   placeholder="e.g. Special packing instructions, timing preference..."
                   className="w-full p-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />

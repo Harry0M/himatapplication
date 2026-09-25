@@ -74,6 +74,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.local.entity.SupplierEntity
 import com.example.data.local.entity.VisitEntity
 import com.example.ui.components.SupplierTypeBadge
+import com.example.ui.dialogs.QuickAddSupplierDialog
 import com.example.ui.dialogs.SupplierSearchBottomSheet
 import com.example.ui.theme.GoldAccent
 import com.example.ui.theme.NavyPrimary
@@ -101,6 +102,7 @@ fun AddStopScreen(
     var piecesText by remember { mutableStateOf("") }
     var casesText by remember { mutableStateOf("") }
     var looseText by remember { mutableStateOf("") }
+    var packingRemarks by remember { mutableStateOf("") }
     var rateText by remember { mutableStateOf("") }
     var caseSizeText by remember { mutableStateOf("24") }
     var gstRateText by remember { mutableStateOf("5.0") }
@@ -118,9 +120,9 @@ fun AddStopScreen(
     var paymentStatus by remember { mutableStateOf("Pending") }
     var paymentMode by remember { mutableStateOf("Cash") }
     var paymentRemarks by remember { mutableStateOf("") }
-    var mixedPackNote by remember { mutableStateOf("") }
 
     var showSupplierSheet by remember { mutableStateOf(false) }
+    var showQuickAddSupplier by remember { mutableStateOf(false) }
 
     // Live Calculations
     val pieces = piecesText.toIntOrNull() ?: 0
@@ -190,7 +192,7 @@ fun AddStopScreen(
                                         paymentMode = paymentMode,
                                         paidAmount = if (paymentStatus == "Received") (pieces * rate) + ((pieces * rate * (gstRateText.toDoubleOrNull() ?: 5.0)) / 100.0) else 0.0,
                                         paymentRemarks = paymentRemarks,
-                                        mixedPackNote = mixedPackNote.trim().takeIf { it.isNotBlank() }
+                                        mixedPackNote = packingRemarks.trim().ifEmpty { null }
                                     )
                                     onSaveSuccess()
                                 }
@@ -294,14 +296,26 @@ fun AddStopScreen(
                                 fontSize = 12.sp,
                                 color = NavyPrimary
                             )
-                            if (selectedSupplier != null) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Text(
-                                    text = "Change",
+                                    text = "+ Create New",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = NavyPrimary,
-                                    modifier = Modifier.clickable { showSupplierSheet = true }
+                                    color = Color(0xFF2563EB),
+                                    modifier = Modifier.clickable { showQuickAddSupplier = true }
                                 )
+                                if (selectedSupplier != null) {
+                                    Text(
+                                        text = "Change",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = NavyPrimary,
+                                        modifier = Modifier.clickable { showSupplierSheet = true }
+                                    )
+                                }
                             }
                         }
 
@@ -608,18 +622,37 @@ fun AddStopScreen(
                             )
                         }
 
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        // Row 4: Packing Remarks / Note (e.g. Packed with another bill/wholesaler)
+                        OutlinedTextField(
+                            value = packingRemarks,
+                            onValueChange = { packingRemarks = it },
+                            label = { Text("Packing Remarks / Note (Optional)", fontSize = 11.sp) },
+                            placeholder = { Text("e.g. Packed with Order HT-1002 / Wholesaler X", fontSize = 11.5.sp) },
+                            textStyle = TextStyle(fontSize = 12.5.sp),
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = NavyPrimary,
+                                unfocusedBorderColor = Color(0xFFE2E8F0)
+                            )
+                        )
+
                         // Live calculation strip inside pricing card
                         Spacer(modifier = Modifier.height(8.dp))
                         Surface(
-                            color = if (isIncomplete) Color(0xFFFFFBEB) else Color(0xFFF0FDF4),
+                            color = Color(0xFFF8FAFC),
                             shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.dp, if (isIncomplete) Color(0xFFFDE68A) else Color(0xFFBBF7D0)),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(modifier = Modifier.padding(9.dp)) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
                                         text = "Base Amount: ₹${String.format("%,.2f", baseAmount)}",
@@ -631,45 +664,19 @@ fun AddStopScreen(
                                         text = if (caseSize > 0) "$caseCount Cases" + if (loosePieces > 0) " + $loosePieces Loose" else " (Full)" else "$pieces pcs",
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 11.5.sp,
-                                        color = if (isIncomplete) Color(0xFFB45309) else Color(0xFF15803D)
+                                        color = if (loosePieces > 0) Color(0xFFD97706) else Color(0xFF15803D)
                                     )
                                 }
-
-                                if (isIncomplete) {
-                                    Spacer(modifier = Modifier.height(3.dp))
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.Warning,
-                                            contentDescription = null,
-                                            tint = Color(0xFFD97706),
-                                            modifier = Modifier.size(13.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = "$loosePieces loose pieces remaining. Can be packed with another stop's loose items in Mixed Pack.",
-                                            fontSize = 10.sp,
-                                            color = Color(0xFF92400E)
-                                        )
-                                    }
+                                if (packingRemarks.isNotBlank()) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "↳ Note: $packingRemarks",
+                                        fontSize = 10.5.sp,
+                                        color = TextSecondary
+                                    )
                                 }
                             }
                         }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-                        OutlinedTextField(
-                            value = mixedPackNote,
-                            onValueChange = { mixedPackNote = it },
-                            label = { Text("Packing Remarks / Packed With (Optional)", fontSize = 11.sp) },
-                            placeholder = { Text("e.g. Packed with Shree Ambica 5 pcs", fontSize = 11.5.sp) },
-                            textStyle = TextStyle(fontSize = 12.sp),
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            shape = RoundedCornerShape(10.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = NavyPrimary,
-                                unfocusedBorderColor = Color(0xFFE2E8F0)
-                            )
-                        )
                     }
                 }
 
@@ -922,7 +929,38 @@ fun AddStopScreen(
                 caseSizeText = sup.defaultCaseSize.toString()
                 showSupplierSheet = false
             },
-            onDismiss = { showSupplierSheet = false }
+            onDismiss = { showSupplierSheet = false },
+            onQuickCreateSupplier = { newSup ->
+                viewModel.saveSupplier(
+                    supplier = newSup,
+                    onSaved = { savedSup ->
+                        selectedSupplier = savedSup
+                        caseSizeText = savedSup.defaultCaseSize.toString()
+                    }
+                )
+                selectedSupplier = newSup
+                caseSizeText = newSup.defaultCaseSize.toString()
+                showSupplierSheet = false
+            }
+        )
+    }
+
+    if (showQuickAddSupplier) {
+        QuickAddSupplierDialog(
+            initialName = "",
+            onDismiss = { showQuickAddSupplier = false },
+            onSave = { newSup ->
+                viewModel.saveSupplier(
+                    supplier = newSup,
+                    onSaved = { savedSup ->
+                        selectedSupplier = savedSup
+                        caseSizeText = savedSup.defaultCaseSize.toString()
+                    }
+                )
+                selectedSupplier = newSup
+                caseSizeText = newSup.defaultCaseSize.toString()
+                showQuickAddSupplier = false
+            }
         )
     }
 }

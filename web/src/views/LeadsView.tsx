@@ -18,7 +18,8 @@ import {
   Calendar,
   Image as ImageIcon,
   Check,
-  UserCheck
+  UserCheck,
+  X
 } from "lucide-react"
 import { useData } from "../context/DataContext"
 import { useAuth } from "../context/AuthContext"
@@ -43,6 +44,9 @@ export function LeadsView() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingLead, setEditingLead] = useState<Lead | null>(null)
   const [convertingLead, setConvertingLead] = useState<Lead | null>(null)
+
+  // Side Panel State
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
 
   // Lightbox State
   const [lightbox, setLightbox] = useState<{ open: boolean; url: string; title: string }>({
@@ -359,7 +363,8 @@ export function LeadsView() {
                 {filteredLeads.map((lead) => (
                   <tr
                     key={lead.id}
-                    className="hover:bg-zinc-50/60 dark:hover:bg-zinc-800/30 transition-colors group"
+                    onClick={() => setSelectedLead(lead)}
+                    className="hover:bg-zinc-50/60 dark:hover:bg-zinc-800/30 transition-colors group cursor-pointer"
                   >
                     {/* Name & Firm */}
                     <td className="py-3 px-4">
@@ -469,7 +474,7 @@ export function LeadsView() {
                     {/* Photos */}
                     <td className="py-3 px-4 whitespace-nowrap">
                       {lead.photos && lead.photos.length > 0 ? (
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                           {lead.photos.slice(0, 3).map((photoUri, idx) => (
                             <div
                               key={idx}
@@ -853,6 +858,242 @@ export function LeadsView() {
         imageUrl={lightbox.url}
         title={lightbox.title}
       />
+
+      {/* ── Lead Detail Side Panel ── */}
+      {/* Backdrop */}
+      {selectedLead && (
+        <div
+          className="fixed inset-0 bg-black/30 z-30"
+          onClick={() => setSelectedLead(null)}
+        />
+      )}
+
+      {/* Sliding Panel */}
+      <div
+        className={`fixed top-0 right-0 h-full w-full sm:w-96 bg-white dark:bg-zinc-900 shadow-2xl z-40 flex flex-col transform transition-transform duration-300 ease-in-out ${
+          selectedLead ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+        {selectedLead && (
+          <>
+            {/* Panel Header */}
+            <div className="flex items-start justify-between p-4 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
+              <div className="min-w-0 pr-2">
+                <h2 className="text-sm font-bold text-zinc-900 dark:text-zinc-50 truncate">
+                  {selectedLead.firmName}
+                </h2>
+                <p className="text-xs text-zinc-500 mt-0.5 truncate">
+                  {selectedLead.name || "Owner"}
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedLead(null)}
+                className="shrink-0 flex items-center justify-center h-7 w-7 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Scrollable Panel Body */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-5 pb-24">
+
+              {/* Type + Status Badges */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {selectedLead.type === "supplier" ? (
+                  <Badge variant="outline" className="text-[10px] font-bold text-amber-700 border-amber-200 bg-amber-50 dark:bg-amber-950/30">
+                    Supplier Lead
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-[10px] font-bold text-blue-700 border-blue-200 bg-blue-50 dark:bg-blue-950/30">
+                    Customer Lead
+                  </Badge>
+                )}
+                <Badge
+                  variant="outline"
+                  className={`text-[10px] font-bold ${
+                    selectedLead.status === "Converted"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400"
+                      : selectedLead.status === "Thinking"
+                      ? "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/30 dark:text-orange-400"
+                      : selectedLead.status === "Follow-up"
+                      ? "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-400"
+                      : selectedLead.status === "Dropped"
+                      ? "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400"
+                      : "bg-zinc-50 text-zinc-700 border-zinc-200"
+                  }`}
+                >
+                  {selectedLead.status || "New"}
+                </Badge>
+                {selectedLead.supplierType && selectedLead.type === "supplier" && (
+                  <Badge variant="outline" className="text-[10px] font-medium text-zinc-600 border-zinc-200 bg-zinc-50">
+                    {selectedLead.supplierType}
+                  </Badge>
+                )}
+              </div>
+
+              {/* Contact Info */}
+              <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 divide-y divide-zinc-100 dark:divide-zinc-800 overflow-hidden">
+                <div className="p-2.5 px-3 bg-zinc-50 dark:bg-zinc-800/40">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Contact Info</p>
+                </div>
+                <div className="p-3 flex items-center gap-2.5 text-xs">
+                  <Phone className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                  <a href={`tel:${selectedLead.phone}`} className="font-medium text-zinc-900 dark:text-zinc-100 hover:underline">
+                    {selectedLead.phone}
+                  </a>
+                </div>
+                {selectedLead.phone2 && (
+                  <div className="p-3 flex items-center gap-2.5 text-xs">
+                    <Phone className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                    <a href={`tel:${selectedLead.phone2}`} className="text-zinc-700 dark:text-zinc-300 hover:underline">
+                      {selectedLead.phone2} <span className="text-zinc-400">(alt)</span>
+                    </a>
+                  </div>
+                )}
+                {selectedLead.meetingPlace && (
+                  <div className="p-3 flex items-center gap-2.5 text-xs">
+                    <MapPin className="h-3.5 w-3.5 text-red-400 shrink-0" />
+                    <span className="text-zinc-700 dark:text-zinc-300">{selectedLead.meetingPlace}</span>
+                  </div>
+                )}
+                <div className="p-3 flex items-center gap-2.5 text-xs">
+                  <Building2 className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                  <span className="text-zinc-700 dark:text-zinc-300">{selectedLead.city || "Ahmedabad"}</span>
+                </div>
+              </div>
+
+              {/* Notes */}
+              {selectedLead.notes && (
+                <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+                  <div className="p-2.5 px-3 bg-zinc-50 dark:bg-zinc-800/40">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Discussion Notes</p>
+                  </div>
+                  <p className="p-3 text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed italic whitespace-pre-wrap">
+                    "{selectedLead.notes}"
+                  </p>
+                </div>
+              )}
+
+              {/* Next Follow-up Date */}
+              {selectedLead.nextFollowUpDate && (
+                <div className="flex items-center gap-2.5 p-3 rounded-xl bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800/40">
+                  <Calendar className="h-4 w-4 text-purple-500 shrink-0" />
+                  <div>
+                    <p className="text-[10px] font-bold text-purple-700 dark:text-purple-400 uppercase tracking-wider">Next Follow-up</p>
+                    <p className="text-xs font-semibold text-purple-900 dark:text-purple-200 mt-0.5">
+                      {new Date(selectedLead.nextFollowUpDate).toLocaleDateString("en-IN", {
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                      })}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Photos */}
+              {selectedLead.photos && selectedLead.photos.length > 0 && (
+                <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+                  <div className="p-2.5 px-3 bg-zinc-50 dark:bg-zinc-800/40">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                      Photos ({selectedLead.photos.length})
+                    </p>
+                  </div>
+                  <div className="p-3 flex flex-wrap gap-2">
+                    {selectedLead.photos.map((photoUri, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() =>
+                          setLightbox({
+                            open: true,
+                            url: photoUri,
+                            title: `${selectedLead.firmName} - Photo ${idx + 1}`,
+                          })
+                        }
+                        className="h-16 w-16 rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700 cursor-pointer hover:ring-2 hover:ring-indigo-500 transition-all shrink-0"
+                        title="Click to enlarge"
+                      >
+                        <img src={photoUri} alt={`Photo ${idx + 1}`} className="h-full w-full object-cover" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Timeline / History */}
+              <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+                <div className="p-2.5 px-3 bg-zinc-50 dark:bg-zinc-800/40">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Timeline</p>
+                </div>
+                <div className="p-3 flex items-start gap-2.5 text-xs">
+                  <Clock className="h-3.5 w-3.5 text-zinc-400 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-zinc-500">Lead created</p>
+                    <p className="font-medium text-zinc-800 dark:text-zinc-200 mt-0.5">
+                      {selectedLead.createdAt
+                        ? new Date(selectedLead.createdAt).toLocaleDateString("en-IN", {
+                            day: "numeric",
+                            month: "long",
+                            year: "numeric",
+                          })
+                        : "—"}
+                    </p>
+                    {selectedLead.createdByName && (
+                      <p className="text-zinc-400 mt-0.5">by {selectedLead.createdByName}</p>
+                    )}
+                    {selectedLead.leadId && (
+                      <p className="text-zinc-400 font-mono mt-0.5">{selectedLead.leadId}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Fixed Bottom Action Bar */}
+            <div className="absolute bottom-0 left-0 right-0 p-3 bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 flex items-center gap-2">
+              <Button
+                size="sm"
+                onClick={() => {
+                  openEditModal(selectedLead)
+                  setSelectedLead(null)
+                }}
+                className="flex-1 h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white font-medium gap-1.5"
+              >
+                <Edit2 className="h-3.5 w-3.5" />
+                Edit
+              </Button>
+
+              {selectedLead.status !== "Converted" && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setConvertingLead(selectedLead)
+                    setSelectedLead(null)
+                  }}
+                  className="flex-1 h-9 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium gap-1.5"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Convert
+                </Button>
+              )}
+
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  handleDelete(selectedLead)
+                  setSelectedLead(null)
+                }}
+                className="flex-1 h-9 text-xs text-red-600 border-red-200 hover:bg-red-50 dark:hover:bg-red-950/20 font-medium gap-1.5"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   )
 }

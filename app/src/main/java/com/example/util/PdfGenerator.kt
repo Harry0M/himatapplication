@@ -318,10 +318,10 @@ object PdfGenerator {
 
         // Totals Box
         paint.color = lightBg
-        canvas.drawRoundRect(310f, y, 565f, y + 80f, 4f, 4f, paint)
+        canvas.drawRoundRect(310f, y, 565f, y + 64f, 4f, 4f, paint)
         paint.style = Paint.Style.STROKE
         paint.color = tableBorder
-        canvas.drawRoundRect(310f, y, 565f, y + 80f, 4f, 4f, paint)
+        canvas.drawRoundRect(310f, y, 565f, y + 64f, 4f, 4f, paint)
         paint.style = Paint.Style.FILL
 
         paint.color = textDark
@@ -334,17 +334,15 @@ object PdfGenerator {
         canvas.drawText("Garment GST (5%):", 325f, y + 34f, paint)
         canvas.drawText(formatInr(totalGst), 475f, y + 34f, paint)
 
-        canvas.drawText("Packing Summary:", 325f, y + 50f, paint)
-        canvas.drawText("$totalCases Full Cases, $totalLoose Loose", 435f, y + 50f, paint)
-
         paint.color = primaryColor
-        canvas.drawRect(310f, y + 58f, 565f, y + 80f, paint)
+        canvas.drawRect(310f, y + 43f, 565f, y + 64f, paint)
         paint.color = Color.WHITE
         paint.textSize = 9.5f
-        canvas.drawText("GRAND TOTAL:", 325f, y + 73f, paint)
-        canvas.drawText(formatInr(totalAmount + totalGst), 465f, y + 73f, paint)
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText("GRAND TOTAL:", 325f, y + 57f, paint)
+        canvas.drawText(formatInr(totalAmount + totalGst), 465f, y + 57f, paint)
 
-        y += 105f
+        y += 88f
 
         // Footer / Terms
         paint.color = textGray
@@ -488,7 +486,7 @@ object PdfGenerator {
 
         y += 80f
 
-        val colX = floatArrayOf(30f, 75f, 185f, 220f, 265f, 325f, 410f, 480f, 565f)
+        val colX = floatArrayOf(30f, 80f, 220f, 265f, 320f, 410f, 480f, 565f)
         val rowBorderPaint = Paint().apply {
             isAntiAlias = true
             color = tableBorder
@@ -508,11 +506,10 @@ object PdfGenerator {
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
 
         canvas.drawText("ORDER #", 33f, y + 13f, paint)
-        canvas.drawText("ITEM / STYLE CODE", 78f, y + 13f, paint)
-        canvas.drawText("PCS", 188f, y + 13f, paint)
-        canvas.drawText("RATE", 224f, y + 13f, paint)
-        canvas.drawText("CASE SIZE", 268f, y + 13f, paint)
-        canvas.drawText("PACKING", 328f, y + 13f, paint)
+        canvas.drawText("ITEM / STYLE CODE", 83f, y + 13f, paint)
+        canvas.drawText("PCS", 224f, y + 13f, paint)
+        canvas.drawText("RATE", 269f, y + 13f, paint)
+        canvas.drawText("PACKING", 324f, y + 13f, paint)
         canvas.drawText("STATUS", 414f, y + 13f, paint)
         canvas.drawText("AMOUNT", 484f, y + 13f, paint)
 
@@ -543,14 +540,13 @@ object PdfGenerator {
             paint.textSize = 7.5f
             canvas.drawText(item.orderNo, 33f, y + 12f, paint)
 
-            val displayItem = if (item.itemCode.length > 20) item.itemCode.take(18) + ".." else item.itemCode
-            canvas.drawText(displayItem, 78f, y + 12f, paint)
-            canvas.drawText("${item.pieces}", 188f, y + 12f, paint)
-            canvas.drawText(formatInr(item.rate), 224f, y + 12f, paint)
-            canvas.drawText("${item.caseSize} p/c", 268f, y + 12f, paint)
+            val displayItem = if (item.itemCode.length > 25) item.itemCode.take(23) + ".." else item.itemCode
+            canvas.drawText(displayItem, 83f, y + 12f, paint)
+            canvas.drawText("${item.pieces}", 224f, y + 12f, paint)
+            canvas.drawText(formatInr(item.rate), 269f, y + 12f, paint)
 
             val packSplit = if (item.loosePieces > 0) "${item.caseCount}c+${item.loosePieces}L" else "${item.caseCount} cs"
-            canvas.drawText(packSplit, 328f, y + 12f, paint)
+            canvas.drawText(packSplit, 324f, y + 12f, paint)
 
             // Delivery Status column
             val status = item.deliveryStatus.ifBlank { "Pending" }
@@ -570,7 +566,7 @@ object PdfGenerator {
                 paint.color = textGray
                 paint.textSize = 7f
                 paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.ITALIC)
-                canvas.drawText("↳ Note: ${item.mixedPackNote}", 78f, y + 9f, paint)
+                canvas.drawText("↳ Note: ${item.mixedPackNote}", 83f, y + 9f, paint)
                 y += 13f
             }
 
@@ -611,7 +607,7 @@ object PdfGenerator {
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
 
         canvas.drawText("Total Quantity:", 325f, y + 16f, paint)
-        canvas.drawText("$totalPcs Pieces ($totalCases Cases, $totalLoose Loose)", 415f, y + 16f, paint)
+        canvas.drawText("$totalPcs Pieces", 480f, y + 16f, paint)
 
         canvas.drawText("Taxable Subtotal:", 325f, y + 32f, paint)
         canvas.drawText(formatInr(totalAmount), 480f, y + 32f, paint)
@@ -1123,7 +1119,7 @@ object PdfGenerator {
         canvas.drawText("HSN", 208f, y + 13f, paint)
         canvas.drawText("QTY", 248f, y + 13f, paint)
         canvas.drawText("RATE", 288f, y + 13f, paint)
-        canvas.drawText("CASE PKG", 338f, y + 13f, paint)
+        canvas.drawText("PACKING", 338f, y + 13f, paint)
         canvas.drawText("TAXABLE", 418f, y + 13f, paint)
         canvas.drawText("TOTAL (5%)", 493f, y + 13f, paint)
 
@@ -1555,7 +1551,7 @@ object PdfGenerator {
         paint.textSize = 8.5f
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         canvas.drawText("Total Orders / Pieces:", 295f, y + 16f, paint)
-        canvas.drawText("${entries.size} Orders / $totalPieces Pcs ($totalCases Cases)", 415f, y + 16f, paint)
+        canvas.drawText("${entries.size} Orders / $totalPieces Pcs", 415f, y + 16f, paint)
 
         canvas.drawText("Dispatched Goods:", 295f, y + 32f, paint)
         canvas.drawText("$dispatchedPieces Pcs (${dispatchedEntries.size} Orders)", 415f, y + 32f, paint)
@@ -1823,7 +1819,7 @@ object PdfGenerator {
         paint.textSize = 8.5f
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         canvas.drawText("Total Items / Pieces:", 295f, y + 16f, paint)
-        canvas.drawText("${entries.size} Orders / $totalPieces Pcs ($totalCases Cases)", 415f, y + 16f, paint)
+        canvas.drawText("${entries.size} Orders / $totalPieces Pcs", 415f, y + 16f, paint)
 
         canvas.drawText("Taxable + GST Amount:", 295f, y + 32f, paint)
         canvas.drawText("${formatInr(totalTaxable)} + ${formatInr(totalGst)}", 415f, y + 32f, paint)

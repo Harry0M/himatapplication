@@ -15,6 +15,38 @@
       },
       "oauth_client": [
         {
+          "client_id": "787473572186-7v8v71g1emigul56oeahtpfjh3aetc2a.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.aistudio.himattextile.sourcemgmt",
+            "certificate_hash": "1fbad0db5ee4b5deb9d34a750bf92b999245c572"
+          }
+        },
+        {
+          "client_id": "787473572186-h0qivo29belrlfjgcf83i28vc145psc0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.aistudio.himattextile.sourcemgmt",
+            "certificate_hash": "7bc1b7f5b682275042431e2abd9b8e3b480cd4b5"
+          }
+        },
+        {
+          "client_id": "787473572186-om9iivkbvtn6bmk9uqtndr5j04rlakai.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.aistudio.himattextile.sourcemgmt",
+            "certificate_hash": "5f87850944ba9ffc155b9e8a5cc5eda1913e3684"
+          }
+        },
+        {
+          "client_id": "787473572186-ta2t4hg7bdlqkkv8cmm7eosm7eh7tor1.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.aistudio.himattextile.sourcemgmt",
+            "certificate_hash": "8147b005a40f612ee4cf9e10093e23f638bb0ec6"
+          }
+        },
+        {
           "client_id": "787473572186-6f99r3emcgmta13l2qi04408jspapl6e.apps.googleusercontent.com",
           "client_type": 3
         }

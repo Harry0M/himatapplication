@@ -41,7 +41,6 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.Undo
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
@@ -128,7 +127,7 @@ fun VisitDetailScreen(
     }.toSet()
 
     val isEntryPacked: (PurchaseEntryEntity) -> Boolean = { entry ->
-        (entry.packGroupId != null && entry.packGroupId != 0L) || (entry.id in packedEntryIds) || !entry.mixedPackNote.isNullOrBlank()
+        (entry.packGroupId != null && entry.packGroupId != 0L) || (entry.id in packedEntryIds)
     }
 
     val unfixedLooseEntries = entries.filter { it.loosePieces > 0 && !isEntryPacked(it) }
@@ -372,19 +371,14 @@ fun VisitDetailScreen(
                             Text("$totalCases", fontWeight = FontWeight.Bold, fontSize = 14.5.sp, color = Color(0xFF059669))
                         }
                         Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color(0xFFE2E8F0)))
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .clickable { onOpenMixedPack() }
-                                .padding(horizontal = 4.dp, vertical = 2.dp)
-                        ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("Loose Pcs", fontSize = 10.5.sp, color = TextSecondary)
+                            val totalLoose = entries.sumOf { it.loosePieces }
                             Text(
-                                text = if (totalUnfixedLoose == 0 && fixedLooseEntries.isNotEmpty()) "0 (Fixed ✓)" else "$totalUnfixedLoose",
+                                text = "$totalLoose",
                                 fontWeight = FontWeight.Bold,
-                                fontSize = if (totalUnfixedLoose == 0 && fixedLooseEntries.isNotEmpty()) 12.5.sp else 14.5.sp,
-                                color = if (totalUnfixedLoose > 0) Color(0xFFD97706) else Color(0xFF15803D)
+                                fontSize = 14.5.sp,
+                                color = if (totalLoose > 0) Color(0xFFD97706) else Color(0xFF15803D)
                             )
                         }
                         Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color(0xFFE2E8F0)))
@@ -459,7 +453,7 @@ fun VisitDetailScreen(
                 }
             }
 
-            // Loose Pack Status Banner (Single, compact banner)
+            // Loose Pack Status Banner (Only if pack groups were explicitly configured)
             if (packGroups.isNotEmpty()) {
                 item {
                     LoosePacksFixedBanner(
@@ -467,14 +461,6 @@ fun VisitDetailScreen(
                         remainingLoose = totalUnfixedLoose,
                         onManagePacks = { showManagePackSheet = true },
                         onCombineMore = onOpenMixedPack
-                    )
-                }
-            } else if (totalUnfixedLoose > 0) {
-                item {
-                    IncompleteCaseBanner(
-                        looseCount = totalUnfixedLoose,
-                        ordersCount = unfixedLooseEntries.size,
-                        onMixedPackClick = onOpenMixedPack
                     )
                 }
             }
@@ -494,31 +480,16 @@ fun VisitDetailScreen(
                         fontSize = 14.sp,
                         color = TextPrimary
                     )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (entries.any { it.loosePieces > 0 } || packGroups.isNotEmpty()) {
-                            Text(
-                                text = "📦 Pack Loose Pcs",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFD97706),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .clickable { onOpenMixedPack() }
-                                    .padding(horizontal = 6.dp, vertical = 4.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                        }
-                        Text(
-                            text = "+ Add Stop",
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = NavyPrimary,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .clickable { onOpenAddEntry() }
-                                .padding(horizontal = 6.dp, vertical = 4.dp)
-                        )
-                    }
+                    Text(
+                        text = "+ Add Stop",
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NavyPrimary,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { onOpenAddEntry() }
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    )
                 }
             }
 
@@ -631,26 +602,10 @@ fun VisitDetailScreen(
     }
 
     editingEntry?.let { entry ->
-        val associatedGroup = packGroups.find { group ->
-            group.id == entry.packGroupId ||
-            group.linkedEntryIds.split(",").mapNotNull { it.trim().toLongOrNull() }.contains(entry.id)
-        }
-        val partnerEntries = if (associatedGroup != null) {
-            val partnerIds = associatedGroup.linkedEntryIds.split(",").mapNotNull { it.trim().toLongOrNull() }
-            entries.filter { it.id in partnerIds && it.id != entry.id }
-        } else emptyList()
-
         EditStopBottomSheet(
             entry = entry,
-            packGroup = associatedGroup,
-            partnerEntries = partnerEntries,
-            onUnpackGroup = { group ->
-                viewModel.deletePackGroup(group) {
-                    editingEntry = editingEntry?.copy(packGroupId = null, mixedPackNote = null)
-                }
-            },
             onDismiss = { editingEntry = null },
-            onSave = { updatedPieces, updatedRate, updatedCaseSize, updatedCases, updatedLoose, status, transp, expDate, payStatus, payMode, paidAmt, remarks, mixedNote ->
+            onSave = { updatedPieces, updatedRate, updatedCaseSize, updatedCases, updatedLoose, status, transp, expDate, payStatus, payMode, paidAmt, remarks, packNote ->
                 viewModel.updatePurchaseEntry(
                     entry = entry,
                     newPieces = updatedPieces,
@@ -665,7 +620,7 @@ fun VisitDetailScreen(
                     paymentMode = payMode,
                     paidAmount = paidAmt,
                     paymentRemarks = remarks,
-                    mixedPackNote = mixedNote,
+                    newMixedPackNote = packNote,
                     onSuccess = {
                         editingEntry = null
                     }
@@ -835,22 +790,11 @@ fun PurchaseEntryItemCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "${entry.pieces} Pcs",
-                            fontSize = 11.5.sp,
-                            color = TextSecondary
-                        )
-                        val packText = if (entry.caseCount > 0) "${entry.caseCount} Cs" + (if (entry.loosePieces > 0) " + ${entry.loosePieces} Loose" else "") else if (entry.loosePieces > 0) "${entry.loosePieces} Loose" else ""
-                        if (packText.isNotBlank()) {
-                            Text(
-                                text = " • $packText",
-                                fontSize = 11.sp,
-                                color = if (entry.loosePieces > 0) Color(0xFFD97706) else Color(0xFF15803D),
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
+                    Text(
+                        text = "${entry.pieces} Pcs",
+                        fontSize = 11.5.sp,
+                        color = TextSecondary
+                    )
                 }
 
                 Column(horizontalAlignment = Alignment.End) {
@@ -862,24 +806,6 @@ fun PurchaseEntryItemCard(
                     )
                     Spacer(modifier = Modifier.height(3.dp))
                     StatusBadge(status = entry.deliveryStatus)
-                }
-            }
-
-            if (!entry.mixedPackNote.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(5.dp))
-                Surface(
-                    color = Color(0xFFFFFBEB),
-                    shape = RoundedCornerShape(4.dp),
-                    border = BorderStroke(1.dp, Color(0xFFFDE68A)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "↳ Note: ${entry.mixedPackNote}",
-                        fontSize = 10.5.sp,
-                        color = Color(0xFFB45309),
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
-                    )
                 }
             }
 
@@ -1313,22 +1239,24 @@ fun LoosePacksFixedBanner(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Surface(
-                    shape = CircleShape,
-                    color = Color(0xFFFEF3C7),
-                    border = BorderStroke(1.dp, Color(0xFFFDE68A)),
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .clickable { onCombineMore() }
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Pack More Loose Pieces",
-                            tint = Color(0xFFD97706),
-                            modifier = Modifier.size(16.dp)
-                        )
+                if (remainingLoose > 0) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFFFEF3C7),
+                        border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .clickable { onCombineMore() }
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Combine more loose packs",
+                                tint = Color(0xFFD97706),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
                 }
 
@@ -1568,9 +1496,6 @@ fun ManagePackGroupsBottomSheet(
 @Composable
 fun EditStopBottomSheet(
     entry: PurchaseEntryEntity,
-    packGroup: PackGroupEntity? = null,
-    partnerEntries: List<PurchaseEntryEntity> = emptyList(),
-    onUnpackGroup: ((PackGroupEntity) -> Unit)? = null,
     onDismiss: () -> Unit,
     onSave: (
         pieces: Int,
@@ -1593,6 +1518,7 @@ fun EditStopBottomSheet(
     var piecesText by remember(entry) { mutableStateOf(entry.pieces.toString()) }
     var casesText by remember(entry) { mutableStateOf(entry.caseCount.toString()) }
     var looseText by remember(entry) { mutableStateOf(entry.loosePieces.toString()) }
+    var packingRemarks by remember(entry) { mutableStateOf(entry.mixedPackNote ?: "") }
     var rateText by remember(entry) { mutableStateOf(entry.rate.toString()) }
     var caseSizeText by remember(entry) { mutableStateOf(entry.caseSize.toString()) }
     var deliveryStatus by remember(entry) { mutableStateOf(entry.deliveryStatus) }
@@ -1604,8 +1530,6 @@ fun EditStopBottomSheet(
         mutableStateOf(if (entry.paidAmount > 0) entry.paidAmount.toString() else "")
     }
     var paymentRemarks by remember(entry) { mutableStateOf(entry.paymentRemarks) }
-    var mixedPackNoteText by remember(entry) { mutableStateOf(entry.mixedPackNote ?: "") }
-    var showRepackConfirmDialog by remember { mutableStateOf(false) }
 
     // Live calculations
     val pieces = piecesText.toIntOrNull() ?: 0
@@ -1619,33 +1543,7 @@ fun EditStopBottomSheet(
     val gstAmount = (baseAmount * entry.gstRate) / 100.0
     val grandTotal = baseAmount + gstAmount
 
-    val isPacked = packGroup != null || (entry.packGroupId != null && entry.packGroupId != 0L) || !entry.mixedPackNote.isNullOrBlank()
-
-    val isPackagingOrQtyChanged = pieces != entry.pieces ||
-        caseCount != entry.caseCount ||
-        loosePieces != entry.loosePieces ||
-        caseSize != entry.caseSize
-
     val isValid = pieces > 0 && rate > 0
-
-    val performSave = {
-        val parsedPaidAmount = paidAmountText.toDoubleOrNull() ?: 0.0
-        onSave(
-            pieces,
-            rate,
-            caseSize,
-            caseCount,
-            loosePieces,
-            deliveryStatus,
-            transporter,
-            expectedDeliveryDate,
-            paymentStatus,
-            paymentMode,
-            parsedPaidAmount,
-            paymentRemarks,
-            mixedPackNoteText.trim().takeIf { it.isNotBlank() }
-        )
-    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1682,87 +1580,6 @@ fun EditStopBottomSheet(
                 }
                 IconButton(onClick = onDismiss) {
                     Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
-                }
-            }
-
-            if (isPacked) {
-                Spacer(modifier = Modifier.height(10.dp))
-                Surface(
-                    color = Color(0xFFFEF3C7),
-                    shape = RoundedCornerShape(10.dp),
-                    border = BorderStroke(1.5.dp, Color(0xFFF59E0B)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(
-                                Icons.Default.Warning,
-                                contentDescription = null,
-                                tint = Color(0xFFD97706),
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Notice: Loose Pcs Already Packed (${entry.loosePieces} pcs)",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF92400E)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        val partnerDesc = if (partnerEntries.isNotEmpty()) {
-                            "Packed together with: " + partnerEntries.joinToString(", ") { "${it.supplierName} (${it.itemCode} - ${it.loosePieces} pcs)" }
-                        } else if (!entry.mixedPackNote.isNullOrBlank()) {
-                            entry.mixedPackNote!!
-                        } else {
-                            "Mixed Carton"
-                        }
-                        Text(
-                            text = partnerDesc,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color(0xFF78350F)
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "• Do NOT change loose pcs to 0 here — they are already tracked as packed!\n• If you edit pieces or packaging, this mixed carton will be unpacked so you can cleanly repack from the Trip screen.",
-                            fontSize = 11.sp,
-                            lineHeight = 15.sp,
-                            color = Color(0xFF92400E)
-                        )
-                        if (packGroup != null && onUnpackGroup != null) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            OutlinedButton(
-                                onClick = {
-                                    onUnpackGroup(packGroup)
-                                },
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB45309)),
-                                border = BorderStroke(1.dp, Color(0xFFD97706)),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.height(34.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Undo,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(14.dp),
-                                    tint = Color(0xFFB45309)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Unpack This Group to Repack",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
-                    }
                 }
             }
 
@@ -1856,27 +1673,20 @@ fun EditStopBottomSheet(
                 )
             }
 
-            if (isPacked) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(start = 2.dp)
-                ) {
-                    Icon(
-                        Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        tint = Color(0xFF15803D),
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "${entry.loosePieces} loose pcs packed in mixed case (leave as-is unless order changed)",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFF15803D)
-                    )
-                }
-            }
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = packingRemarks,
+                onValueChange = { packingRemarks = it },
+                label = { Text("Packing Remarks / Note (Optional)", fontSize = 11.5.sp) },
+                placeholder = { Text("e.g. Packed with Order HT-1002 / Wholesaler X", fontSize = 12.sp) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                shape = RoundedCornerShape(10.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = NavyPrimary,
+                    unfocusedBorderColor = Color(0xFFE2E8F0)
+                )
+            )
 
             // Calculation Strip
             Spacer(modifier = Modifier.height(8.dp))
@@ -1886,56 +1696,49 @@ fun EditStopBottomSheet(
                 border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            text = "Total + 5% GST",
-                            fontSize = 11.sp,
-                            color = TextSecondary
-                        )
-                        Text(
-                            text = PdfGenerator.formatInr(grandTotal),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.5.sp,
-                            color = NavyPrimary
-                        )
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Total + 5% GST",
+                                fontSize = 11.sp,
+                                color = TextSecondary
+                            )
+                            Text(
+                                text = PdfGenerator.formatInr(grandTotal),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.5.sp,
+                                color = NavyPrimary
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = "Packaging",
+                                fontSize = 11.sp,
+                                color = TextSecondary
+                            )
+                            Text(
+                                text = "$caseCount Cases + $loosePieces Loose",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = if (loosePieces > 0) Color(0xFFD97706) else Color(0xFF15803D)
+                            )
+                        }
                     }
-                    Column(horizontalAlignment = Alignment.End) {
+                    if (packingRemarks.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Packaging",
+                            text = "↳ Note: $packingRemarks",
                             fontSize = 11.sp,
                             color = TextSecondary
-                        )
-                        Text(
-                            text = "$caseCount Cases + $loosePieces Loose",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = if (loosePieces > 0) Color(0xFFD97706) else Color(0xFF15803D)
                         )
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(
-                value = mixedPackNoteText,
-                onValueChange = { mixedPackNoteText = it },
-                label = { Text("Packing Remarks / Packed With (Optional)") },
-                placeholder = { Text("e.g. Packed with Shree Ambica 5 pcs") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                shape = RoundedCornerShape(10.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = NavyPrimary,
-                    unfocusedBorderColor = Color(0xFFE2E8F0)
-                )
-            )
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -2147,11 +1950,22 @@ fun EditStopBottomSheet(
 
                 Button(
                     onClick = {
-                        if (isPacked && isPackagingOrQtyChanged) {
-                            showRepackConfirmDialog = true
-                        } else {
-                            performSave()
-                        }
+                        val parsedPaidAmount = paidAmountText.toDoubleOrNull() ?: 0.0
+                        onSave(
+                            pieces,
+                            rate,
+                            caseSize,
+                            caseCount,
+                            loosePieces,
+                            deliveryStatus,
+                            transporter,
+                            expectedDeliveryDate,
+                            paymentStatus,
+                            paymentMode,
+                            parsedPaidAmount,
+                            paymentRemarks,
+                            packingRemarks.trim().ifEmpty { null }
+                        )
                     },
                     enabled = isValid,
                     colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
@@ -2169,55 +1983,6 @@ fun EditStopBottomSheet(
                 }
             }
         }
-    }
-
-    if (showRepackConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showRepackConfirmDialog = false },
-            icon = {
-                Icon(
-                    Icons.Default.Warning,
-                    contentDescription = null,
-                    tint = Color(0xFFD97706),
-                    modifier = Modifier.size(28.dp)
-                )
-            },
-            title = {
-                Text(
-                    text = "Repack Required",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 17.sp,
-                    color = NavyPrimary
-                )
-            },
-            text = {
-                Text(
-                    text = "These ${entry.loosePieces} loose pieces were auto-packed into a mixed case.\n\nBecause you changed the quantity or packaging, this mixed case will be unpacked.\n\nAfter saving, please use 'Pack Loose Pcs' on the Trip screen to repack them with the updated count.",
-                    fontSize = 13.5.sp,
-                    lineHeight = 19.sp,
-                    color = TextPrimary
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showRepackConfirmDialog = false
-                        performSave()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("Unpack & Save", color = GoldAccent, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showRepackConfirmDialog = false }) {
-                    Text("Cancel", color = TextSecondary)
-                }
-            },
-            containerColor = Color.White,
-            shape = RoundedCornerShape(16.dp)
-        )
     }
 }
 

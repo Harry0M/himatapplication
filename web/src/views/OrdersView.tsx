@@ -2,16 +2,14 @@ import React, { useState } from "react"
 import {
   Receipt,
   Search,
-  Filter,
-  IndianRupee,
-  Truck,
   X,
   UserCheck,
   FileText,
   CheckCircle2,
   AlertCircle,
   Clock,
-  Printer
+  Calendar,
+  Download,
 } from "lucide-react"
 import { useData } from "../context/DataContext"
 import { formatInr, formatDate, cn } from "../lib/utils"
@@ -19,9 +17,9 @@ import { Card } from "../components/ui/Card"
 import { Button } from "../components/ui/Button"
 import { Badge } from "../components/ui/Badge"
 import { Tabs } from "../components/ui/Tabs"
-import { Dialog } from "../components/ui/Dialog"
 import { Input } from "../components/ui/Input"
-import { PurchaseEntry, Supplier, Customer } from "../types"
+import { Dialog } from "../components/ui/Dialog"
+import { PurchaseEntry, Supplier } from "../types"
 import { ReportViewerModal } from "../components/ui/ReportViewerModal"
 import {
   generateSupplierInvoiceHtml,
@@ -35,13 +33,14 @@ export function OrdersView() {
     customers,
     suppliers,
     employees,
+    brands,
     selectedEmployeeId,
     setSelectedEmployeeId,
     updatePayment,
     updateDelivery,
   } = useData()
 
-  const [search, setSearch] = useState<string>("" )
+  const [search, setSearch] = useState<string>("")
   const [showSearch, setShowSearch] = useState<boolean>(false)
   const [statusFilter, setStatusFilter] = useState<string>("all")
 
@@ -58,6 +57,13 @@ export function OrdersView() {
   const [transporter, setTransporter] = useState<string>("")
   const [lrNo, setLrNo] = useState<string>("")
 
+  // Customer filter
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>("all")
+
+  // Date range filter
+  const [dateFrom, setDateFrom] = useState<string>("")
+  const [dateTo, setDateTo] = useState<string>("")
+
   // Report modal state
   const [reportModal, setReportModal] = useState<{
     open: boolean
@@ -70,6 +76,7 @@ export function OrdersView() {
     html: "",
     whatsAppText: "",
   })
+
 
   const visitMap = React.useMemo(() => {
     return new Map(visits.map((v) => [v.id, v]))

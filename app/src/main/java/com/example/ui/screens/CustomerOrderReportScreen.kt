@@ -1028,6 +1028,9 @@ fun CustomerOrderReportScreen(
                                     Column {
                                         Text(text = "Item: ${entry.itemCode.ifBlank { "Apparel" }}", fontWeight = FontWeight.SemiBold, fontSize = 11.5.sp, color = TextPrimary)
                                         Text(text = "${entry.pieces} pcs (${entry.caseCount} cases, ${entry.loosePieces} loose)", fontSize = 10.5.sp, color = TextSecondary)
+                                        if (!entry.mixedPackNote.isNullOrBlank()) {
+                                            Text(text = "↳ Note: ${entry.mixedPackNote}", fontSize = 10.sp, fontWeight = FontWeight.Medium, color = Color(0xFFB45309))
+                                        }
                                     }
                                     Column(horizontalAlignment = Alignment.End) {
                                         Text(text = PdfGenerator.formatInr(entry.grandTotalWithGst), fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF047857))

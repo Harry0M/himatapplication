@@ -318,6 +318,7 @@ export function SupplierDetailView({
   const verificationDocs = [
     { label: "Visiting Card Photo", uri: supplier.visitingCardPhotoUri, key: "card" },
     { label: "Shop / Mill Front Photo", uri: supplier.shopPhotoUri, key: "shop" },
+    { label: "Cancelled Cheque Photo", uri: supplier.cancelChequePhotoUri, key: "cheque" },
   ]
 
   return (
@@ -740,8 +741,8 @@ export function SupplierDetailView({
                           <td className="py-2.5 px-3 text-right text-zinc-600 dark:text-zinc-400">
                             {entry.caseCount > 0 ? (
                               <span>
-                                {entry.caseCount} cs ({entry.caseSize || 24})
-                                {entry.loosePieces > 0 ? ` + ${entry.loosePieces}` : ""}
+                                {entry.caseCount} cs
+                                {entry.loosePieces > 0 ? ` + ${entry.loosePieces}L` : ""}
                               </span>
                             ) : (
                               <span>{entry.pieces} loose</span>

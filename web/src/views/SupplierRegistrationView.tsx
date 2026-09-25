@@ -25,6 +25,7 @@ import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from "fi
 import { ref, set } from "firebase/database"
 import { auth, rtdb } from "../lib/firebase"
 import { FileUpload } from "../components/ui/FileUpload"
+import AutoGrowTextarea from "../components/ui/AutoGrowTextarea"
 import { SupplierRegistrationRequest } from "../types"
 import { HIMAT_LOGO_DATA_URI } from "../lib/logoBase64"
 import {
@@ -110,11 +111,14 @@ export function SupplierRegistrationView() {
     ifscCode: "",
     notes: "",
 
-    // Step 4: KYC & Photos
+    // Step 4: KYC & Photos (all mandatory)
     visitingCardPhotoUri: "",
     shopPhotoUri: "",
     gstCertPhotoUri: "",
     panPhotoUri: "",
+    idProofPhotoUri: "",
+    idProofBackPhotoUri: "",
+    cancelChequePhotoUri: "",
   })
 
   // Selected Fabrics/Garment Categories
@@ -300,6 +304,17 @@ export function SupplierRegistrationView() {
         setErrorMessage("Please enter a valid 10-digit mobile number")
         return false
       }
+
+      // Mandatory GSTIN check
+      const cleanGstin = formData.gstin.trim().toUpperCase()
+      if (!cleanGstin) {
+        setErrorMessage("Please enter your 15-character GSTIN number (Mandatory)")
+        return false
+      }
+      if (cleanGstin.length !== 15 || !isValidGstin(cleanGstin)) {
+        setErrorMessage("Please enter a valid 15-character GSTIN (e.g. 24AAAAA0000A1Z5)")
+        return false
+      }
     }
 
     if (!isSkip && (currentStep === 2 || (targetStep && targetStep > 2 && currentStep > 1))) {
@@ -309,6 +324,46 @@ export function SupplierRegistrationView() {
       }
       if (!formData.city.trim()) {
         setErrorMessage("Please enter City")
+        return false
+      }
+    }
+
+    // Mandatory PAN check (PAN is auto-extracted from GSTIN; allow manual entry)
+    if (currentStep >= 3 || (targetStep && targetStep >= 3)) {
+      if (formData.panNumber.trim().length < 8) {
+        setErrorMessage("Please enter the PAN Card number (Mandatory)")
+        return false
+      }
+    }
+
+    // Mandatory KYC documents check (Step 4 / Skip to Submit)
+    if (currentStep === 4 || (targetStep && targetStep >= 5)) {
+      if (!formData.visitingCardPhotoUri) {
+        setErrorMessage("Please upload the Visiting Card photo (Mandatory)")
+        return false
+      }
+      if (!formData.shopPhotoUri) {
+        setErrorMessage("Please upload the Mill / Factory Front photo (Mandatory)")
+        return false
+      }
+      if (!formData.gstCertPhotoUri) {
+        setErrorMessage("Please upload the GST Certificate (Mandatory)")
+        return false
+      }
+      if (!formData.panPhotoUri) {
+        setErrorMessage("Please upload the PAN Card photo (Mandatory)")
+        return false
+      }
+      if (!formData.idProofPhotoUri) {
+        setErrorMessage("Please upload the ID Proof / Aadhaar (front side) (Mandatory)")
+        return false
+      }
+      if (!formData.idProofBackPhotoUri) {
+        setErrorMessage("Please upload the ID Proof / Aadhaar (back side) (Mandatory)")
+        return false
+      }
+      if (!formData.cancelChequePhotoUri) {
+        setErrorMessage("Please upload a Cancelled Cheque (Mandatory)")
         return false
       }
     }
@@ -451,6 +506,11 @@ export function SupplierRegistrationView() {
         shopPhotoUri: formData.shopPhotoUri || "",
         gstCertPhotoUri: formData.gstCertPhotoUri || "",
         panPhotoUri: formData.panPhotoUri || "",
+        idProofPhotoUri: formData.idProofPhotoUri || "",
+        idProofBackPhotoUri: formData.idProofBackPhotoUri || "",
+        aadharPhotoUri: formData.idProofPhotoUri || "",
+        aadharBackPhotoUri: formData.idProofBackPhotoUri || "",
+        cancelChequePhotoUri: formData.cancelChequePhotoUri || "",
         notes: formData.notes.trim(),
         status: "PENDING",
         phoneVerified: true,
@@ -526,13 +586,13 @@ export function SupplierRegistrationView() {
 
           <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
             <a
-              href={`https://api.whatsapp.com/send?phone=919825000000&text=${shareMessage}`}
+              href={`https://api.whatsapp.com/send?phone=919873938095&text=${shareMessage}`}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-all"
             >
               <MessageSquare className="w-4 h-4" />
-              Notify Admin on WhatsApp
+              Inform via WhatsApp
             </a>
 
             <button
@@ -683,10 +743,11 @@ export function SupplierRegistrationView() {
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300">
                     {lang === "hi"
-                      ? "जीएसटी नंबर (वैकल्पिक)"
+                      ? "जीएसटी नंबर (अनिवार्य)"
                       : lang === "gu"
-                      ? "GST નંબર (વૈકલ્પિક)"
-                      : "GSTIN Number (Optional)"}
+                      ? "GST નંબર (ફરજિયાત)"
+                      : "GSTIN Number (Mandatory)"}
+                    <span className="text-red-500"> *</span>
                   </label>
                   {formData.gstin && (
                     <button
@@ -931,10 +992,10 @@ export function SupplierRegistrationView() {
                 <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
                   Mill / Factory Address <span className="text-red-500">*</span>
                 </label>
-                <textarea
-                  rows={2}
+                <AutoGrowTextarea
+                  minRows={2}
                   value={formData.address}
-                  onChange={(e) => handleInputChange("address", e.target.value)}
+                  onChange={(val) => handleInputChange("address", val)}
                   placeholder="Factory plot, GIDC phase, shed number, road..."
                   className="w-full p-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
@@ -944,10 +1005,10 @@ export function SupplierRegistrationView() {
                 <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
                   Market Office / Shop Address (Optional)
                 </label>
-                <textarea
-                  rows={2}
+                <AutoGrowTextarea
+                  minRows={2}
                   value={formData.officeAddress}
-                  onChange={(e) => handleInputChange("officeAddress", e.target.value)}
+                  onChange={(val) => handleInputChange("officeAddress", val)}
                   placeholder="Market shop number, floor, tower..."
                   className="w-full p-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
@@ -1087,7 +1148,7 @@ export function SupplierRegistrationView() {
 
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                    GSTIN Number (Optional)
+                    GSTIN Number (Mandatory) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -1096,6 +1157,9 @@ export function SupplierRegistrationView() {
                     onChange={(e) => {
                       const val = e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "")
                       handleInputChange("gstin", val)
+                      if (val.length === 15 && isValidGstin(val)) {
+                        handleGstLookup(val)
+                      }
                       if (val.length >= 12 && !formData.panNumber) {
                         const pan = extractPanFromGstin(val)
                         if (pan) handleInputChange("panNumber", pan)
@@ -1110,7 +1174,7 @@ export function SupplierRegistrationView() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                    PAN Number (Optional)
+                    PAN Number (Mandatory) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -1140,10 +1204,10 @@ export function SupplierRegistrationView() {
                 <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
                   Additional Notes / Supply Capabilities
                 </label>
-                <textarea
-                  rows={2}
+                <AutoGrowTextarea
+                  minRows={2}
                   value={formData.notes}
-                  onChange={(e) => handleInputChange("notes", e.target.value)}
+                  onChange={(val) => handleInputChange("notes", val)}
                   placeholder="e.g. Minimum order quantity, ready stock availability, dispatch timeline..."
                   className="w-full p-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
@@ -1160,7 +1224,7 @@ export function SupplierRegistrationView() {
                   <span>Step 4: Verification Photos</span>
                 </h3>
                 <p className="text-xs text-zinc-500 mt-0.5">
-                  Upload visiting cards and photos to fast-track your supplier approval.
+                  All documents marked * are mandatory for verification.
                 </p>
               </div>
 
@@ -1171,6 +1235,7 @@ export function SupplierRegistrationView() {
                     folder="supplier_requests/visiting_cards"
                     value={formData.visitingCardPhotoUri}
                     onChange={(url: string) => handleInputChange("visitingCardPhotoUri", url)}
+                    required
                   />
                 </div>
 
@@ -1180,24 +1245,60 @@ export function SupplierRegistrationView() {
                     folder="supplier_requests/mill_front"
                     value={formData.shopPhotoUri}
                     onChange={(url: string) => handleInputChange("shopPhotoUri", url)}
+                    required
                   />
                 </div>
 
                 <div>
                   <FileUpload
-                    label="GST Certificate (Optional)"
+                    label="GST Certificate"
                     folder="supplier_requests/gst_certs"
                     value={formData.gstCertPhotoUri}
                     onChange={(url: string) => handleInputChange("gstCertPhotoUri", url)}
+                    required
                   />
                 </div>
 
                 <div>
                   <FileUpload
-                    label="PAN Card Photo (Optional)"
+                    label="PAN Card Photo"
                     folder="supplier_requests/pan_cards"
                     value={formData.panPhotoUri}
                     onChange={(url: string) => handleInputChange("panPhotoUri", url)}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <FileUpload
+                    label="ID Proof / Aadhaar (Front Side)"
+                    folder="supplier_requests/id_proofs"
+                    value={formData.idProofPhotoUri}
+                    onChange={(url: string) => handleInputChange("idProofPhotoUri", url)}
+                    description="Owner ID front"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <FileUpload
+                    label="ID Proof / Aadhaar (Back Side)"
+                    folder="supplier_requests/id_proofs"
+                    value={formData.idProofBackPhotoUri}
+                    onChange={(url: string) => handleInputChange("idProofBackPhotoUri", url)}
+                    description="Owner ID back with address"
+                    required
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <FileUpload
+                    label="Cancelled Cheque (Bank Account Proof)"
+                    folder="supplier_requests/cancel_cheques"
+                    value={formData.cancelChequePhotoUri}
+                    onChange={(url: string) => handleInputChange("cancelChequePhotoUri", url)}
+                    description="Cheque with 'CANCELLED' written across it — shows A/C no. & IFSC"
+                    required
                   />
                 </div>
               </div>

@@ -39,6 +39,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.automirrored.filled.FactCheck
 import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.ChevronRight
@@ -142,6 +143,8 @@ fun HomeScreen(
     val employees by viewModel.allEmployees.collectAsStateWithLifecycle()
     val packGroups by viewModel.allPackGroups.collectAsStateWithLifecycle()
     val allLeads by viewModel.allLeads.collectAsStateWithLifecycle()
+    val allCheques by viewModel.allChequesPdc.collectAsStateWithLifecycle()
+    val dueTodayChequesCount by viewModel.dueTodayChequesCount.collectAsStateWithLifecycle()
     val pendingRequestsCount by viewModel.pendingRegistrationRequestsCount.collectAsStateWithLifecycle()
 
     var showCustomerRequestsDialog by remember { mutableStateOf(false) }
@@ -216,30 +219,18 @@ fun HomeScreen(
     val pendingPaymentsCount = remember(entries) {
         entries.count { !it.paymentStatus.equals("Paid", ignoreCase = true) && !it.paymentStatus.equals("Received", ignoreCase = true) }
     }
-    val totalPendingTasks = remember(pendingPaymentsCount, pendingDeliveries, activeVisits.size, looseEntries.size) {
-        pendingPaymentsCount + pendingDeliveries + activeVisits.size + looseEntries.size
+    val totalPendingTasks = remember(pendingPaymentsCount, pendingDeliveries, activeVisits.size) {
+        pendingPaymentsCount + pendingDeliveries + activeVisits.size
     }
 
     // Option Tiles Definition - Every feature has its own distinct tile
     // Option Tiles Definition - Every feature has its own distinct tile
     val allTiles = remember(
         visits.size, activeVisits.size, customers.size, suppliers.size, entries.size,
-        employees.size, pendingDeliveries, totalLoosePcs, totalPendingDues, totalPendingTasks, isSuperAdmin
+        employees.size, totalPendingDues, totalPendingTasks, isSuperAdmin
     ) {
         buildList {
-            // 1. Dashboard (sabse pahle dashboard rakho)
-            add(
-                HomeTileItem(
-                    id = "dashboard",
-                    title = "Dashboard",
-                    subtitle = "Operations & analytics",
-                    icon = Icons.Default.Dashboard,
-                    accentColor = Color(0xFF3730A3), // Royal Indigo
-                    onClick = { onNavigate(AppScreen.ANALYTICS_DASHBOARD) }
-                )
-            )
-
-            // 2. New Visit (then new visit)
+            // 1. New Visit
             add(
                 HomeTileItem(
                     id = "new_visit",
@@ -252,7 +243,7 @@ fun HomeScreen(
                 )
             )
 
-            // 3. All Trips (all trips)
+            // 2. All Trips
             add(
                 HomeTileItem(
                     id = "visits",
@@ -265,7 +256,7 @@ fun HomeScreen(
                 )
             )
 
-            // 4. Leads (leads)
+            // 3. Leads
             add(
                 HomeTileItem(
                     id = "leads",
@@ -278,20 +269,7 @@ fun HomeScreen(
                 )
             )
 
-            // 5. Deliveries (deliveries)
-            add(
-                HomeTileItem(
-                    id = "deliveries",
-                    title = "Deliveries",
-                    subtitle = if (pendingDeliveries > 0) "$pendingDeliveries in transit" else "All orders cleared",
-                    statusBadge = if (pendingDeliveries > 0) "$pendingDeliveries Transit" else null,
-                    icon = Icons.Default.LocalShipping,
-                    accentColor = Color(0xFF475569), // Slate Blue
-                    onClick = { onNavigate(AppScreen.DELIVERIES) }
-                )
-            )
-
-            // 6. All Purchase Orders (all purchase orders that means suppliers invoices)
+            // 4. All Purchase Orders
             add(
                 HomeTileItem(
                     id = "purchase_orders",
@@ -304,7 +282,7 @@ fun HomeScreen(
                 )
             )
 
-            // 7. Customer Report (customer report screen)
+            // 5. Customer Report
             add(
                 HomeTileItem(
                     id = "customer_report",
@@ -316,7 +294,7 @@ fun HomeScreen(
                 )
             )
 
-            // 8. Payments & Bills
+            // 6. Payments & Bills
             add(
                 HomeTileItem(
                     id = "payments",
@@ -329,20 +307,7 @@ fun HomeScreen(
                 )
             )
 
-            // 9. Loose Packing
-            add(
-                HomeTileItem(
-                    id = "mixed_pack",
-                    title = "Loose Packing",
-                    subtitle = if (totalLoosePcs > 0) "$totalLoosePcs loose pieces" else "All cases packed",
-                    statusBadge = if (totalLoosePcs > 0) "$totalLoosePcs Pcs" else null,
-                    icon = Icons.AutoMirrored.Filled.FactCheck,
-                    accentColor = Color(0xFFEA580C), // Orange / Coral
-                    onClick = onOpenMixedPack
-                )
-            )
-
-            // 10. Pending Hub
+            // 7. Pending Hub
             add(
                 HomeTileItem(
                     id = "pendings",
@@ -355,15 +320,16 @@ fun HomeScreen(
                 )
             )
 
-            // 11. Wholesale Hub
+            // 8. Cheque PDC
             add(
                 HomeTileItem(
-                    id = "trading_hub",
-                    title = "Wholesale Hub",
-                    subtitle = "Direct mill deals",
-                    icon = Icons.Default.Storefront,
-                    accentColor = Color(0xFF1E293B), // Dark Slate
-                    onClick = { onNavigate(AppScreen.SUPPLIER_HUB) }
+                    id = "cheque_pdc",
+                    title = "Cheque PDC",
+                    subtitle = if (dueTodayChequesCount > 0) "$dueTodayChequesCount due today for deposit!" else "${allCheques.size} registered cheques",
+                    statusBadge = if (dueTodayChequesCount > 0) "$dueTodayChequesCount Due Today" else null,
+                    icon = Icons.Default.AccountBalance,
+                    accentColor = Color(0xFF6366F1), // Indigo
+                    onClick = { onNavigate(AppScreen.CHEQUE_PDC) }
                 )
             )
 

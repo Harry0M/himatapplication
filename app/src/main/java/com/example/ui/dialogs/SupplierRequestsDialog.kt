@@ -98,7 +98,7 @@ import java.util.Locale
 private const val SUPPLIER_INVITE_URL = "https://himatsms.web.app/#supplier-register"
 
 private fun buildSupplierInviteMessage(): String {
-    return "नमस्कार!\nहिम्मत टेक्सटाइल (Himat Textile) के साथ फैब्रिक मिल / सप्लायर के रूप में जुड़ने के लिए कृपया नीचे दिए गए लिंक पर अपनी मिल व व्यावसायिक जानकारी भरें:\n\n$SUPPLIER_INVITE_URL\n\nधन्यवाद!\nहिम्मत टेक्सटाइल, अहमदाबाद"
+    return "Hello!\nTo register as a fabric mill / supplier with Himat Textile, please visit the link below and fill in your mill & business details:\n\n$SUPPLIER_INVITE_URL\n\nThank you!\nHimat Textile, Ahmedabad"
 }
 
 private fun dialPhone(context: Context, phone: String) {
@@ -866,7 +866,9 @@ private fun SupplierRequestInspectorDialog(
                                 if (request.visitingCardPhotoUri.isNotBlank()) Pair("Visiting Card", request.visitingCardPhotoUri) else null,
                                 if (request.shopPhotoUri.isNotBlank()) Pair("Mill / Shop Photo", request.shopPhotoUri) else null,
                                 if (request.gstCertPhotoUri.isNotBlank()) Pair("GST Certificate", request.gstCertPhotoUri) else null,
-                                if (request.panPhotoUri.isNotBlank()) Pair("PAN Card", request.panPhotoUri) else null
+                                if (request.panPhotoUri.isNotBlank()) Pair("PAN Card", request.panPhotoUri) else null,
+                                (if (request.idProofPhotoUri.isNotBlank()) request.idProofPhotoUri else request.aadharPhotoUri).takeIf { it.isNotBlank() }?.let { Pair("ID Proof (Front)", it) },
+                                (if (request.idProofBackPhotoUri.isNotBlank()) request.idProofBackPhotoUri else request.aadharBackPhotoUri).takeIf { it.isNotBlank() }?.let { Pair("ID Proof (Back)", it) }
                             )
 
                             if (photos.isEmpty()) {

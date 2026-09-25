@@ -21,6 +21,7 @@ import { DeletionsView } from "./views/DeletionsView"
 import { CustomerRegistrationView } from "./views/CustomerRegistrationView"
 import { SupplierRegistrationView } from "./views/SupplierRegistrationView"
 import { LeadsView } from "./views/LeadsView"
+import { ChequePdcView } from "./views/ChequePdcView"
 import { Loader2 } from "lucide-react"
 
 function MainLayout() {
@@ -56,6 +57,8 @@ function MainLayout() {
         return <PendingHubView />
       case "payments":
         return <PaymentsView />
+      case "cheques":
+        return <ChequePdcView />
       case "deliveries":
         return <DeliveriesView />
       case "employees":
@@ -87,6 +90,7 @@ function MainLayout() {
     orders: "Orders & Purchases",
     pending: "Pending Hub",
     payments: "Payments & Billing",
+    cheques: "Cheques & PDC Register",
     deliveries: "Deliveries & Dispatch",
     employees: "Staff & Sales Agents",
     leads: "Leads & Prospects (CRM)",

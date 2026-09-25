@@ -73,10 +73,66 @@ class AuthRepository(
         } catch (e: GetCredentialCancellationException) {
             Result.failure(Exception("Sign-in cancelled"))
         } catch (e: GetCredentialException) {
-            Result.failure(Exception("Google Sign-in failed: ${e.localizedMessage}"))
+            val sha1List = getAppSha1Fingerprints(activity)
+            android.util.Log.e("AuthRepository", "Google Sign-in failed. App SHA-1: $sha1List", e)
+            val detailedMsg = parseCredentialError(e, sha1List)
+            Result.failure(Exception(detailedMsg))
         } catch (e: Exception) {
+            android.util.Log.e("AuthRepository", "Sign-in error", e)
             Result.failure(e)
         }
+    }
+
+    private fun parseCredentialError(e: GetCredentialException, sha1List: List<String>): String {
+        val msg = e.localizedMessage ?: e.message ?: ""
+        return when {
+            e is androidx.credentials.exceptions.NoCredentialException || msg.contains("No credentials available", ignoreCase = true) -> {
+                "No Google account found on device or account selection was cancelled. Please ensure a Google account is signed in under device Settings."
+            }
+            msg.contains("GetCredentialResponse error returned from framework", ignoreCase = true) ||
+            msg.contains("10:", ignoreCase = true) || msg.contains("DEVELOPER_ERROR", ignoreCase = true) -> {
+                val activeSha1 = sha1List.firstOrNull() ?: "Unknown"
+                "Google Sign-in configuration error (Developer Error 10). Verify that your device build's SHA-1 fingerprint ($activeSha1) is registered in Firebase/Google Cloud Console for package com.aistudio.himattextile.sourcemgmt."
+            }
+            else -> {
+                "Google Sign-in failed: $msg"
+            }
+        }
+    }
+
+    private fun getAppSha1Fingerprints(context: Context): List<String> {
+        val fingerprints = mutableListOf<String>()
+        try {
+            val pm = context.packageManager
+            val packageName = context.packageName
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                val packageInfo = pm.getPackageInfo(packageName, android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES)
+                val signingInfo = packageInfo.signingInfo
+                val certs = if (signingInfo != null && signingInfo.hasMultipleSigners()) {
+                    signingInfo.apkContentsSigners
+                } else {
+                    signingInfo?.signingCertificateHistory ?: emptyArray()
+                }
+                for (cert in certs) {
+                    val md = java.security.MessageDigest.getInstance("SHA-1")
+                    val digest = md.digest(cert.toByteArray())
+                    fingerprints.add(digest.joinToString(":") { "%02X".format(it) })
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                val packageInfo = pm.getPackageInfo(packageName, android.content.pm.PackageManager.GET_SIGNATURES)
+                @Suppress("DEPRECATION")
+                val certs = packageInfo.signatures ?: emptyArray()
+                for (cert in certs) {
+                    val md = java.security.MessageDigest.getInstance("SHA-1")
+                    val digest = md.digest(cert.toByteArray())
+                    fingerprints.add(digest.joinToString(":") { "%02X".format(it) })
+                }
+            }
+        } catch (ex: Exception) {
+            android.util.Log.e("AuthRepository", "Failed to retrieve package signing SHA-1", ex)
+        }
+        return fingerprints
     }
 
     suspend fun signOut(context: Context) {

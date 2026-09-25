@@ -27,11 +27,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.Security
@@ -51,6 +53,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import com.google.firebase.auth.FirebaseUser
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -760,6 +763,211 @@ fun AddEditEmployeeDialog(
     }
 }
 
+@Composable
+fun QuickAddCustomerDialog(
+    initialName: String = "",
+    onDismiss: () -> Unit,
+    onSave: (CustomerEntity) -> Unit
+) {
+    var firmName by remember { mutableStateOf(initialName) }
+    var ownerName by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+    var city by remember { mutableStateOf("Ahmedabad") }
+    var customerType by remember { mutableStateOf("Credit") }
+    var creditDays by remember { mutableStateOf("30") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(18.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = CircleShape,
+                            color = NavyPrimary.copy(alpha = 0.1f),
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.PersonAdd, contentDescription = null, tint = NavyPrimary, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Quick Add Customer",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NavyPrimary
+                        )
+                    }
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", modifier = Modifier.size(18.dp))
+                    }
+                }
+
+                Text(
+                    text = "Add a new retailer on the fly. You can complete full KYC later in Customer Masters.",
+                    fontSize = 11.sp,
+                    color = TextSecondary
+                )
+
+                if (errorMessage != null) {
+                    Surface(
+                        color = Color(0xFFFEE2E2),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = errorMessage ?: "",
+                            color = Color(0xFFDC2626),
+                            fontSize = 11.5.sp,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+
+                OutlinedTextField(
+                    value = firmName,
+                    onValueChange = { firmName = it; errorMessage = null },
+                    label = { Text("Shop / Firm Name *", fontSize = 11.5.sp) },
+                    placeholder = { Text("e.g. Radhe Krishna Fashion", fontSize = 11.5.sp) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = ownerName,
+                    onValueChange = { ownerName = it },
+                    label = { Text("Owner / Contact Person", fontSize = 11.5.sp) },
+                    placeholder = { Text("e.g. Ramesh Patel", fontSize = 11.5.sp) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { phone = it; errorMessage = null },
+                    label = { Text("Mobile Number *", fontSize = 11.5.sp) },
+                    placeholder = { Text("10-digit mobile number", fontSize = 11.5.sp) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = city,
+                    onValueChange = { city = it },
+                    label = { Text("City *", fontSize = 11.5.sp) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Customer Type Toggle (Credit / Cash)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf("Credit", "Cash").forEach { type ->
+                        val isSelected = customerType.equals(type, ignoreCase = true)
+                        Surface(
+                            color = if (isSelected) NavyPrimary else Color(0xFFF1F5F9),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, if (isSelected) NavyPrimary else Color(0xFFE2E8F0)),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { customerType = type }
+                        ) {
+                            Box(modifier = Modifier.padding(vertical = 7.dp), contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = if (type == "Credit") "💳 Credit" else "💵 Cash",
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    fontSize = 11.5.sp,
+                                    color = if (isSelected) Color.White else TextPrimary
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (customerType.equals("Credit", ignoreCase = true)) {
+                    OutlinedTextField(
+                        value = creditDays,
+                        onValueChange = { creditDays = it },
+                        label = { Text("Credit Days", fontSize = 11.5.sp) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel", fontSize = 12.sp)
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            val cleanFirm = firmName.trim()
+                            val cleanOwner = ownerName.trim()
+                            val cleanPhone = phone.trim()
+                            val cleanCity = city.trim().ifBlank { "Ahmedabad" }
+                            if (cleanFirm.isBlank() && cleanOwner.isBlank()) {
+                                errorMessage = "Please enter Shop/Firm or Owner Name"
+                                return@Button
+                            }
+                            if (cleanPhone.isBlank()) {
+                                errorMessage = "Please enter Mobile Number"
+                                return@Button
+                            }
+                            val effectiveName = cleanOwner.ifBlank { cleanFirm }
+                            val effectiveFirm = cleanFirm.ifBlank { cleanOwner }
+                            val newCustomer = CustomerEntity(
+                                customerId = "CUST-${(100..999).random()}",
+                                name = effectiveName,
+                                firmName = effectiveFirm,
+                                phone = cleanPhone,
+                                city = cleanCity,
+                                customerType = customerType,
+                                creditDays = creditDays.toIntOrNull() ?: 30,
+                                notes = "Quick created during Market Visit creation"
+                            )
+                            onSave(newCustomer)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Save & Select", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateVisitDialog(
@@ -767,7 +975,8 @@ fun CreateVisitDialog(
     employees: List<EmployeeEntity>,
     defaultEmployee: EmployeeEntity?,
     onDismiss: () -> Unit,
-    onSave: (CustomerEntity, EmployeeEntity, String) -> Unit
+    onSave: (CustomerEntity, EmployeeEntity, String) -> Unit,
+    onQuickCreateCustomer: ((CustomerEntity) -> Unit)? = null
 ) {
     var selectedCustomer by remember { mutableStateOf(customers.firstOrNull()) }
     var selectedEmployee by remember { mutableStateOf(defaultEmployee ?: employees.firstOrNull()) }
@@ -775,6 +984,7 @@ fun CreateVisitDialog(
 
     var showCustomerSheet by remember { mutableStateOf(false) }
     var showEmployeeSheet by remember { mutableStateOf(false) }
+    var showQuickAddCustomer by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -811,6 +1021,32 @@ fun CreateVisitDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
+                // Customer Selection Picker Header with "+ Create New"
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Customer / Retailer *",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = NavyPrimary
+                    )
+                    Text(
+                        text = "+ Create New",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF2563EB),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .clickable { showQuickAddCustomer = true }
+                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
                 // Customer Selection Picker (Tap opens Search Bottom Sheet)
                 Box(
                     modifier = Modifier
@@ -824,7 +1060,6 @@ fun CreateVisitDialog(
                         onValueChange = {},
                         readOnly = true,
                         enabled = false,
-                        label = { Text("Customer / Retailer *", fontSize = 11.sp) },
                         placeholder = { Text("Tap to search & select customer", fontSize = 11.5.sp) },
                         trailingIcon = {
                             Icon(
@@ -934,7 +1169,25 @@ fun CreateVisitDialog(
                 selectedCustomer = customer
                 showCustomerSheet = false
             },
-            onDismiss = { showCustomerSheet = false }
+            onDismiss = { showCustomerSheet = false },
+            onQuickCreateCustomer = { newCust ->
+                onQuickCreateCustomer?.invoke(newCust)
+                selectedCustomer = newCust
+                showCustomerSheet = false
+            }
+        )
+    }
+
+    // Quick Add Customer Dialog from CreateVisitDialog directly
+    if (showQuickAddCustomer) {
+        QuickAddCustomerDialog(
+            initialName = "",
+            onDismiss = { showQuickAddCustomer = false },
+            onSave = { newCust ->
+                onQuickCreateCustomer?.invoke(newCust)
+                selectedCustomer = newCust
+                showQuickAddCustomer = false
+            }
         )
     }
 
@@ -958,10 +1211,12 @@ fun CustomerSearchBottomSheet(
     customers: List<CustomerEntity>,
     selectedCustomer: CustomerEntity?,
     onSelectCustomer: (CustomerEntity) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onQuickCreateCustomer: ((CustomerEntity) -> Unit)? = null
 ) {
     var searchQuery by remember { mutableStateOf("") }
     val cleanQuery = searchQuery.trim()
+    var showQuickAddCustomer by remember { mutableStateOf(false) }
 
     val filteredCustomers = remember(customers, cleanQuery) {
         if (cleanQuery.isBlank()) customers
@@ -1067,14 +1322,49 @@ fun CustomerSearchBottomSheet(
                     .testTag("customer_search_input")
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            if (onQuickCreateCustomer != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (cleanQuery.isBlank()) "Don't see retailer listed?" else "Can't find \"$cleanQuery\"?",
+                        fontSize = 11.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedButton(
+                        onClick = { showQuickAddCustomer = true },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, NavyPrimary)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = null,
+                            tint = NavyPrimary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (cleanQuery.isNotBlank()) "Add \"$cleanQuery\"" else "+ Create New",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NavyPrimary
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Customer List
             if (filteredCustomers.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(180.dp),
+                        .padding(vertical = 24.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1090,6 +1380,22 @@ fun CustomerSearchBottomSheet(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        if (onQuickCreateCustomer != null) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(
+                                onClick = { showQuickAddCustomer = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (cleanQuery.isNotBlank()) "Add \"$cleanQuery\" Now" else "Create New Customer",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     }
                 }
             } else {
@@ -1186,6 +1492,18 @@ fun CustomerSearchBottomSheet(
                 }
             }
         }
+    }
+
+    if (showQuickAddCustomer) {
+        QuickAddCustomerDialog(
+            initialName = cleanQuery,
+            onDismiss = { showQuickAddCustomer = false },
+            onSave = { newCust ->
+                onQuickCreateCustomer?.invoke(newCust)
+                onSelectCustomer(newCust)
+                showQuickAddCustomer = false
+            }
+        )
     }
 }
 

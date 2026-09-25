@@ -12,6 +12,8 @@ interface FileUploadProps {
   disabled?: boolean
   description?: string
   accept?: string
+  /** Show a red asterisk so users know the document is mandatory */
+  required?: boolean
 }
 
 export const FileUpload: React.FC<FileUploadProps> = ({
@@ -22,7 +24,8 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   onChange,
   disabled = false,
   description,
-  accept = "image/*"
+  accept = "image/*",
+  required = false
 }) => {
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
@@ -70,7 +73,10 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     <div className="space-y-1.5 text-xs">
       <div className="flex items-center justify-between">
         <label className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
-          <span>{label}</span>
+          <span>
+            {label}
+            {required && <span className="text-red-500"> *</span>}
+          </span>
           {value && (
             <span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
               <CheckCircle2 className="h-3 w-3" /> Cloud Saved

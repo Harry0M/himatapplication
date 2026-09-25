@@ -17,7 +17,8 @@ import {
   SoftDeletedItem,
   CustomerRegistrationRequest,
   SupplierRegistrationRequest,
-  Lead
+  Lead,
+  ChequePdc
 } from "../types"
 
 // Helper to robustly extract arrays from Firebase snapshots (handles sparse arrays and keyed objects)
@@ -244,6 +245,13 @@ interface DataContextType {
   saveLead: (lead: Partial<Lead> & { firmName: string; phone: string; type: "customer" | "supplier" }) => Promise<string | number>
   deleteLead: (leadId: string | number) => Promise<void>
   convertLeadToMaster: (lead: Lead, targetType: "customer" | "supplier") => Promise<void>
+
+  // Cheque PDC
+  chequesPdc: ChequePdc[]
+  dueTodayChequesCount: number
+  saveChequePdc: (cheque: Partial<ChequePdc> & { chequeNo: string; bankName: string; amount: number; chequeDate: string; partyType: "Customer" | "Supplier"; partyName: string }) => Promise<number>
+  updateChequePdcStatus: (id: number, status: string, clearedDate?: string) => Promise<void>
+  deleteChequePdc: (id: number) => Promise<void>
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined)
@@ -264,6 +272,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [rawRegistrationRequests, setRawRegistrationRequests] = useState<CustomerRegistrationRequest[]>([])
   const [rawSupplierRegistrationRequests, setRawSupplierRegistrationRequests] = useState<SupplierRegistrationRequest[]>([])
   const [rawLeads, setRawLeads] = useState<Lead[]>([])
+  const [rawChequesPdc, setRawChequesPdc] = useState<ChequePdc[]>([])
   const [rawDeletionRequests, setRawDeletionRequests] = useState<any[]>([])
   const [loading, setLoading] = useState<boolean>(true)
 
@@ -558,6 +567,24 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     )
 
+    // 16. Cheques PDC (Customer & Supplier Cheque Register)
+    const chequesRef = ref(rtdb, "cheques_pdc")
+    const unsubCheques = onValue(
+      chequesRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          setRawChequesPdc(parseRtdbList<ChequePdc>(snapshot.val()))
+        } else {
+          setRawChequesPdc([])
+        }
+        checkLoading()
+      },
+      (error) => {
+        console.error("RTDB error reading cheques_pdc:", error)
+        checkLoading()
+      }
+    )
+
     return () => {
       unsubVisits()
       unsubEntries()
@@ -574,6 +601,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       unsubSupRegRequests()
       unsubLeads()
       unsubDelRequests()
+      unsubCheques()
     }
   }, [user])
 
@@ -722,6 +750,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const supplierLeads = React.useMemo(() => {
     return leads.filter((l) => l.type === "supplier")
   }, [leads])
+
+  // Cheque PDC
+  const chequesPdc = React.useMemo(() => {
+    return rawChequesPdc
+      .filter((c) => !c.isDeleted)
+      .sort((a, b) => {
+        // Sort due today first, then pending upcoming, then others
+        const today = new Date().toISOString().split("T")[0]
+        const aDueToday = a.chequeDate === today && (a.status === "Pending" || a.status === "Due Today")
+        const bDueToday = b.chequeDate === today && (b.status === "Pending" || b.status === "Due Today")
+        if (aDueToday && !bDueToday) return -1
+        if (!aDueToday && bDueToday) return 1
+        return (a.chequeDate || "").localeCompare(b.chequeDate || "")
+      })
+  }, [rawChequesPdc])
+
+  const dueTodayChequesCount = React.useMemo(() => {
+    const today = new Date().toISOString().split("T")[0]
+    return chequesPdc.filter(
+      (c) => c.chequeDate === today && (c.status === "Pending" || c.status === "Due Today")
+    ).length
+  }, [chequesPdc])
 
   // Synthesize suppliers: ensure any supplier referenced in entries is never missing
   const suppliers = React.useMemo(() => {
@@ -1770,6 +1820,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       gstCertPhotoUri: req.gstCertPhotoUri || "",
       panPhotoUri: req.panPhotoUri || "",
       aadharPhotoUri: req.aadharPhotoUri || "",
+      aadharBackPhotoUri: req.aadharBackPhotoUri || "",
+      cancelChequePhotoUri: req.cancelChequePhotoUri || "",
       notes: [
         req.bankName ? `Bank: ${req.bankName} | A/C: ${req.accountNumber || ""} | IFSC: ${req.ifscCode || ""}` : "",
         req.notes ? `Customer Note: ${req.notes}` : "",
@@ -1972,6 +2024,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       panNumber: req.panNumber?.trim() || "",
       visitingCardPhotoUri: req.visitingCardPhotoUri || "",
       shopPhotoUri: req.shopPhotoUri || "",
+      gstCertPhotoUri: req.gstCertPhotoUri || "",
+      panPhotoUri: req.panPhotoUri || "",
+      idProofPhotoUri: req.idProofPhotoUri || req.aadharPhotoUri || "",
+      idProofBackPhotoUri: req.idProofBackPhotoUri || req.aadharBackPhotoUri || "",
+      aadharPhotoUri: req.aadharPhotoUri || req.idProofPhotoUri || "",
+      aadharBackPhotoUri: req.aadharBackPhotoUri || req.idProofBackPhotoUri || "",
+      cancelChequePhotoUri: req.cancelChequePhotoUri || "",
       notes: [
         req.bankName ? `Bank: ${req.bankName} | A/C: ${req.accountNumber || ""} | IFSC: ${req.ifscCode || ""}` : "",
         req.notes ? `Supplier Note: ${req.notes}` : "",
@@ -2132,6 +2191,61 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }
 
+  // Cheque PDC Operations
+  const saveChequePdc = async (
+    chequeData: Partial<ChequePdc> & {
+      chequeNo: string
+      bankName: string
+      amount: number
+      chequeDate: string
+      partyType: "Customer" | "Supplier"
+      partyName: string
+    }
+  ) => {
+    const isNew = !chequeData.id
+    const id = isNew ? Date.now() : chequeData.id!
+    const targetRef = ref(rtdb, `cheques_pdc/${id}`)
+
+    const payload: ChequePdc = {
+      id,
+      chequeNo: chequeData.chequeNo.trim(),
+      bankName: chequeData.bankName.trim(),
+      amount: Number(chequeData.amount),
+      chequeDate: chequeData.chequeDate.trim(),
+      partyType: chequeData.partyType,
+      partyId: Number(chequeData.partyId || 0),
+      partyName: chequeData.partyName.trim(),
+      status: (chequeData.status as any) || "Pending",
+      notes: chequeData.notes?.trim() || "",
+      photoUri: chequeData.photoUri || "",
+      createdAt: isNew ? Date.now() : chequeData.createdAt || Date.now(),
+      isDeleted: false,
+    }
+
+    await set(targetRef, sanitizePayload(payload))
+    return id
+  }
+
+  const updateChequePdcStatus = async (id: number, status: string, clearedDate?: string) => {
+    const today = new Date().toISOString().split("T")[0]
+    const finalClearedDate = status === "Cleared" && !clearedDate ? today : clearedDate || ""
+    const depositDate = status === "Deposited" ? today : ""
+
+    const updates: Record<string, any> = {
+      status,
+      clearedDate: finalClearedDate,
+    }
+    if (depositDate) {
+      updates.depositDate = depositDate
+    }
+
+    await update(ref(rtdb, `cheques_pdc/${id}`), updates)
+  }
+
+  const deleteChequePdc = async (id: number) => {
+    await remove(ref(rtdb, `cheques_pdc/${id}`))
+  }
+
   return (
     <DataContext.Provider
       value={{
@@ -2204,6 +2318,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         saveLead,
         deleteLead,
         convertLeadToMaster,
+        chequesPdc,
+        dueTodayChequesCount,
+        saveChequePdc,
+        updateChequePdcStatus,
+        deleteChequePdc,
       }}
     >
       {children}

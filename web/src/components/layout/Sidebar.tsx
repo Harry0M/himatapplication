@@ -13,7 +13,8 @@ import {
   ShieldAlert,
   Tag,
   Compass,
-  Package
+  Package,
+  Landmark
 } from "lucide-react"
 import { useAuth } from "../../context/AuthContext"
 import { useData } from "../../context/DataContext"
@@ -28,6 +29,7 @@ export type ActiveTab =
   | "orders"
   | "pending"
   | "payments"
+  | "cheques"
   | "deliveries"
   | "employees"
   | "leads"
@@ -55,11 +57,12 @@ export function Sidebar({ activeTab, setActiveTab, isOpen, onClose }: SidebarPro
     activeTripsCount,
     looseEntriesCount,
     pendingDeletionsCount,
-    pendingRegistrationRequestsCount
+    pendingRegistrationRequestsCount,
+    dueTodayChequesCount
   } = useData()
 
   const totalPending =
-    pendingPaymentsCount + pendingDeliveriesCount + activeTripsCount + looseEntriesCount
+    pendingPaymentsCount + pendingDeliveriesCount + activeTripsCount
 
   const navItems = [
     {
@@ -92,6 +95,13 @@ export function Sidebar({ activeTab, setActiveTab, isOpen, onClose }: SidebarPro
       icon: CreditCard,
       badge: pendingPaymentsCount > 0 ? `${pendingPaymentsCount}` : undefined,
       badgeVariant: "warning" as const,
+    },
+    {
+      id: "cheques",
+      label: "Cheques & PDC",
+      icon: Landmark,
+      badge: dueTodayChequesCount > 0 ? `${dueTodayChequesCount} Due` : undefined,
+      badgeVariant: "destructive" as const,
     },
     {
       id: "deliveries",

@@ -21,10 +21,10 @@ export function Navbar({
   const [isDark, setIsDark] = useState<boolean>(() => {
     return document.documentElement.classList.contains("dark")
   })
-  const { pendingPaymentsCount, pendingDeliveriesCount, activeTripsCount, looseEntriesCount } = useData()
+  const { pendingPaymentsCount, pendingDeliveriesCount, activeTripsCount } = useData()
 
   const totalPending =
-    pendingPaymentsCount + pendingDeliveriesCount + activeTripsCount + looseEntriesCount
+    pendingPaymentsCount + pendingDeliveriesCount + activeTripsCount
 
   useEffect(() => {
     if (isDark) {

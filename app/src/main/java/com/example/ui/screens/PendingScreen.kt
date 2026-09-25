@@ -156,7 +156,7 @@ fun PendingScreen(
         allLooseEntries.sumOf { it.loosePieces }
     }
 
-    val totalPendingCount = allPendingPayments.size + allPendingDeliveries.size + allActiveTrips.size + allLooseEntries.size
+    val totalPendingCount = allPendingPayments.size + allPendingDeliveries.size + allActiveTrips.size
 
     // Search Filtering
     val cleanQuery = searchQuery.trim().lowercase()

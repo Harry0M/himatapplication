@@ -36,12 +36,15 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -81,15 +84,6 @@ fun CustomerReportScreen(
     val grandTotal = totalAmount + totalGst
     val totalCases = entries.sumOf { it.caseCount }
     val totalLoose = entries.sumOf { it.loosePieces }
-
-    val packedEntryIds = packGroups.flatMap { group ->
-        group.linkedEntryIds.split(",").mapNotNull { it.trim().toLongOrNull() }
-    }.toSet()
-    val mixedCases = packGroups.sumOf { it.resultingCases }
-    val totalAllCases = totalCases + mixedCases
-    val remainingLoose = entries.filter {
-        it.id !in packedEntryIds && (it.packGroupId == null || it.packGroupId == 0L) && it.mixedPackNote.isNullOrBlank()
-    }.sumOf { it.loosePieces } + packGroups.sumOf { it.remainingLoose }
 
     Scaffold(
         bottomBar = {
@@ -314,84 +308,184 @@ fun CustomerReportScreen(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        // Table Header
-                        Surface(
-                            color = NavyPrimary,
-                            shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("ORDER", fontWeight = FontWeight.Bold, fontSize = 10.sp, color = Color.White, modifier = Modifier.width(55.dp))
-                                Text("ITEM", fontWeight = FontWeight.Bold, fontSize = 10.sp, color = Color.White, modifier = Modifier.weight(1f))
-                                Text("PCS", fontWeight = FontWeight.Bold, fontSize = 10.sp, color = Color.White, modifier = Modifier.width(35.dp))
-                                Text("RATE", fontWeight = FontWeight.Bold, fontSize = 10.sp, color = Color.White, modifier = Modifier.width(45.dp))
-                                Text("PACK", fontWeight = FontWeight.Bold, fontSize = 10.sp, color = Color.White, modifier = Modifier.width(55.dp))
-                                Text("AMOUNT", fontWeight = FontWeight.Bold, fontSize = 10.sp, color = Color.White, modifier = Modifier.width(65.dp))
-                            }
-                        }
-
-                        // Grouped by Supplier
+                        // Partitioned Supplier Sections
                         val grouped = entries.groupBy { it.supplierName }
                         grouped.forEach { (supplierName, supplierItems) ->
                             val supType = supplierItems.firstOrNull()?.supplierType ?: ""
+                            val supplierPcs = supplierItems.sumOf { it.pieces }
+                            val supplierTotal = supplierItems.sumOf { it.totalAmount }
+
                             Surface(
-                                color = Color(0xFFF1F5F9),
-                                modifier = Modifier.fillMaxWidth()
+                                color = Color.White,
+                                shape = RoundedCornerShape(8.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 5.dp)
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "▶ $supplierName",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 11.5.sp,
+                                Column {
+                                    // Section Header
+                                    Surface(
                                         color = NavyPrimary,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    SupplierTypeBadge(type = supType)
-                                }
-                            }
-
-                            supplierItems.forEach { item ->
-                                Column(modifier = Modifier.fillMaxWidth()) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                        shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp),
+                                        modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Text(item.orderNo, fontSize = 10.sp, color = TextSecondary, modifier = Modifier.width(55.dp))
-                                        Text(item.itemCode, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, modifier = Modifier.weight(1f))
-                                        Text("${item.pieces}", fontSize = 11.sp, modifier = Modifier.width(35.dp))
-                                        Text("₹${item.rate.toInt()}", fontSize = 11.sp, modifier = Modifier.width(45.dp))
-                                        val isPacked = (item.packGroupId != null && item.packGroupId != 0L) || (item.id in packedEntryIds) || !item.mixedPackNote.isNullOrBlank()
-                                        val pack = if (item.loosePieces > 0) {
-                                            if (isPacked) "${item.caseCount}c+${item.loosePieces}L (Mixed)"
-                                            else "${item.caseCount}c+${item.loosePieces}L"
-                                        } else "${item.caseCount}c"
-                                        Text(pack, fontSize = 9.5.sp, fontWeight = FontWeight.Medium, color = if (item.loosePieces > 0) (if (isPacked) Color(0xFF2563EB) else Color(0xFFD97706)) else Color(0xFF15803D), modifier = Modifier.width(60.dp))
-                                        Text(PdfGenerator.formatInr(item.totalAmount), fontWeight = FontWeight.SemiBold, fontSize = 11.sp, modifier = Modifier.width(65.dp))
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "🏭 $supplierName",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp,
+                                                color = Color.White,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            if (supType.isNotBlank()) {
+                                                SupplierTypeBadge(type = supType)
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                            }
+                                            Text(
+                                                text = "$supplierPcs pcs",
+                                                fontSize = 11.sp,
+                                                color = Color(0xFF93C5FD),
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
                                     }
 
-                                    if (!item.mixedPackNote.isNullOrBlank()) {
-                                        Text(
-                                            text = "↳ ${item.mixedPackNote}",
-                                            fontSize = 9.5.sp,
-                                            color = Color(0xFFB45309),
-                                            modifier = Modifier.padding(start = 55.dp, bottom = 4.dp)
-                                        )
+                                    // Partition Column Headers
+                                    Surface(
+                                        color = Color(0xFFF1F5F9),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("ITEM / ORDER", fontWeight = FontWeight.Bold, fontSize = 9.5.sp, color = NavyPrimary, modifier = Modifier.weight(1.8f))
+                                            Text("QTY", fontWeight = FontWeight.Bold, fontSize = 9.5.sp, color = NavyPrimary, textAlign = TextAlign.Center, modifier = Modifier.weight(0.9f))
+                                            Text("RATE", fontWeight = FontWeight.Bold, fontSize = 9.5.sp, color = NavyPrimary, textAlign = TextAlign.Center, modifier = Modifier.weight(0.8f))
+                                            Text("PACKING", fontWeight = FontWeight.Bold, fontSize = 9.5.sp, color = NavyPrimary, textAlign = TextAlign.Center, modifier = Modifier.weight(1.0f))
+                                            Text("AMOUNT", fontWeight = FontWeight.Bold, fontSize = 9.5.sp, color = NavyPrimary, textAlign = TextAlign.End, modifier = Modifier.weight(1.2f))
+                                        }
                                     }
+                                    HorizontalDivider(color = Color(0xFFCBD5E1), thickness = 1.dp)
 
-                                    Divider(color = Color(0xFFF1F5F9))
+                                    // Items List
+                                    supplierItems.forEachIndexed { idx, item ->
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(if (idx % 2 == 1) Color(0xFFF8FAFC) else Color.White)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                // 1. ITEM & ORDER (Stacked so Item has plenty of horizontal room)
+                                                Column(modifier = Modifier.weight(1.8f)) {
+                                                    Text(
+                                                        text = item.itemCode,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 11.5.sp,
+                                                        color = TextPrimary,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                    Text(
+                                                        text = "#${item.orderNo}",
+                                                        fontSize = 9.5.sp,
+                                                        color = TextSecondary,
+                                                        fontWeight = FontWeight.Medium
+                                                    )
+                                                }
+
+                                                // 2. QTY (Dedicated visual pill badge so Quantity never mixes with Item)
+                                                Box(
+                                                    modifier = Modifier.weight(0.9f),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Surface(
+                                                        color = Color(0xFFEFF6FF),
+                                                        shape = RoundedCornerShape(4.dp),
+                                                        border = androidx.compose.foundation.BorderStroke(0.8.dp, Color(0xFFBFDBFE))
+                                                    ) {
+                                                        Text(
+                                                            text = "${item.pieces} p",
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 11.sp,
+                                                            color = Color(0xFF1D4ED8),
+                                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                                        )
+                                                    }
+                                                }
+
+                                                // 3. RATE
+                                                Text(
+                                                    text = "₹${item.rate.toInt()}",
+                                                    fontSize = 10.5.sp,
+                                                    color = TextPrimary,
+                                                    textAlign = TextAlign.Center,
+                                                    modifier = Modifier.weight(0.8f)
+                                                )
+
+                                                // 4. PACKING
+                                                val pack = if (item.loosePieces > 0) "${item.caseCount}c + ${item.loosePieces}L" else "${item.caseCount} cs"
+                                                Text(
+                                                    text = pack,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = if (item.loosePieces > 0) Color(0xFFD97706) else Color(0xFF15803D),
+                                                    textAlign = TextAlign.Center,
+                                                    modifier = Modifier.weight(1.0f)
+                                                )
+
+                                                // 5. AMOUNT
+                                                Text(
+                                                    text = PdfGenerator.formatInr(item.totalAmount),
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 11.sp,
+                                                    color = NavyPrimary,
+                                                    textAlign = TextAlign.End,
+                                                    modifier = Modifier.weight(1.2f)
+                                                )
+                                            }
+
+                                            // Packing Remarks / Note if present
+                                            if (!item.mixedPackNote.isNullOrBlank()) {
+                                                Surface(
+                                                    color = Color(0xFFFFFBEB),
+                                                    shape = RoundedCornerShape(3.dp),
+                                                    border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFFFDE68A)),
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "↳ Note: ${item.mixedPackNote}",
+                                                        fontSize = 9.5.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = Color(0xFF92400E),
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                                    )
+                                                }
+                                            }
+
+                                            if (idx < supplierItems.size - 1) {
+                                                HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.5.dp)
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        // Totals Summary Box
+                        // Totals Summary Box (No packing summary at bottom)
                         Surface(
                             color = Color(0xFFF8FAFC),
                             shape = RoundedCornerShape(8.dp),
@@ -414,21 +508,8 @@ fun CustomerReportScreen(
                                     Text("Garment GST (5%):", fontSize = 12.sp, color = TextSecondary)
                                     Text(PdfGenerator.formatInr(totalGst), fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                 }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("Packing Summary:", fontSize = 12.sp, color = TextSecondary)
-                                    val summaryText = if (mixedCases > 0) {
-                                        "$totalAllCases Cases ($totalCases Full + $mixedCases Mixed) • ${if (remainingLoose > 0) "$remainingLoose Loose Pcs" else "0 Loose (All Packed ✓)"}"
-                                    } else {
-                                        "$totalCases Cases + $totalLoose Loose Pcs"
-                                    }
-                                    Text(summaryText, fontSize = 11.5.sp, color = NavyPrimary, fontWeight = FontWeight.SemiBold)
-                                }
 
-                                Divider(modifier = Modifier.padding(vertical = 8.dp))
+                                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -436,29 +517,6 @@ fun CustomerReportScreen(
                                 ) {
                                     Text("CONSOLIDATED GRAND TOTAL:", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = NavyPrimary)
                                     Text(PdfGenerator.formatInr(grandTotal), fontWeight = FontWeight.Bold, fontSize = 15.sp, color = NavyPrimary)
-                                }
-                            }
-                        }
-
-                        // Mixed Pack Groups Breakdown
-                        if (packGroups.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text("Mixed Packing Summary:", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF92400E))
-                            Spacer(modifier = Modifier.height(4.dp))
-                            packGroups.forEach { pg ->
-                                Surface(
-                                    color = Color(0xFFFEF3C7),
-                                    shape = RoundedCornerShape(6.dp),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = "${pg.packGroupCode}: ${pg.note}",
-                                        fontSize = 11.sp,
-                                        color = Color(0xFF92400E),
-                                        modifier = Modifier.padding(8.dp)
-                                    )
                                 }
                             }
                         }

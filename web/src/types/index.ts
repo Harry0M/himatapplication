@@ -122,6 +122,7 @@ export interface Customer extends BaseEntity {
   preferredTransporterName?: string
   transportPreference?: string
   aadharPhotoUri?: string
+  aadharBackPhotoUri?: string
   gstCertPhotoUri?: string
   panPhotoUri?: string
   shopPhotoUri?: string
@@ -184,6 +185,13 @@ export interface Supplier extends BaseEntity {
   gstin?: string
   gstNumber?: string
   panNumber?: string
+  gstCertPhotoUri?: string
+  panPhotoUri?: string
+  idProofPhotoUri?: string
+  idProofBackPhotoUri?: string
+  aadharPhotoUri?: string
+  aadharBackPhotoUri?: string
+  cancelChequePhotoUri?: string
   defaultCaseSize?: number
   defaultGstRate?: number
   rating?: number
@@ -357,6 +365,8 @@ export interface CustomerRegistrationRequest {
   gstCertPhotoUri?: string
   panPhotoUri?: string
   aadharPhotoUri?: string
+  aadharBackPhotoUri?: string
+  cancelChequePhotoUri?: string
   notes?: string
   status: "PENDING" | "APPROVED" | "REJECTED"
   phoneVerified: boolean
@@ -406,6 +416,11 @@ export interface SupplierRegistrationRequest {
   shopPhotoUri?: string // Mill / Front Photo
   gstCertPhotoUri?: string
   panPhotoUri?: string
+  idProofPhotoUri?: string
+  idProofBackPhotoUri?: string
+  aadharPhotoUri?: string
+  aadharBackPhotoUri?: string
+  cancelChequePhotoUri?: string
   notes?: string
   status: "PENDING" | "APPROVED" | "REJECTED"
   phoneVerified: boolean
@@ -443,5 +458,26 @@ export interface Lead {
   convertedTargetId?: number | string
   isDeleted?: boolean
 }
+
+export type ChequePartyType = "Customer" | "Supplier"
+export type ChequeStatus = "Pending" | "Due Today" | "Deposited" | "Cleared" | "Bounced"
+
+export interface ChequePdc extends BaseEntity {
+  id: number
+  chequeNo: string // CH N
+  bankName: string // Bank Name
+  amount: number // Cheque Amount
+  chequeDate: string // YYYY-MM-DD
+  partyType: ChequePartyType
+  partyId: number
+  partyName: string
+  status: ChequeStatus
+  depositDate?: string
+  clearedDate?: string
+  notes?: string
+  photoUri?: string
+  createdAt?: number
+}
+
 
 

@@ -514,24 +514,6 @@ fun DashboardScreen(
                 }
             }
 
-            // 4. Loose Pieces Packing Alert Banner (ONLY if there are genuine UNFIXED loose pieces)
-            if (totalUnfixedLoose > 0 && unfixedLooseEntries.isNotEmpty()) {
-                item {
-                    IncompleteCaseBanner(
-                        looseCount = totalUnfixedLoose,
-                        ordersCount = unfixedLooseEntries.size,
-                        onMixedPackClick = {
-                            val activeVisit = baseVisits.firstOrNull { it.status == "Active" } ?: baseVisits.firstOrNull()
-                            if (activeVisit != null) {
-                                onOpenVisit(activeVisit)
-                            } else {
-                                onNavigate(AppScreen.VISITS)
-                            }
-                        }
-                    )
-                }
-            }
-
             // 5. REPORTS SECTION: Source Distribution (Manufacturer vs Wholesaler Split Report)
             item {
                 Card(

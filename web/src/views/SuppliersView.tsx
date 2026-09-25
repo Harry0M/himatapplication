@@ -123,7 +123,7 @@ export function SuppliersView() {
 
   const buildSupplierInviteMessage = () => {
     const regUrl = getPublicSupplierRegistrationUrl()
-    return `नमस्कार!\nहिम्मत टेक्सटाइल (Himat Textile) के साथ फैब्रिक मिल / सप्लायर के रूप में जुड़ने के लिए कृपया नीचे दिए गए लिंक पर अपनी मिल व व्यावसायिक जानकारी भरें:\n\n${regUrl}\n\nधन्यवाद!\nहिम्मत टेक्सटाइल, अहमदाबाद`
+    return `Hello!\nTo register as a fabric mill / supplier with Himat Textile, please click the link below to submit your mill and business details:\n\n${regUrl}\n\nThank you!\nHimat Textile, Ahmedabad`
   }
 
   const [search, setSearch] = useState<string>("")
@@ -1606,6 +1606,54 @@ export function SuppliersView() {
                             />
                             <span className="text-[10px] font-semibold text-zinc-600 dark:text-zinc-400 mt-1 block">
                               PAN Card
+                            </span>
+                          </div>
+                        )}
+
+                        {(activeDetailRequest.idProofPhotoUri || activeDetailRequest.aadharPhotoUri) && (
+                          <div
+                            onClick={() => setLightbox({ open: true, url: (activeDetailRequest.idProofPhotoUri || activeDetailRequest.aadharPhotoUri)!, title: "ID Proof (Front)" })}
+                            className="cursor-pointer group relative rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-white dark:bg-zinc-800 p-2 text-center"
+                          >
+                            <img
+                              src={activeDetailRequest.idProofPhotoUri || activeDetailRequest.aadharPhotoUri}
+                              alt="ID Proof Front"
+                              className="h-24 w-full object-cover rounded-lg group-hover:scale-105 transition-transform"
+                            />
+                            <span className="text-[10px] font-semibold text-zinc-600 dark:text-zinc-400 mt-1 block">
+                              ID Proof (Front)
+                            </span>
+                          </div>
+                        )}
+
+                        {(activeDetailRequest.idProofBackPhotoUri || activeDetailRequest.aadharBackPhotoUri) && (
+                          <div
+                            onClick={() => setLightbox({ open: true, url: (activeDetailRequest.idProofBackPhotoUri || activeDetailRequest.aadharBackPhotoUri)!, title: "ID Proof (Back)" })}
+                            className="cursor-pointer group relative rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-white dark:bg-zinc-800 p-2 text-center"
+                          >
+                            <img
+                              src={activeDetailRequest.idProofBackPhotoUri || activeDetailRequest.aadharBackPhotoUri}
+                              alt="ID Proof Back"
+                              className="h-24 w-full object-cover rounded-lg group-hover:scale-105 transition-transform"
+                            />
+                            <span className="text-[10px] font-semibold text-zinc-600 dark:text-zinc-400 mt-1 block">
+                              ID Proof (Back)
+                            </span>
+                          </div>
+                        )}
+
+                        {activeDetailRequest.cancelChequePhotoUri && (
+                          <div
+                            onClick={() => setLightbox({ open: true, url: activeDetailRequest.cancelChequePhotoUri!, title: "Cancelled Cheque" })}
+                            className="cursor-pointer group relative rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-white dark:bg-zinc-800 p-2 text-center"
+                          >
+                            <img
+                              src={activeDetailRequest.cancelChequePhotoUri}
+                              alt="Cancelled Cheque"
+                              className="h-24 w-full object-cover rounded-lg group-hover:scale-105 transition-transform"
+                            />
+                            <span className="text-[10px] font-semibold text-zinc-600 dark:text-zinc-400 mt-1 block">
+                              Cancel Cheque
                             </span>
                           </div>
                         )}

@@ -665,6 +665,8 @@ fun CustomerDetailScreen(
 
                 // Compact "See KYC Documents" Expandable Option
                 val customerDocs = listOfNotNull(
+                    customer.aadharPhotoUri.takeIf { it.isNotBlank() }?.let { "Aadhaar (Front)" to it },
+                    customer.aadharBackPhotoUri.takeIf { it.isNotBlank() }?.let { "Aadhaar (Back)" to it },
                     customer.gstCertPhotoUri.takeIf { it.isNotBlank() }?.let { "GST Certificate" to it },
                     customer.panPhotoUri.takeIf { it.isNotBlank() }?.let { "PAN Card" to it },
                     customer.shopPhotoUri.takeIf { it.isNotBlank() }?.let { "Shop Front" to it },

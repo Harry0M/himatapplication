@@ -885,13 +885,25 @@ fun OrderDetailScreen(
                                 )
                             }
 
-                            Text(
-                                text = "${entry.pieces}",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.weight(0.7f)
-                            )
+                            // Pieces (Dedicated visual pill badge so Quantity never mixes with Item)
+                            Box(
+                                modifier = Modifier.weight(0.7f),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Surface(
+                                    color = Color(0xFFEFF6FF),
+                                    shape = RoundedCornerShape(4.dp),
+                                    border = BorderStroke(0.8.dp, Color(0xFFBFDBFE))
+                                ) {
+                                    Text(
+                                        text = "${entry.pieces} p",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF1D4ED8),
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
 
                             Text(
                                 text = "₹${entry.rate.toInt()}",

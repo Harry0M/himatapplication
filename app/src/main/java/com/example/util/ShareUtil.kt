@@ -86,16 +86,16 @@ object ShareUtil {
     fun shareCustomerRegistrationLink(context: Context, phone: String? = null) {
         val regUrl = "https://himatsms.web.app/#/register-customer"
         val msg = """
-            *श्री हिम्मत ट्रेडिंग कंपनी — नया ग्राहक खाता पंजीकरण*
+            *Shree Himat Trading Company — New Customer Account Registration*
             
-            नमस्ते! हमारे साथ नया व्यापारिक खाता खोलने के लिए कृपया नीचे दिए गए लिंक पर जाकर अपनी बुनियादी व्यावसायिक जानकारी और आवश्यक विवरण भरें:
+            Hello! To open a new trade account with us, please visit the link below and fill in your business and contact details:
             
             🔗 $regUrl
             
-            _नोट: फॉर्म भरने के बाद आपके नंबर पर एसएमएस ओटीपी सत्यापन होगा।_
+            _Note: You will receive an SMS OTP verification on your mobile number upon submitting the form._
             
-            धन्यवाद!
-            श्री हिम्मत ट्रेडिंग कंपनी, अहमदाबाद
+            Thank you!
+            Shree Himat Trading Company, Ahmedabad
         """.trimIndent()
         shareWhatsAppText(context, msg, phone)
     }
@@ -103,16 +103,16 @@ object ShareUtil {
     fun shareSupplierRegistrationLink(context: Context, phone: String? = null) {
         val regUrl = "https://himatsms.web.app/#supplier-register"
         val msg = """
-            *हिम्मत टेक्सटाइल — नया सप्लायर / फैब्रिक मिल पंजीकरण*
+            *Himat Textile — New Supplier / Fabric Mill Registration*
             
-            नमस्कार! हिम्मत टेक्सटाइल (Himat Textile) के साथ फैब्रिक मिल / सप्लायर के रूप में जुड़ने के लिए कृपया नीचे दिए गए लिंक पर अपनी मिल व व्यावसायिक जानकारी भरें:
+            Hello! To register as a fabric mill / supplier with Himat Textile, please visit the link below and fill in your mill & business details:
             
             🔗 $regUrl
             
-            _नोट: फॉर्म भरने के बाद आपके नंबर पर सत्यापन होगा।_
+            _Note: Details will be verified upon submission._
             
-            धन्यवाद!
-            हिम्मत टेक्सटाइल, अहमदाबाद
+            Thank you!
+            Himat Textile, Ahmedabad
         """.trimIndent()
         shareWhatsAppText(context, msg, phone)
     }
@@ -187,7 +187,7 @@ object ShareUtil {
                 appendLine(" • *Order ${item.orderNo}*: ${item.itemCode}")
                 appendLine("   Qty: ${item.pieces} Pcs @ ₹${item.rate.toInt()} = ₹${item.totalAmount.toInt()}")
                 val packing = if (item.loosePieces > 0) "${item.caseCount} Cases + ${item.loosePieces} Loose" else "${item.caseCount} Cases"
-                appendLine("   Packing: $packing (Case size: ${item.caseSize})")
+                appendLine("   Packing: $packing")
                 if (!item.mixedPackNote.isNullOrBlank()) {
                     appendLine("   ⚠️ *Packing Note:* _${item.mixedPackNote}_")
                 }

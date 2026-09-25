@@ -710,7 +710,8 @@ private fun CustomerRequestInspectorDialog(
                                 if (request.shopPhotoUri.isNotBlank()) Pair("Shop Front Photo", request.shopPhotoUri) else null,
                                 if (request.gstCertPhotoUri.isNotBlank()) Pair("GST Certificate", request.gstCertPhotoUri) else null,
                                 if (request.panPhotoUri.isNotBlank()) Pair("PAN Card", request.panPhotoUri) else null,
-                                if (request.aadharPhotoUri.isNotBlank()) Pair("Aadhaar Card", request.aadharPhotoUri) else null
+                                if (request.aadharPhotoUri.isNotBlank()) Pair("Aadhaar (Front)", request.aadharPhotoUri) else null,
+                                if (request.aadharBackPhotoUri.isNotBlank()) Pair("Aadhaar (Back)", request.aadharBackPhotoUri) else null
                             )
 
                             if (photos.isEmpty()) {
@@ -798,7 +799,7 @@ private fun CustomerRequestInspectorDialog(
 
                                 // RELIGION SELECTION (User Explicit Requirement)
                                 Text(
-                                    text = "Religion (धर्म):",
+                                    text = "Religion:",
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 11.sp,
                                     color = TextPrimary
