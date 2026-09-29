@@ -36,6 +36,64 @@ object IdGenerator {
     }
 }
 
+/**
+ * The short human-readable staff code ("EMP-04", "AGT-107").
+ *
+ * It used to be a random digit 1..9 on the phone and `list.size + 1` on the web, neither of which
+ * looks at what already exists — which is how two people ended up with the same code. There are only
+ * nine possible random digits, so a clash was close to certain. This takes the highest code already
+ * in use and adds one, counting deactivated staff too, so a number is never handed out twice even
+ * after somebody leaves.
+ */
+object StaffCodes {
+    const val STAFF_PREFIX = "EMP"
+    const val AGENT_PREFIX = "AGT"
+
+    /**
+     * Highest number a real staff code can carry. An agency has staff, not thousands, so anything
+     * larger is a record id that leaked into this field — the web used to invent "EMP-0<id>" labels
+     * for salesmen it found on trips but not in the staff master. Counting those would push the next
+     * code into the billions.
+     */
+    const val MAX_CODE = 9999
+
+    private fun usedNumbers(existing: List<EmployeeEntity>, prefix: String): Set<Int> = existing
+        .mapNotNull { employee ->
+            employee.employeeId.trim().takeIf { it.startsWith(prefix, ignoreCase = true) }
+                ?.drop(prefix.length)?.trimStart('-', '_', ' ')
+                ?.toIntOrNull()
+                ?.takeIf { it in 1..MAX_CODE }
+        }
+        .toSet()
+
+    /**
+     * The next free code. [existing] should be every staff record known, including deactivated ones:
+     * reusing a departed person's code makes two different people look like one in old reports.
+     */
+    fun next(existing: List<EmployeeEntity>, prefix: String = STAFF_PREFIX): String {
+        val used = usedNumbers(existing, prefix)
+        var candidate = (used.maxOrNull() ?: 0) + 1
+        while (candidate in used) candidate++
+        return format(prefix, candidate)
+    }
+
+    fun nextAgent(existing: List<EmployeeEntity>): String = next(existing, AGENT_PREFIX)
+
+    /** "EMP-01" up to nine, then "EMP-10" — keeps the familiar look without breaking past nine. */
+    fun format(prefix: String, number: Int): String =
+        if (number < 10) "$prefix-0$number" else "$prefix-$number"
+
+    /**
+     * True when [code] is already used by somebody other than [selfId]. Checked on save so two
+     * admins entering staff at the same moment cannot both keep the same code.
+     */
+    fun isTaken(code: String, existing: List<EmployeeEntity>, selfId: Long = 0L): Boolean {
+        val wanted = code.trim()
+        if (wanted.isBlank()) return false
+        return existing.any { it.id != selfId && it.employeeId.trim().equals(wanted, ignoreCase = true) }
+    }
+}
+
 /** The three user types. Stored in EmployeeEntity.role (employees node). */
 object Roles {
     const val ADMIN = "Admin"
@@ -116,6 +174,40 @@ fun SupplierEntity.cleared(): SupplierEntity = copy(
 fun ProductEntity.cleared(): ProductEntity = copy(
     isDeleted = false, deletedAt = null, deletedBy = "", deletedByEmail = "",
     deletedByRole = "", deletionStatus = "", deletionReason = ""
+)
+
+// -----------------------------------------------------------------------------
+// The automatic duplicate check: hide the second copy, never destroy it
+//
+// A distinct status on purpose. "PENDING_CONFIRMATION" means a person asked for a deletion and the
+// admin has to answer; this one means the app itself spotted the same record twice. Either way the
+// record is only hidden, so a wrong guess costs a tap to undo instead of a lost order.
+// -----------------------------------------------------------------------------
+
+const val DELETION_DUPLICATE = "DUPLICATE"
+
+private const val DUPLICATE_BY = "Automatic duplicate check"
+
+private fun duplicateReason(keptId: Long) = "Same record saved twice; kept #$keptId"
+
+fun CustomerEntity.markedDuplicate(keptId: Long): CustomerEntity = copy(
+    isDeleted = true, deletedAt = System.currentTimeMillis(), deletedBy = DUPLICATE_BY,
+    deletionStatus = DELETION_DUPLICATE, deletionReason = duplicateReason(keptId)
+)
+
+fun SupplierEntity.markedDuplicate(keptId: Long): SupplierEntity = copy(
+    isDeleted = true, deletedAt = System.currentTimeMillis(), deletedBy = DUPLICATE_BY,
+    deletionStatus = DELETION_DUPLICATE, deletionReason = duplicateReason(keptId)
+)
+
+fun ProductEntity.markedDuplicate(keptId: Long): ProductEntity = copy(
+    isDeleted = true, deletedAt = System.currentTimeMillis(), deletedBy = DUPLICATE_BY,
+    deletionStatus = DELETION_DUPLICATE, deletionReason = duplicateReason(keptId)
+)
+
+fun PurchaseEntryEntity.markedDuplicate(keptId: Long): PurchaseEntryEntity = copy(
+    isDeleted = true, deletedAt = System.currentTimeMillis(), deletedBy = DUPLICATE_BY,
+    deletionStatus = DELETION_DUPLICATE, deletionReason = duplicateReason(keptId)
 )
 
 // -----------------------------------------------------------------------------

@@ -34,6 +34,47 @@ export function displayCode(prefix: string, date: Date = new Date()): string {
   return `${prefix}-${yy}${mm}${dd}-${rand}`
 }
 
+/** Highest number a real staff code can carry. Anything larger is an id that leaked into the field. */
+export const MAX_STAFF_CODE = 9999
+
+/**
+ * The next free staff code, e.g. "EMP-07". Mirrors Android's StaffCodes.next().
+ *
+ * `list.length + 1` was the old version and it handed out the same code twice as soon as anything
+ * was missing from the list or two admins were adding people at once. This reads the highest number
+ * actually in use — counting deactivated staff, so a number is never reused after somebody leaves.
+ */
+export function nextStaffCode(
+  existing: Array<{ employeeId?: string }>,
+  prefix: string = "EMP"
+): string {
+  const used = new Set<number>()
+  existing.forEach((e) => {
+    const raw = (e.employeeId || "").trim()
+    if (!raw.toUpperCase().startsWith(prefix.toUpperCase())) return
+    const n = Number(raw.slice(prefix.length).replace(/^[-_\s]+/, ""))
+    // MAX_STAFF_CODE: an agency has staff, not thousands. A bigger number means the "code" was
+    // really an id that leaked into this field, and counting it would send the next code to infinity.
+    if (Number.isInteger(n) && n > 0 && n <= MAX_STAFF_CODE) used.add(n)
+  })
+  let candidate = (used.size ? Math.max(...used) : 0) + 1
+  while (used.has(candidate)) candidate++
+  return `${prefix}-${candidate < 10 ? `0${candidate}` : candidate}`
+}
+
+/** True when this staff code already belongs to somebody else. */
+export function isStaffCodeTaken(
+  code: string,
+  existing: Array<{ id?: number; employeeId?: string }>,
+  selfId = 0
+): boolean {
+  const wanted = code.trim().toLowerCase()
+  if (!wanted) return false
+  return existing.some(
+    (e) => Number(e.id) !== Number(selfId) && (e.employeeId || "").trim().toLowerCase() === wanted
+  )
+}
+
 /** Parses ids that may have been written as strings by older builds. Returns 0 when not numeric. */
 export function toNumericId(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) return value

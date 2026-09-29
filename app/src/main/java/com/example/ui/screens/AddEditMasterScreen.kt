@@ -50,6 +50,7 @@ import com.example.util.MasterConstants
 import com.example.util.MasterDraftManager
 import com.example.util.RecordValidator
 import com.example.util.Roles
+import com.example.util.StaffCodes
 import com.example.util.ValidationResult
 import org.json.JSONArray
 import org.json.JSONObject
@@ -462,7 +463,15 @@ fun AddEditMasterScreen(
     // EMPLOYEE STATE
     // =========================================================================
     var empName by remember(editingEmployee) { mutableStateOf(editingEmployee?.name ?: empDraft?.get("name")?.toString() ?: "") }
-    var empId by remember(editingEmployee) { mutableStateOf(editingEmployee?.employeeId ?: empDraft?.get("employeeId")?.toString() ?: "EMP-0${(1..9).random()}") }
+    // Next free code, not a random digit: the old "EMP-0" + random(1..9) had only nine possible
+    // values, so two staff sharing a code was close to certain.
+    var empId by remember(editingEmployee) {
+        mutableStateOf(
+            editingEmployee?.employeeId
+                ?: empDraft?.get("employeeId")?.toString()
+                ?: viewModel.nextStaffCode()
+        )
+    }
     var empRole by remember(editingEmployee) { mutableStateOf(editingEmployee?.role ?: empDraft?.get("role")?.toString() ?: "Salesman") }
     var empPhone by remember(editingEmployee) { mutableStateOf(editingEmployee?.phone ?: empDraft?.get("phone")?.toString() ?: "") }
     var empPhone2 by remember(editingEmployee) { mutableStateOf(editingEmployee?.phone2 ?: "") }
@@ -1298,7 +1307,7 @@ fun AddEditMasterScreen(
                                     viewModel.saveSubAgent(
                                         EmployeeEntity(
                                             id = IdGenerator.newId(),
-                                            employeeId = "AGT-${(100..999).random()}",
+                                            employeeId = viewModel.nextStaffCode(StaffCodes.AGENT_PREFIX),
                                             name = name,
                                             phone = phone,
                                             firmName = firm,

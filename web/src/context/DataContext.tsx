@@ -838,13 +838,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     })
 
-    // Synthesize any salesman referenced in visits who might not be in /employees node
+    // Synthesize any salesman referenced in visits who might not be in /employees node.
+    // Deliberately no staff code: these are placeholders, not records. Fabricating "EMP-0<id>" from
+    // the numeric id invented codes that looked real, collided with the genuine ones, and made the
+    // next generated code jump into the billions.
     activeVisits.forEach((v) => {
       const empId = Number(v.employeeId)
       if (empId > 0 && !map.has(empId)) {
         map.set(empId, {
           id: empId,
-          employeeId: `EMP-0${empId}`,
+          employeeId: "",
           name: v.employeeName || `Salesman #${empId}`,
           role: "Salesman",
           phone: "",

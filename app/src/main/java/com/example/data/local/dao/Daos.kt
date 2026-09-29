@@ -104,6 +104,14 @@ interface EmployeeDao {
     @Query("SELECT * FROM employees WHERE isDeleted = 0 ORDER BY name ASC")
     fun getAllEmployees(): Flow<List<EmployeeEntity>>
 
+    /**
+     * Deactivated staff included. Needed when handing out the next staff code: a number that
+     * belonged to somebody who left must not be given to a new person, or old reports read as if
+     * they were the same person. Do not use this for lists — use [getAllEmployees].
+     */
+    @Query("SELECT * FROM employees ORDER BY name ASC")
+    fun getAllEmployeesIncludingRemoved(): Flow<List<EmployeeEntity>>
+
     @Query("SELECT * FROM employees WHERE id = :id LIMIT 1")
     suspend fun getEmployeeById(id: Long): EmployeeEntity?
 
@@ -151,6 +159,10 @@ interface VisitDao {
 
     @Query("DELETE FROM visits WHERE id = :id")
     suspend fun deleteVisitById(id: Long)
+
+    /** Move trips off a duplicate customer record onto the copy that is being kept. */
+    @Query("UPDATE visits SET customerId = :newCustomerId WHERE customerId = :oldCustomerId")
+    suspend fun repointCustomerId(oldCustomerId: Long, newCustomerId: Long)
 
     // Trips this phone has not managed to upload yet
     @Query("SELECT * FROM visits WHERE pendingPush = 1 ORDER BY createdAt ASC")

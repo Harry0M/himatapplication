@@ -46,6 +46,7 @@ import com.example.util.WorkNotification
 import com.example.util.isPhoneTrip
 import com.example.util.RelatedLogic
 import com.example.util.Roles
+import com.example.util.StaffCodes
 import com.example.util.SupplierQueue
 import com.example.util.TripTypes
 import com.example.util.brandName
@@ -346,6 +347,19 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
     val subAgents: StateFlow<List<EmployeeEntity>> = allPeople
         .map { list -> list.filter { Roles.isAgent(it.role) && !it.isDeleted } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /**
+     * Every staff record ever, deactivated ones included. Do not show this in a list — it exists so a
+     * new staff code is never one that somebody who left is still holding in old reports.
+     */
+    // Eagerly on purpose: the staff form asks for the next code the moment it opens, and if this were
+    // still empty it would offer a code a departed staff member is holding.
+    val everyStaffRecord: StateFlow<List<EmployeeEntity>> = repository.everyStaffRecord
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** The next free staff code, e.g. "EMP-07". Pass [StaffCodes.AGENT_PREFIX] for a Sub Agent. */
+    fun nextStaffCode(prefix: String = StaffCodes.STAFF_PREFIX): String =
+        StaffCodes.next(everyStaffRecord.value.ifEmpty { allPeople.value }, prefix)
 
     /**
      * Every trip, with customerName showing the customer's BRAND (shop / firm) name instead of the owner,
@@ -758,12 +772,18 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        // Google email -> employees node record (staff, admin or sub agent), cloud or local
-        val allEmployeesCombined = (cloudEmps + localEmps).distinctBy { it.id }
-        val matchedEmployee = allEmployeesCombined.find {
+        // Google email -> employees node record (staff, admin or sub agent).
+        //
+        // The cloud copy is listed first and wins on a matching id, because it is the only copy that
+        // knows about a suspension or a removal. The local copy is a fallback for working offline.
+        fun List<EmployeeEntity>.matching() = find {
             (it.email.isNotBlank() && it.email.trim().equals(userEmail, ignoreCase = true)) ||
                 (it.alternateEmail.isNotBlank() && it.alternateEmail.trim().equals(userEmail, ignoreCase = true))
         }
+
+        val cloudMatch = cloudEmps.matching()
+        val localMatch = localEmps.matching()
+        val matchedEmployee = cloudMatch ?: localMatch
 
         // Check if user is explicit Super Admin in RTDB or Local Cache
         if (adminEmails.contains(userEmail)) {
@@ -785,16 +805,38 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
+        // Membership is decided by the office, not by this phone's memory.
+        //
+        // Removing a staff record used to delete the cloud node outright, while every *other* phone
+        // kept its own row (the ingestion never hard-deletes, and the local query already hides
+        // isDeleted rows). The removed person's phone then matched its own stale copy and let them
+        // straight back in. So a local-only match is not proof of anything: wait for the cloud, and
+        // once the cloud has spoken and does not know this email, the account is out.
+        if (cloudMatch == null && localMatch != null) {
+            if (!empsLoaded) {
+                _isAuthorized.value = null
+                return
+            }
+            _isSuperAdmin.value = false
+            _isAuthorized.value = false
+            _currentEmployee.value = null
+            _authorizationMessage.value =
+                "This account is no longer on the staff list. Ask the Admin to add it again. " +
+                    "Everything you entered stays safe in the office records."
+            return
+        }
+
         if (matchedEmployee != null) {
             val isEmpAdmin = matchedEmployee.role.equals("Admin", ignoreCase = true)
 
-            // Check if salesman is suspended, blocked, or deactivated by admin
-            val isSuspendedOrBlocked = !isEmpAdmin && (
+            // Suspended, blocked or deactivated — and this applies to an Admin record too. It used to
+            // skip admins, which meant deactivating an admin did nothing at all. A real owner is
+            // unaffected: they are matched by the super_admins branch above and never reach here.
+            val isSuspendedOrBlocked =
                 matchedEmployee.isBlocked ||
-                matchedEmployee.isDeleted ||
-                matchedEmployee.status.equals("Suspended", ignoreCase = true) ||
-                matchedEmployee.status.equals("Deactivated", ignoreCase = true)
-            )
+                    matchedEmployee.isDeleted ||
+                    matchedEmployee.status.equals("Suspended", ignoreCase = true) ||
+                    matchedEmployee.status.equals("Deactivated", ignoreCase = true)
 
             if (isSuspendedOrBlocked) {
                 _isSuperAdmin.value = false
@@ -1288,9 +1330,20 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
             _isCloudSyncing.value = true
             rtdbService.purgeLegacyZeroKeys()
             rtdbService.fetchDeletionRequestsKeys()
-            val isCloudEmpty = rtdbService.isCloudEmpty()
+            // "The cloud is empty" may only be concluded while we are actually connected. Offline,
+            // the SDK answers every read from its own cache, so a cold cache reads as an empty
+            // database — and acting on that used to seed sample records into the real book and flag
+            // every trip and order on the phone as unsent.
+            val connected = rtdbService.isConnected()
+            _isOnline.value = connected
+            val isCloudEmpty = connected && rtdbService.isCloudEmpty()
+            if (!connected) {
+                // Nothing to conclude and nothing to fetch: the listeners already serve the cache,
+                // and whatever this phone is holding goes up on the next successful upload.
+                return
+            }
             if (isCloudEmpty) {
-                // Cloud is completely empty: seed SampleData only if local database is also empty
+                // Cloud is genuinely empty: seed SampleData only if local database is also empty
                 repository.ensureInitialDataLoaded(isCloudEmpty = true)
                 // And sync local masters to cloud so they persist in RTDB
                 syncAllLocalMastersToCloud()
@@ -1346,8 +1399,9 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 _supplierRegistrationRequests.value = supplierReqs
             }
 
-            // Always run deduplication to ensure any duplicate records are cleaned up
-            repository.deduplicateDatabase(rtdbService)
+            // Collapse records saved twice. Only an admin's phone may write that decision to the
+            // shared book; a staff phone just tidies its own lists.
+            repository.deduplicateDatabase(rtdbService, allowCloudWrite = isAdminNow())
         } catch (_: Exception) {
             // Offline fallback - local Room DB serves existing records
         } finally {
@@ -2123,9 +2177,30 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 return@launch
             }
-            val generatedId = repository.saveEmployee(employee)
-            val toSync = if (employee.id == 0L) employee.copy(id = generatedId) else employee
+            // Last line of defence on the staff code. Two admins adding people at the same time, or an
+            // old app version still generating a random digit, would otherwise hand out the same code
+            // and make two different people look like one in every report.
+            val known = everyStaffRecord.value.ifEmpty { allPeople.value }
+            val prefix = if (Roles.isAgent(employee.role)) StaffCodes.AGENT_PREFIX else StaffCodes.STAFF_PREFIX
+            val wanted = employee.employeeId.trim()
+            val code = when {
+                wanted.isBlank() -> StaffCodes.next(known, prefix)
+                StaffCodes.isTaken(wanted, known, employee.id) -> StaffCodes.next(known, prefix)
+                else -> wanted
+            }
+            val record = if (code == employee.employeeId) employee else employee.copy(employeeId = code)
+            val generatedId = repository.saveEmployee(record)
+            val toSync = if (record.id == 0L) record.copy(id = generatedId) else record
             rtdbService.syncEmployee(toSync)
+            if (code != wanted && wanted.isNotBlank()) {
+                launch(Dispatchers.Main) {
+                    Toast.makeText(
+                        getApplication(),
+                        "$wanted was already taken, saved as $code",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
         }
     }
 
@@ -2799,9 +2874,29 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 allMarkets.value.firstOrNull { it.id == id }?.let { repository.deleteMarket(it) }
                 rtdbService.deleteMarket(id)
             }
+            // Staff are deactivated, never erased: the record is what stops a removed login from
+            // working, and it keeps their name on the trips and orders they did.
             RecordKind.STAFF -> {
-                allPeople.value.firstOrNull { it.id == id }?.let { repository.deleteEmployee(it) }
-                rtdbService.deleteEmployee(id)
+                allPeople.value.firstOrNull { it.id == id }?.let { employee ->
+                    repository.saveEmployee(
+                        employee.copy(
+                            isBlocked = true,
+                            isDeleted = true,
+                            status = "Deactivated",
+                            deletedAt = System.currentTimeMillis(),
+                            deletedBy = _currentEmployee.value?.name ?: currentActor().second,
+                            deletedByEmail = currentUser.value?.email.orEmpty(),
+                            deletedByRole = "Admin",
+                            deletionStatus = "CONFIRMED",
+                            deletionReason = "Staff account deactivated by Administrator"
+                        )
+                    )
+                }
+                rtdbService.deactivateEmployee(
+                    employeeId = id,
+                    by = _currentEmployee.value?.name ?: currentActor().second,
+                    email = currentUser.value?.email.orEmpty()
+                )
             }
         }
     }

@@ -341,6 +341,37 @@ class FirebaseRtdbService(
      * Whether we are actually talking to the office right now, from the database's own
      * `.info/connected` flag. This is the real state, not a guess based on the last save.
      */
+    /**
+     * Are we actually talking to the office right now?
+     *
+     * `.info/connected` is the SDK's own socket state, answered locally, so this returns almost
+     * immediately. Callers need it before deciding anything from the *absence* of data: with disk
+     * persistence on, an offline read succeeds against a cold cache and looks exactly like an empty
+     * database, which is not something to act on.
+     */
+    suspend fun isConnected(timeoutMs: Long = 5000L): Boolean = withTimeoutOrNull(timeoutMs) {
+        suspendCancellableCoroutine<Boolean> { cont ->
+            val ref = db.getReference(".info/connected")
+            val listener = object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    if (snapshot.getValue(Boolean::class.java) == true && cont.isActive) {
+                        ref.removeEventListener(this)
+                        cont.resumeWith(Result.success(true))
+                    }
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    if (cont.isActive) {
+                        ref.removeEventListener(this)
+                        cont.resumeWith(Result.success(false))
+                    }
+                }
+            }
+            ref.addValueEventListener(listener)
+            cont.invokeOnCancellation { ref.removeEventListener(listener) }
+        }
+    } ?: false
+
     fun listenToConnection(onChange: (Boolean) -> Unit): ValueEventListener {
         val listener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
@@ -602,9 +633,42 @@ class FirebaseRtdbService(
         }
     }
 
-    suspend fun deleteEmployee(employeeId: Long) = withContext(Dispatchers.IO) {
+    // Note: there is deliberately no "erase this employee" call. Removing the node is what let a
+    // removed staff member keep signing in (see deactivateEmployee below).
+
+    /**
+     * Takes a staff member off the team without erasing the record — this is how removal works now.
+     *
+     * Wiping the node was the reason a removed person could still sign in: their own phone kept a
+     * local copy of the record, and with nothing left in the cloud to contradict it, the app matched
+     * that stale copy and let them in. A record that stays and says "deactivated" is the only thing
+     * every phone can agree on. It also keeps their name on past trips and orders.
+     *
+     * Field names match what the web admin writes, so either side can deactivate or restore.
+     */
+    suspend fun deactivateEmployee(
+        employeeId: Long,
+        by: String,
+        email: String,
+        reason: String = "Staff account deactivated by Administrator"
+    ) = withContext(Dispatchers.IO) {
         try {
-            rootRef.child("employees").child(employeeId.toString()).removeValue()
+            rootRef.child("employees").child(employeeId.toString()).updateChildren(
+                mapOf(
+                    "isBlocked" to true,
+                    "isDeleted" to true,
+                    // The web reads these shorter names
+                    "blocked" to true,
+                    "deleted" to true,
+                    "status" to "Deactivated",
+                    "deletedAt" to System.currentTimeMillis(),
+                    "deletedBy" to by,
+                    "deletedByEmail" to email,
+                    "deletedByRole" to "Admin",
+                    "deletionStatus" to "CONFIRMED",
+                    "deletionReason" to reason
+                )
+            )
         } catch (e: Exception) {
             // Ignore
         }

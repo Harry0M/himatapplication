@@ -41,7 +41,7 @@ import { Tabs } from "../components/ui/Tabs"
 import { Employee } from "../types"
 import { AHMEDABAD_TEXTILE_MARKETS } from "../lib/constants"
 import { StaffDetailView } from "./StaffDetailView"
-import { displayCode, newId, toNumericId } from "../lib/domain"
+import { isStaffCodeTaken, newId, nextStaffCode, toNumericId } from "../lib/domain"
 
 interface EmployeesViewProps {
   onNavigate?: (tab: string) => void
@@ -130,7 +130,7 @@ export function EmployeesView({ onNavigate }: EmployeesViewProps) {
     const draft = getMasterDraft<any>("employee")
     if (draft) {
       setName(draft.name || "")
-      setEmployeeId(draft.employeeId || `EMP-0${employees.length + 1}`)
+      setEmployeeId(draft.employeeId || nextStaffCode(allPeople))
       setRole(draft.role || "Salesman")
       setPhone1(draft.phone1 || "")
       setPhone2(draft.phone2 || "")
@@ -152,7 +152,7 @@ export function EmployeesView({ onNavigate }: EmployeesViewProps) {
       setHasDraft(true)
     } else {
       setName("")
-      setEmployeeId(`EMP-0${employees.length + 1}`)
+      setEmployeeId(nextStaffCode(allPeople))
       setRole("Salesman")
       setPhone1("")
       setPhone2("")
@@ -181,7 +181,7 @@ export function EmployeesView({ onNavigate }: EmployeesViewProps) {
     clearMasterDraft("employee")
     setHasDraft(false)
     setName("")
-    setEmployeeId(`EMP-0${employees.length + 1}`)
+    setEmployeeId(nextStaffCode(allPeople))
     setRole("Salesman")
     setPhone1("")
     setPhone2("")
@@ -310,10 +310,23 @@ export function EmployeesView({ onNavigate }: EmployeesViewProps) {
     const allEmails = [email.trim(), alternateEmail.trim()].filter(Boolean)
     const referrer = referredBy.trim()
 
+    // Last check on the code. Two admins adding staff at the same moment, or a phone on an older
+    // build that still generated a random digit, would otherwise share a code and make two different
+    // people read as one in every report.
+    const wantedCode = employeeId.trim()
+    const prefix = role.trim().toLowerCase().includes("agent") ? "AGT" : "EMP"
+    const finalCode =
+      !wantedCode || isStaffCodeTaken(wantedCode, allPeople, id)
+        ? nextStaffCode(allPeople, prefix)
+        : wantedCode
+    if (wantedCode && finalCode !== wantedCode) {
+      alert(`${wantedCode} is already used by another staff member. Saving as ${finalCode}.`)
+    }
+
     const newEmp: Employee = {
       ...(existing || {}),
       id,
-      employeeId: employeeId.trim() || displayCode("EMP"),
+      employeeId: finalCode,
       name: name.trim(),
       role: role.trim() || "Salesman",
       phone: primaryPhone,
@@ -1255,3 +1268,4 @@ export function EmployeesView({ onNavigate }: EmployeesViewProps) {
     </div>
   )
 }
+

@@ -17,10 +17,12 @@ import com.example.data.local.entity.TransactionLogEntity
 import com.example.data.local.entity.TransporterEntity
 import com.example.data.local.entity.VisitEntity
 import com.example.data.remote.FirebaseRtdbService
+import com.example.util.DuplicateScan
 import com.example.util.IdGenerator
 import com.example.util.RecordValidationException
 import com.example.util.RecordValidator
 import com.example.util.ValidationResult
+import com.example.util.markedDuplicate
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 
@@ -263,6 +265,10 @@ class HimatRepository(private val database: AppDatabase) {
 
     // Employees
     val allEmployees: Flow<List<EmployeeEntity>> = employeeDao.getAllEmployees()
+
+    /** Deactivated staff included. Only for handing out a staff code that is not already taken. */
+    val everyStaffRecord: Flow<List<EmployeeEntity>> = employeeDao.getAllEmployeesIncludingRemoved()
+
     suspend fun getEmployeeById(id: Long) = employeeDao.getEmployeeById(id)
     suspend fun saveEmployee(employee: EmployeeEntity): Long {
         return if (employee.id == 0L) {
@@ -514,9 +520,16 @@ class HimatRepository(private val database: AppDatabase) {
     // left completely alone. Cleaning up a genuinely removed record is an explicit admin action.
     // -------------------------------------------------------------------------
 
+    /**
+     * Staff from the cloud, including the ones that were deactivated.
+     *
+     * This is the one collection where a "deleted" flag from the office is applied locally, because
+     * the login check reads these rows. Dropping deactivated records used to leave every phone with
+     * its own row saying the person was still active, which is exactly how a removed staff member
+     * kept getting in. The row is only hidden — the office can switch it back on.
+     */
     suspend fun syncEmployeesFromCloud(employees: List<EmployeeEntity>) {
-        val valid = employees.filter { it.id > 0L && it.name.isNotBlank() && !it.isDeleted }
-            .distinctBy { it.id }
+        val valid = employees.filter { it.id > 0L && it.name.isNotBlank() }.distinctBy { it.id }
         if (valid.isNotEmpty()) {
             employeeDao.insertAll(valid)
         }
@@ -656,76 +669,61 @@ class HimatRepository(private val database: AppDatabase) {
         visitDao.getPendingPushCount() + purchaseEntryDao.getPendingPushCount()
 
 
-    // Startup & Sync Deduplication Routine
-    suspend fun deduplicateDatabase(rtdbService: FirebaseRtdbService) {
+    /**
+     * Collapses records that were saved twice. Runs after every sync.
+     *
+     * Two rules make this safe, because this routine used to be a silent data-loss path of its own:
+     * it ran on every sync, including offline against a half-filled database, and hard-deleted the
+     * loser from the cloud with no warning and no way back.
+     *
+     *  1. It never removes anything. The duplicate is *hidden* ([markedDuplicate]), so a wrong guess
+     *     costs a tap to undo instead of a lost order. Deciding what really goes is an admin action.
+     *  2. [allowCloudWrite] is only true for an admin. A staff phone tidies up its own screen; it
+     *     does not get to rewrite the shared book based on whatever it happens to have synced.
+     *
+     * Which records count as the same thing lives in [DuplicateScan], where the rules are unit tested.
+     */
+    suspend fun deduplicateDatabase(rtdbService: FirebaseRtdbService, allowCloudWrite: Boolean = false) {
         try {
-            // 1. Deduplicate Customers by name + phone
-            val currentCustomers = customerDao.getAllCustomers().first()
-            val customerGroups = currentCustomers.groupBy { "${it.name.trim().lowercase()}_${it.phone.trim()}" }
-            customerGroups.forEach { (_, group) ->
-                if (group.size > 1) {
-                    val canonical = group.minByOrNull { it.id } ?: group.first()
-                    val duplicates = group.filter { it.id != canonical.id }
-                    duplicates.forEach { dup ->
-                        customerDao.deleteCustomer(dup)
-                        rtdbService.deleteCustomer(dup.id)
-                    }
+            val actor = "Automatic duplicate check"
+
+            // 1. Customers: same owner name and same phone number
+            DuplicateScan.customers(customerDao.getAllCustomers().first()).forEach { group ->
+                group.duplicates.forEach { dup ->
+                    // Trips must follow the copy that is kept, or they lose their customer
+                    visitDao.repointCustomerId(dup.id, group.canonical.id)
+                    val hidden = dup.markedDuplicate(group.canonical.id)
+                    customerDao.insertCustomer(hidden)
+                    if (allowCloudWrite) rtdbService.softDeleteCustomer(dup, actor, "", "Admin")
                 }
             }
 
-            // 2. Deduplicate Suppliers by name + brand + phone
-            val currentSuppliers = supplierDao.getAllSuppliers().first()
-            val supplierGroups = currentSuppliers.groupBy {
-                "${it.name.trim().lowercase()}_${it.brand.trim().lowercase()}_${it.phone.trim()}"
-            }
-            supplierGroups.forEach { (_, group) ->
-                if (group.size > 1) {
-                    val canonical = group.minByOrNull { it.id } ?: group.first()
-                    val duplicates = group.filter { it.id != canonical.id }
-                    duplicates.forEach { dup ->
-                        purchaseEntryDao.repointSupplierId(dup.id, canonical.id)
-                        transactionDao.repointSupplierId(dup.id, canonical.id)
-                        supplierDao.deleteSupplier(dup)
-                        rtdbService.deleteSupplier(dup.id)
-                    }
+            // 2. Suppliers: same name, brand and phone
+            DuplicateScan.suppliers(supplierDao.getAllSuppliers().first()).forEach { group ->
+                group.duplicates.forEach { dup ->
+                    purchaseEntryDao.repointSupplierId(dup.id, group.canonical.id)
+                    transactionDao.repointSupplierId(dup.id, group.canonical.id)
+                    val hidden = dup.markedDuplicate(group.canonical.id)
+                    supplierDao.insertSupplier(hidden)
+                    if (allowCloudWrite) rtdbService.softDeleteSupplier(dup, actor, "", "Admin")
                 }
             }
 
-            // 3. Deduplicate Purchase Entries - only true double-saves (every business field identical).
-            // Several salesmen can add orders to one trip from different phones, so visitId + orderNo
-            // alone is NOT a safe duplicate key (it used to delete real orders).
-            val currentEntries = purchaseEntryDao.getAllEntries().first()
-            val entryGroups = currentEntries.filter { it.orderNo.isNotBlank() }.groupBy {
-                listOf(
-                    it.visitId, it.orderNo.trim(), it.supplierId, it.itemCode.trim().lowercase(),
-                    it.pieces, it.rate, it.caseCount, it.loosePieces, it.salesmanId, it.createdById
-                ).joinToString("_")
-            }
-            entryGroups.forEach { (_, group) ->
-                if (group.size > 1) {
-                    val canonical = group.find { it.packGroupId != null } ?: group.minByOrNull { it.id } ?: group.first()
-                    val duplicates = group.filter { it.id != canonical.id }
-                    duplicates.forEach { dup ->
-                        purchaseEntryDao.deleteEntry(dup)
-                        rtdbService.deletePurchaseEntry(dup.id)
-                    }
+            // 3. Orders: a true double-save, every business field identical
+            DuplicateScan.orders(purchaseEntryDao.getAllEntries().first()).forEach { group ->
+                group.duplicates.forEach { dup ->
+                    val hidden = dup.markedDuplicate(group.canonical.id)
+                    purchaseEntryDao.insertEntry(hidden)
+                    if (allowCloudWrite) rtdbService.softDeletePurchaseEntry(dup, actor, "", "Admin")
                 }
             }
 
-            // 4. Deduplicate Products
-            val currentProducts = productDao.getAllProducts().first()
-            val productGroups = currentProducts.groupBy {
-                if (it.productCode.isNotBlank()) it.productCode.trim().lowercase()
-                else "${it.name.trim().lowercase()}_${it.supplierName.trim().lowercase()}"
-            }
-            productGroups.forEach { (_, group) ->
-                if (group.size > 1) {
-                    val canonical = group.minByOrNull { it.id } ?: group.first()
-                    val duplicates = group.filter { it.id != canonical.id }
-                    duplicates.forEach { dup ->
-                        productDao.deleteProduct(dup)
-                        rtdbService.deleteProduct(dup.id)
-                    }
+            // 4. Products: same item code under the same supplier
+            DuplicateScan.products(productDao.getAllProducts().first()).forEach { group ->
+                group.duplicates.forEach { dup ->
+                    val hidden = dup.markedDuplicate(group.canonical.id)
+                    productDao.insertProduct(hidden)
+                    if (allowCloudWrite) rtdbService.softDeleteProduct(dup, actor, "", "Admin")
                 }
             }
         } catch (_: Exception) {}
