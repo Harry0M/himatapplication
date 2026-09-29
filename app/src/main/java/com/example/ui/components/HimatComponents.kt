@@ -258,9 +258,14 @@ fun HimatTopBar(
                     }
                 }
 
-                // Sync state, so nobody has to guess whether their work reached the office
-                if (syncStatus != null) {
-                    val (syncIcon, syncTint) = when (syncStatus) {
+                // One control for "is my work saved" and "what am I allowed to do".
+                //
+                // These used to be two separate circles side by side that opened the same sheet. The
+                // cloud icon carries the live state and the small i says there is more behind it, so
+                // they belong on one chip rather than competing for space in the header.
+                if (onOpenSyncInfo != null) {
+                    val status = syncStatus ?: SyncStatus.Syncing
+                    val (syncIcon, syncTint) = when (status) {
                         is SyncStatus.Offline -> Icons.Default.CloudOff to Color(0xFFB45309)
                         is SyncStatus.Pending -> Icons.Default.CloudUpload to Color(0xFFB45309)
                         is SyncStatus.Uploading -> Icons.Default.CloudUpload to MaterialTheme.colorScheme.primary
@@ -272,7 +277,7 @@ fun HimatTopBar(
                         color = MaterialTheme.colorScheme.surfaceContainerHigh,
                         border = androidx.compose.foundation.BorderStroke(
                             1.dp,
-                            if (syncStatus.needsAttention) {
+                            if (status.needsAttention) {
                                 Color(0xFFB45309).copy(alpha = 0.5f)
                             } else {
                                 MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
@@ -282,8 +287,8 @@ fun HimatTopBar(
                             .clip(CircleShape)
                             .clickable(
                                 role = androidx.compose.ui.semantics.Role.Button,
-                                onClickLabel = "Sync status: ${syncStatus.label}",
-                                onClick = onOpenSyncInfo ?: {}
+                                onClickLabel = "My access and sync status. ${status.label}",
+                                onClick = onOpenSyncInfo
                             )
                     ) {
                         Row(
@@ -298,17 +303,24 @@ fun HimatTopBar(
                                 tint = syncTint,
                                 modifier = Modifier.size(17.dp)
                             )
-                            // Only worth the width when the user should act on it
-                            if (syncStatus.needsAttention) {
+                            // The state only gets words when the user should act on it
+                            if (status.needsAttention) {
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = syncStatus.label,
+                                    text = status.label,
                                     color = Color(0xFFB45309),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1
                                 )
                             }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(
+                                imageVector = Icons.Outlined.Info,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(14.dp)
+                            )
                         }
                     }
                 }
@@ -360,32 +372,6 @@ fun HimatTopBar(
                                     )
                                 }
                             }
-                        }
-                    }
-                }
-
-                // "i": what am I allowed to do, and is my work saved
-                if (onOpenSyncInfo != null) {
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                        modifier = Modifier
-                            .size(34.dp)
-                            .clip(CircleShape)
-                            .clickable(
-                                role = androidx.compose.ui.semantics.Role.Button,
-                                onClickLabel = "My access and sync status",
-                                onClick = onOpenSyncInfo
-                            )
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Outlined.Info,
-                                contentDescription = "My access and sync status",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(19.dp)
-                            )
                         }
                     }
                 }

@@ -13,6 +13,7 @@
  */
 
 const { onValueCreated } = require("firebase-functions/v2/database");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { logger } = require("firebase-functions");
 const admin = require("firebase-admin");
 
@@ -20,6 +21,7 @@ admin.initializeApp();
 
 const RTDB_INSTANCE = "himatsms-default-rtdb";
 const CHANNEL_ID = "himat_work_updates";
+const REGION = "us-central1";
 
 /** FCM accepts at most 500 tokens per send. */
 const SEND_CHUNK = 500;
@@ -99,8 +101,174 @@ async function trimHistory(db) {
   }
 }
 
+/**
+ * Writes one announcement, which `pushWorkNotification` below then delivers.
+ *
+ * The key is supplied by the caller rather than generated, and that is the whole idempotence story:
+ * `pushWorkNotification` triggers on a node being *created*, so writing the same key twice pushes
+ * once. Birthdays rely on this — the phone app and the daily job both write
+ * `birthday_<customerId>_<yyyymmdd>` and whoever gets there first wins.
+ *
+ * `actorId` / `actorEmail` are left empty for anything the office itself raises: there is no person
+ * to exclude, so everybody hears about it.
+ */
+async function writeNote(db, { id, type, title, body, refId }) {
+  if (!id || !title || !body) return false;
+  const ref = db.ref(`notifications/${id}`);
+  const existing = await ref.get();
+  if (existing.exists()) return false;
+  await ref.set({
+    id,
+    type,
+    title: String(title).slice(0, 120),
+    body: String(body).slice(0, 300),
+    actorId: 0,
+    actorName: "",
+    actorEmail: "",
+    refId: Number(refId || 0),
+    createdAt: Date.now(),
+  });
+  return true;
+}
+
+/** "Firm Name (City)" from whatever the registration form happened to fill in. */
+function describeRequest(req) {
+  const name = String(req.firmName || req.name || "").trim() || "New registration";
+  const where = [req.marketArea, req.city].map((v) => String(v || "").trim()).filter(Boolean).join(", ");
+  const phone = String(req.phone || "").trim();
+  return { name, detail: [where, phone].filter(Boolean).join(" • ") };
+}
+
+/**
+ * A customer filled in the public registration form.
+ *
+ * This has to live server-side. The form is used by people who are not signed in, and the database
+ * rules only let them create their own request — they cannot write to `notifications`. So the office
+ * raises the announcement on their behalf.
+ */
+exports.notifyCustomerRegistration = onValueCreated(
+  { ref: "/customer_registration_requests/{requestId}", instance: RTDB_INSTANCE, region: REGION },
+  async (event) => {
+    const req = event.data.val();
+    if (!req || typeof req !== "object") return;
+    const { name, detail } = describeRequest(req);
+    const written = await writeNote(admin.database(), {
+      id: `customer_request_${event.params.requestId}`,
+      type: "customer_request",
+      title: `New customer registration: ${name}`,
+      body: [detail, "Waiting for approval in Requests"].filter(Boolean).join(" • "),
+      refId: 0,
+    });
+    logger.info(`customer registration ${event.params.requestId}: note ${written ? "written" : "already existed"}`);
+  }
+);
+
+/** A supplier filled in the public registration form. Same reasoning as above. */
+exports.notifySupplierRegistration = onValueCreated(
+  { ref: "/supplier_registration_requests/{requestId}", instance: RTDB_INSTANCE, region: REGION },
+  async (event) => {
+    const req = event.data.val();
+    if (!req || typeof req !== "object") return;
+    const { name, detail } = describeRequest(req);
+    const written = await writeNote(admin.database(), {
+      id: `supplier_request_${event.params.requestId}`,
+      type: "supplier_request",
+      title: `New supplier registration: ${name}`,
+      body: [detail, "Waiting for approval in Requests"].filter(Boolean).join(" • "),
+      refId: 0,
+    });
+    logger.info(`supplier registration ${event.params.requestId}: note ${written ? "written" : "already existed"}`);
+  }
+);
+
+/**
+ * Reads a date of birth well enough to spot a birthday. Mirrors Android's `Birthdays.parse`.
+ *
+ * The field is genuinely mixed: the web form writes `yyyy-MM-dd` because it uses a date input, while
+ * the Android master screen is a free text box people fill in as `dd/MM/yyyy`. Anything that cannot
+ * be read confidently returns null and that customer simply gets no reminder — a birthday message on
+ * the wrong day is worse than none.
+ */
+function monthDayOf(raw) {
+  const parts = String(raw || "").trim().split(/[-/.\s]+/).filter(Boolean);
+  if (parts.length < 3) return null;
+  const numbers = parts.slice(0, 3).map((p) => Number(p));
+  if (numbers.some((n) => !Number.isInteger(n))) return null;
+
+  let day;
+  let month;
+  if (parts[0].length === 4) {
+    month = numbers[1];
+    day = numbers[2];
+  } else if (parts[2].length === 4) {
+    day = numbers[0];
+    month = numbers[1];
+  } else {
+    return null;
+  }
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return { month, day };
+}
+
+/**
+ * Today's customer birthdays, once a day at 09:00 India time.
+ *
+ * The app also checks when it opens, which covers the case of this job being unavailable; the shared
+ * deterministic note key means running both never doubles up.
+ */
+exports.dailyBirthdayCheck = onSchedule(
+  { schedule: "0 9 * * *", timeZone: "Asia/Kolkata", region: REGION },
+  async () => {
+    const db = admin.database();
+    const snapshot = await db.ref("customers").get();
+    if (!snapshot.exists()) {
+      logger.info("no customers yet");
+      return;
+    }
+
+    const now = new Date();
+    const local = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+    const month = local.getMonth() + 1;
+    const day = local.getDate();
+    const dateKey = `${local.getFullYear()}${String(month).padStart(2, "0")}${String(day).padStart(2, "0")}`;
+
+    const birthdays = [];
+    snapshot.forEach((child) => {
+      const c = child.val() || {};
+      if (c.isDeleted || c.deleted) return;
+      const parsed = monthDayOf(c.dob);
+      if (!parsed || parsed.month !== month || parsed.day !== day) return;
+      birthdays.push({ id: Number(c.id || child.key || 0), customer: c });
+    });
+
+    if (birthdays.length === 0) {
+      logger.info("no birthdays today");
+      return;
+    }
+
+    let written = 0;
+    for (const { id, customer } of birthdays) {
+      const name = String(customer.firmName || customer.name || "Customer").trim();
+      const owner = String(customer.name || "").trim();
+      const phone = String(customer.phone || "").trim();
+      const body = [owner && owner !== name ? owner : null, phone ? `Call ${phone}` : null]
+        .filter(Boolean)
+        .join(" • ");
+      const ok = await writeNote(db, {
+        id: `birthday_${id}_${dateKey}`,
+        type: "birthday",
+        title: `Birthday today: ${name}`,
+        body: body || "Wish them a happy birthday",
+        refId: id,
+      });
+      if (ok) written++;
+    }
+    logger.info(`birthdays today: ${birthdays.length}, notes written: ${written}`);
+  }
+);
+
 exports.pushWorkNotification = onValueCreated(
-  { ref: "/notifications/{noteId}", instance: RTDB_INSTANCE, region: "us-central1" },
+  { ref: "/notifications/{noteId}", instance: RTDB_INSTANCE, region: REGION },
   async (event) => {
     const note = event.data.val();
     if (!note || typeof note !== "object") {

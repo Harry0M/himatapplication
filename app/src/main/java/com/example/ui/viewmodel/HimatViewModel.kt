@@ -33,6 +33,7 @@ import com.example.data.local.entity.TransporterEntity
 import com.example.data.local.entity.VisitEntity
 import com.example.data.repository.HimatRepository
 import com.example.util.AppNotifications
+import com.example.util.Birthdays
 import com.example.util.DeleteImpact
 import com.example.util.DeletionRequest
 import com.example.util.IdGenerator
@@ -578,7 +579,9 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         // 2. Start listening to Employees
         rtdbService.listenToEmployees { employees ->
             _cloudEmployees.value = employees
-            _cloudEmployeesLoaded.value = true
+            // An empty list is not an answer. Offline the listener fires from a cache that may be
+            // cold, and treating that as "the office has no staff" would restrict everybody.
+            if (employees.isNotEmpty()) _cloudEmployeesLoaded.value = true
             viewModelScope.launch(Dispatchers.IO) {
                 repository.syncEmployeesFromCloud(employees)
             }
@@ -588,6 +591,10 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         rtdbService.listenToCustomers { customers ->
             viewModelScope.launch(Dispatchers.IO) {
                 repository.syncCustomersFromCloud(customers)
+                // Opening the app is the only daily trigger this app has, and by now the customer
+                // list is real rather than empty. Runs at most once a day; a Cloud Function covers
+                // the days nobody opens it.
+                checkBirthdaysOnce()
             }
         }
 
@@ -708,26 +715,41 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // 18. Proactive fast fetch of Super Admins and Employees with a 4s timeout guarantee
+        // 18. The startup access check: ask the office who this account is before letting them work.
+        //
+        // This is the one place membership is verified against the database, on purpose. Checking on
+        // every save would put a network round trip in front of every entry; the verdict it produces
+        // is kept in memory and every save and delete reads it for free.
         realtimeSyncJob = viewModelScope.launch(Dispatchers.IO) {
+            var gotEmployees = false
             try {
-                withTimeoutOrNull(4000L) {
+                withTimeoutOrNull(8000L) {
                     val emails = rtdbService.getSuperAdminEmails()
                     if (emails.isNotEmpty()) {
                         _superAdminEmails.value = emails
+                        _superAdminEmailsLoaded.value = true
                         authPrefs.edit().putStringSet("cached_super_admins", emails).apply()
                     }
                     val emps = rtdbService.fetchEmployees()
                     if (emps.isNotEmpty()) {
                         _cloudEmployees.value = emps
+                        _cloudEmployeesLoaded.value = true
+                        gotEmployees = true
                         repository.syncEmployeesFromCloud(emps)
                     }
                 }
             } catch (e: Exception) {
-                Log.w("HimatViewModel", "Proactive auth fetch error: ${e.message}")
+                Log.w("HimatViewModel", "Startup access check error: ${e.message}")
             } finally {
+                // Only claim the staff list is known when the office actually sent one. Saying "loaded"
+                // after a timeout would treat an empty answer as "this account is not on the list" and
+                // lock out a perfectly good user on a slow connection.
                 _superAdminEmailsLoaded.value = true
-                _cloudEmployeesLoaded.value = true
+                if (gotEmployees) {
+                    _cloudEmployeesLoaded.value = true
+                } else {
+                    Log.w("HimatViewModel", "Startup access check could not reach the office; using the last known verdict")
+                }
             }
 
             // Sync all cloud collections into local Room database
@@ -810,16 +832,28 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         // Removing a staff record used to delete the cloud node outright, while every *other* phone
         // kept its own row (the ingestion never hard-deletes, and the local query already hides
         // isDeleted rows). The removed person's phone then matched its own stale copy and let them
-        // straight back in. So a local-only match is not proof of anything: wait for the cloud, and
-        // once the cloud has spoken and does not know this email, the account is out.
+        // straight back in. So a local-only match is not proof of anything.
         if (cloudMatch == null && localMatch != null) {
             if (!empsLoaded) {
-                _isAuthorized.value = null
+                // The office did not answer. Fall back to what it said last time this account signed
+                // in, so a salesman in a market with no signal can still work. Somebody who was
+                // already removed stays removed.
+                if (rememberedVerdict(userEmail) == true) {
+                    _isSuperAdmin.value = false
+                    _isAuthorized.value = true
+                    _authorizationMessage.value = null
+                    _currentEmployee.value = localMatch
+                    _currentRole.value = localMatch.role.ifBlank { "Salesman" }
+                    publishPushToken()
+                } else {
+                    _isAuthorized.value = null
+                }
                 return
             }
             _isSuperAdmin.value = false
             _isAuthorized.value = false
             _currentEmployee.value = null
+            rememberVerdict(userEmail, false)
             _authorizationMessage.value =
                 "This account is no longer on the staff list. Ask the Admin to add it again. " +
                     "Everything you entered stays safe in the office records."
@@ -851,6 +885,7 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 } else {
                     "Your salesman access has been temporarily suspended by the Admin. Please contact management."
                 }
+                if (cloudMatch != null) rememberVerdict(userEmail, false)
                 return
             }
 
@@ -859,6 +894,7 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
             _authorizationMessage.value = null
             _currentEmployee.value = matchedEmployee
             _currentRole.value = matchedEmployee.role.ifBlank { "Salesman" }
+            if (cloudMatch != null) rememberVerdict(userEmail, true)
             publishPushToken()
             return
         }
@@ -888,6 +924,29 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         _isSuperAdmin.value = false
         _isAuthorized.value = false
         _authorizationMessage.value = null
+        rememberVerdict(userEmail, false)
+    }
+
+    // ---------------------------------------------------------------------
+    // The last verdict the office gave, per account
+    //
+    // Only used when the startup check could not reach the database. It lets a salesman with no
+    // signal keep working, without letting somebody who was already removed back in.
+    // ---------------------------------------------------------------------
+
+    private fun verdictKey(email: String) = "access_ok_${email.trim().lowercase()}"
+
+    private fun rememberVerdict(email: String, allowed: Boolean) {
+        if (email.isBlank()) return
+        authPrefs.edit().putBoolean(verdictKey(email), allowed).apply()
+    }
+
+    /** null when this account has never been confirmed against the office on this phone. */
+    private fun rememberedVerdict(email: String): Boolean? {
+        if (email.isBlank()) return null
+        val key = verdictKey(email)
+        if (!authPrefs.contains(key)) return null
+        return authPrefs.getBoolean(key, false)
     }
 
     /**
@@ -905,6 +964,7 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
             }
             _superAdminEmailsLoaded.value = false
             _cloudEmployeesLoaded.value = false
+            var gotEmployees = false
             try {
                 withTimeoutOrNull(8000L) {
                     val emails = rtdbService.getSuperAdminEmails()
@@ -915,6 +975,7 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                     val emps = rtdbService.fetchEmployees()
                     if (emps.isNotEmpty()) {
                         _cloudEmployees.value = emps
+                        gotEmployees = true
                         repository.syncEmployeesFromCloud(emps)
                     }
                 }
@@ -923,7 +984,8 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 Log.w("HimatViewModel", "refreshAccess failed: ${e.message}")
             } finally {
                 _superAdminEmailsLoaded.value = true
-                _cloudEmployeesLoaded.value = true
+                // Same rule as startup: an unanswered check is not a verdict
+                if (gotEmployees) _cloudEmployeesLoaded.value = true
                 onFinished?.invoke()
             }
         }
@@ -1920,10 +1982,13 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
     // Customer Operations
     fun saveCustomer(customer: CustomerEntity, onSaved: ((CustomerEntity) -> Unit)? = null) {
         if (blockIfAgent("Saving a customer")) return
+        // id 0 means this is a brand new record rather than an edit, which is what the team hears about
+        val isNew = customer.id == 0L
         viewModelScope.launch(Dispatchers.IO) {
             val generatedId = repository.saveCustomer(customer)
-            val toSync = if (customer.id == 0L) customer.copy(id = generatedId) else customer
+            val toSync = if (isNew) customer.copy(id = generatedId) else customer
             rtdbService.syncCustomer(toSync)
+            if (isNew) announceNewCustomer(toSync)
             onSaved?.let { cb ->
                 launch(Dispatchers.Main) {
                     cb(toSync)
@@ -1953,11 +2018,13 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
+        val isNew = supplier.id == 0L
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val generatedId = repository.saveSupplier(supplier)
-                val toSync = if (supplier.id == 0L) supplier.copy(id = generatedId) else supplier
+                val toSync = if (isNew) supplier.copy(id = generatedId) else supplier
                 rtdbService.syncSupplier(toSync)
+                if (isNew) announceNewSupplier(toSync)
                 launch(Dispatchers.Main) {
                     _validationError.value = null
                     onSuccess?.invoke()
@@ -2223,10 +2290,22 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Sub Agents have a read-only login. Returns true (and explains) when the action must be blocked. */
+    /**
+     * The gate in front of every action that writes something. Returns true (and explains) when the
+     * action must be blocked.
+     *
+     * Two checks, both free — they read values already in memory, so nothing here adds a network
+     * round trip to a save. Membership itself is verified once, at startup, and again whenever the
+     * employees listener delivers a change or the user taps Refresh in the access sheet; this just
+     * reads that verdict.
+     */
     private fun blockIfAgent(action: String): Boolean {
         if (Roles.isAgent(_currentRole.value)) {
             toast("$action is not available for Sub Agent logins")
+            return true
+        }
+        if (_isAuthorized.value == false) {
+            toast(_authorizationMessage.value ?: "Your access has been removed. $action is not allowed.")
             return true
         }
         return false
@@ -2784,6 +2863,12 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
      * ahead, because a lone record needs no explanation.
      */
     private fun startDelete(impact: DeleteImpact, onDone: (() -> Unit)? = null) {
+        // Free check against the verdict from the startup access check. Nobody whose account the
+        // office no longer recognises gets to remove anything, even from a phone left signed in.
+        if (_isAuthorized.value == false) {
+            toast(_authorizationMessage.value ?: "Your access has been removed. Deleting is not allowed.")
+            return
+        }
         val hard = isAdminNow()
         if (impact.hasImpact) {
             pendingDeleteOnDone = onDone
@@ -2823,6 +2908,10 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
             }
             if (hard) hardDeleteRecord(impact.kind, impact.id)
             else softDeleteRecord(impact.kind, impact.id, actorName, actorEmail, actorRole)
+
+            // One announcement for the whole delete, covering every record kind. An admin's own hard
+            // delete needs no request, so only the soft path is announced.
+            if (!hard && impact.kind != RecordKind.STAFF) announceDeletionRequest(impact)
 
             val extra = if (removeLinked && impact.removableCount > 0) {
                 " with ${impact.removableCount} linked record${if (impact.removableCount == 1) "" else "s"}"
@@ -3107,25 +3196,34 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun postNote(type: String, title: String, body: String, refId: Long) {
+    /**
+     * Writes one announcement for the rest of the team.
+     *
+     * [noteId] lets a caller supply its own key. Pass one for anything that several phones could
+     * announce at the same moment (a birthday, say): the key becomes the thing that makes it happen
+     * once, because the Cloud Function only pushes on a node being *created*, so a second write to
+     * the same key is silent. Leave it null for a one-off event that only this phone caused.
+     */
+    private fun postNote(type: String, title: String, body: String, refId: Long, noteId: String? = null) {
         // Sub Agents have a read-only login and only see their own customers; they do not broadcast
         if (Roles.isAgent(_currentRole.value)) return
         val (actorId, actorName) = currentActor()
+        val note = WorkNotification(
+            id = noteId ?: "${type}_${refId}_${System.currentTimeMillis()}",
+            type = type,
+            title = title,
+            body = body,
+            actorId = actorId,
+            actorName = actorName,
+            // Lets the Cloud Function skip the sender even when they have no staff record
+            actorEmail = currentUser.value?.email.orEmpty().lowercase(),
+            refId = refId,
+            createdAt = System.currentTimeMillis()
+        )
         viewModelScope.launch(Dispatchers.IO) {
-            rtdbService.postNotification(
-                WorkNotification(
-                    id = "${type}_${refId}_${System.currentTimeMillis()}",
-                    type = type,
-                    title = title,
-                    body = body,
-                    actorId = actorId,
-                    actorName = actorName,
-                    // Lets the Cloud Function skip the sender even when they have no staff record
-                    actorEmail = currentUser.value?.email.orEmpty().lowercase(),
-                    refId = refId,
-                    createdAt = System.currentTimeMillis()
-                )
-            )
+            // A caller-supplied key means other devices may be announcing the same thing
+            if (noteId != null) rtdbService.postNotificationIfAbsent(note)
+            else rtdbService.postNotification(note)
         }
     }
 
@@ -3158,6 +3256,82 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
             body = "$customer • ${entry.supplierName} • ${entry.pieces} pcs by $actorName",
             refId = entry.id
         )
+    }
+
+    private fun announceNewCustomer(customer: CustomerEntity) {
+        val (_, actorName) = currentActor()
+        val where = listOf(customer.marketArea, customer.city).filter { it.isNotBlank() }.joinToString(", ")
+        postNote(
+            type = AppNotifications.TYPE_NEW_CUSTOMER,
+            title = "New customer: ${customer.brandName().ifBlank { "Customer" }}",
+            body = listOf("Added by $actorName", where.ifBlank { null }, customer.phone.ifBlank { null })
+                .filterNotNull()
+                .joinToString(" • "),
+            refId = customer.id
+        )
+    }
+
+    private fun announceNewSupplier(supplier: SupplierEntity) {
+        val (_, actorName) = currentActor()
+        val where = listOf(supplier.marketArea, supplier.city).filter { it.isNotBlank() }.joinToString(", ")
+        postNote(
+            type = AppNotifications.TYPE_NEW_SUPPLIER,
+            title = "New supplier: ${supplier.brandName().ifBlank { "Supplier" }}",
+            body = listOf("Added by $actorName", supplier.type.ifBlank { null }, where.ifBlank { null })
+                .filterNotNull()
+                .joinToString(" • "),
+            refId = supplier.id
+        )
+    }
+
+    /** Somebody asked for a record to be removed. Only an admin can act on it, but everyone can see it. */
+    private fun announceDeletionRequest(impact: DeleteImpact) {
+        val (_, actorName) = currentActor()
+        val extra = if (impact.removableCount > 0) " • ${impact.removableCount} linked record(s)" else ""
+        postNote(
+            type = AppNotifications.TYPE_DELETE_REQUEST,
+            title = "Delete request: ${impact.kind.label}",
+            body = "$actorName asked to remove ${impact.title}$extra. An Admin has to confirm it.",
+            refId = impact.id
+        )
+    }
+
+    /**
+     * Today's birthdays, announced once per customer per day.
+     *
+     * The note key carries the date, so it does not matter how many phones run this check or how
+     * often — the first write creates the record and every later one is a silent no-op, which is what
+     * stops the whole team getting five copies of the same reminder.
+     */
+    private fun announceBirthday(customer: CustomerEntity, todayKey: String) {
+        val name = customer.brandName().ifBlank { customer.name }.ifBlank { "Customer" }
+        val owner = customer.name.trim()
+        val turning = Birthdays.ageTurningToday(customer.dob)
+        postNote(
+            type = AppNotifications.TYPE_BIRTHDAY,
+            title = "Birthday today: $name",
+            body = listOf(
+                if (owner.isNotBlank() && !owner.equals(name, true)) owner else null,
+                turning?.let { "Turning $it" },
+                customer.phone.ifBlank { null }?.let { "Call $it" }
+            ).filterNotNull().joinToString(" • ").ifBlank { "Wish them a happy birthday" },
+            refId = customer.id,
+            noteId = "birthday_${customer.id}_$todayKey"
+        )
+    }
+
+    /**
+     * Checks for birthdays once a day. Called when the app opens, which is the only scheduler this
+     * app has; a Cloud Function covers the days nobody opens it.
+     */
+    private fun checkBirthdaysOnce() {
+        if (Roles.isAgent(_currentRole.value)) return
+        val todayKey = Birthdays.todayKey()
+        if (authPrefs.getString("birthday_checked_on", "") == todayKey) return
+        val todays = allCustomers.value.filter { !it.isDeleted && Birthdays.isBirthdayToday(it.dob) }
+        if (todays.isEmpty() && allCustomers.value.isEmpty()) return // customers not loaded yet, try later
+        authPrefs.edit().putString("birthday_checked_on", todayKey).apply()
+        todays.forEach { announceBirthday(it, todayKey) }
     }
 
     /**

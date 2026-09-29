@@ -185,6 +185,33 @@ class FirebaseRtdbService(
         }
     }
 
+    /**
+     * Announces something only if nobody has announced it yet.
+     *
+     * For events several devices can notice independently — a customer's birthday being the obvious
+     * one — the note key is the thing that makes it happen once. Checking first also leaves the
+     * original `createdAt` alone, so the record still says when the team was actually told.
+     */
+    suspend fun postNotificationIfAbsent(note: WorkNotification) = withContext(Dispatchers.IO) {
+        try {
+            val ref = rootRef.child("notifications").child(note.id)
+            val existing = suspendCancellableCoroutine<Boolean> { cont ->
+                ref.addListenerForSingleValueEvent(object : ValueEventListener {
+                    override fun onDataChange(snapshot: DataSnapshot) {
+                        if (cont.isActive) cont.resumeWith(Result.success(snapshot.exists()))
+                    }
+
+                    // Could not tell: treat as present, because a missed reminder beats a duplicate
+                    override fun onCancelled(error: DatabaseError) {
+                        if (cont.isActive) cont.resumeWith(Result.success(true))
+                    }
+                })
+            }
+            if (!existing) ref.setValue(note)
+        } catch (_: Exception) {
+        }
+    }
+
     /** Live announcements, newest 50 only, so an old database does not replay months of history. */
     fun listenToNotifications(onUpdate: (List<WorkNotification>) -> Unit): ValueEventListener {
         val listener = object : ValueEventListener {

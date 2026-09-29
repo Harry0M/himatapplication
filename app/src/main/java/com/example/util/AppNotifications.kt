@@ -25,13 +25,32 @@ import com.example.R
 object AppNotifications {
 
     const val CHANNEL_ID = "himat_work_updates"
-    private const val CHANNEL_NAME = "Trips and orders"
-    private const val CHANNEL_DESC = "New trips, salesmen joining and new orders from your team"
+    private const val CHANNEL_NAME = "Team activity"
+    private const val CHANNEL_DESC =
+        "New trips and orders, new customers and suppliers, registration and deletion requests, birthdays"
 
-    /** Kinds of thing we announce. Kept as plain strings so the web can write them too. */
+    /**
+     * Kinds of thing we announce. Kept as plain strings so the web and the Cloud Functions can write
+     * them too. Nothing branches on the type when showing a notification — the writer composes the
+     * title and body — so adding one here needs no change on the receiving side.
+     */
     const val TYPE_TRIP = "trip"
     const val TYPE_JOIN = "join"
     const val TYPE_ORDER = "order"
+
+    /** A staff member added a customer or a supplier to the masters. */
+    const val TYPE_NEW_CUSTOMER = "new_customer"
+    const val TYPE_NEW_SUPPLIER = "new_supplier"
+
+    /** Somebody filled in a public registration form. Written server-side (see functions/index.js). */
+    const val TYPE_CUSTOMER_REQUEST = "customer_request"
+    const val TYPE_SUPPLIER_REQUEST = "supplier_request"
+
+    /** Somebody asked for a record to be deleted and an admin has to decide. */
+    const val TYPE_DELETE_REQUEST = "delete_request"
+
+    /** A customer's birthday is today. */
+    const val TYPE_BIRTHDAY = "birthday"
 
     fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
