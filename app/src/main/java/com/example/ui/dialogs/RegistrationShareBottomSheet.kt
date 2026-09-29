@@ -173,11 +173,6 @@ fun RegistrationShareBottomSheet(
                             fontSize = 14.sp,
                             color = if (isCustomerSelected) Color(0xFF1E40AF) else TextPrimary
                         )
-                        Text(
-                            text = "Retail buyer (SMS OTP)",
-                            fontSize = 11.sp,
-                            color = TextSecondary
-                        )
                     }
                 }
 
@@ -222,11 +217,6 @@ fun RegistrationShareBottomSheet(
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
                             color = if (isSupplierSelected) Color(0xFF065F46) else TextPrimary
-                        )
-                        Text(
-                            text = "Mill / Manufacturer",
-                            fontSize = 11.sp,
-                            color = TextSecondary
                         )
                     }
                 }

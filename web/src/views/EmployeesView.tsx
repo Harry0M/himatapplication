@@ -41,6 +41,7 @@ import { Tabs } from "../components/ui/Tabs"
 import { Employee } from "../types"
 import { AHMEDABAD_TEXTILE_MARKETS } from "../lib/constants"
 import { StaffDetailView } from "./StaffDetailView"
+import { displayCode, newId, toNumericId } from "../lib/domain"
 
 interface EmployeesViewProps {
   onNavigate?: (tab: string) => void
@@ -49,6 +50,8 @@ interface EmployeesViewProps {
 export function EmployeesView({ onNavigate }: EmployeesViewProps) {
   const {
     employees,
+    subAgents,
+    allPeople,
     customers,
     suppliers,
     markets,
@@ -109,6 +112,8 @@ export function EmployeesView({ onNavigate }: EmployeesViewProps) {
   const [emergencyContactName, setEmergencyContactName] = useState<string>("")
   const [emergencyContactPhone, setEmergencyContactPhone] = useState<string>("")
   const [referredBy, setReferredBy] = useState<string>("")
+  const [referredByType, setReferredByType] = useState<string>("")
+  const [referredById, setReferredById] = useState<number>(0)
 
   // Assigned Markets
   const [selectedMarkets, setSelectedMarkets] = useState<string[]>([])
@@ -141,6 +146,8 @@ export function EmployeesView({ onNavigate }: EmployeesViewProps) {
       setEmergencyContactName(draft.emergencyContactName || "")
       setEmergencyContactPhone(draft.emergencyContactPhone || "")
       setReferredBy(draft.referredBy || "")
+      setReferredByType("")
+      setReferredById(0)
       setSelectedMarkets(draft.selectedMarkets || ["New Cloth Market (Raipur)"])
       setHasDraft(true)
     } else {
@@ -161,6 +168,8 @@ export function EmployeesView({ onNavigate }: EmployeesViewProps) {
       setEmergencyContactName("")
       setEmergencyContactPhone("")
       setReferredBy("")
+      setReferredByType("")
+      setReferredById(0)
       setSelectedMarkets(["New Cloth Market (Raipur)"])
       setHasDraft(false)
     }
@@ -188,6 +197,8 @@ export function EmployeesView({ onNavigate }: EmployeesViewProps) {
     setEmergencyContactName("")
     setEmergencyContactPhone("")
     setReferredBy("")
+    setReferredByType("")
+    setReferredById(0)
     setSelectedMarkets(["New Cloth Market (Raipur)"])
   }
 
@@ -262,6 +273,8 @@ export function EmployeesView({ onNavigate }: EmployeesViewProps) {
     setEmergencyContactName(emp.emergencyContactName || "")
     setEmergencyContactPhone(emp.emergencyContactPhone || "")
     setReferredBy(emp.referredBy || "")
+    setReferredByType(emp.referredByType || "")
+    setReferredById(toNumericId(emp.referredById))
 
     const mkts = emp.assignedMarkets
       ? emp.assignedMarkets.split(",").map((m) => m.trim()).filter(Boolean)
@@ -285,16 +298,22 @@ export function EmployeesView({ onNavigate }: EmployeesViewProps) {
       return
     }
     if (!name.trim()) return
-    const id = editingId || Date.now()
+    // Globally unique id (Date.now() / max + 1 collided with records saved from phones)
+    const id = editingId || newId()
+    // Keep fields this form does not show. Without this, editing a suspended person dropped
+    // status / isBlocked and silently gave them access again.
+    const existing = editingId ? allPeople.find((p) => Number(p.id) === Number(editingId)) : undefined
 
     const allPhones = [phone1.trim(), phone2.trim(), phone3.trim(), phone4.trim(), phone5.trim()].filter(Boolean)
     const primaryPhone = allPhones[0] || ""
 
     const allEmails = [email.trim(), alternateEmail.trim()].filter(Boolean)
+    const referrer = referredBy.trim()
 
     const newEmp: Employee = {
+      ...(existing || {}),
       id,
-      employeeId: employeeId.trim() || `EMP-0${employees.length + 1}`,
+      employeeId: employeeId.trim() || displayCode("EMP"),
       name: name.trim(),
       role: role.trim() || "Salesman",
       phone: primaryPhone,
@@ -312,7 +331,9 @@ export function EmployeesView({ onNavigate }: EmployeesViewProps) {
       personalLocation: personalLocation.trim() || "",
       emergencyContactName: emergencyContactName.trim() || "",
       emergencyContactPhone: emergencyContactPhone.trim() || "",
-      referredBy: referredBy.trim() || "",
+      referredBy: referrer,
+      referredByType: referrer ? referredByType || undefined : undefined,
+      referredById: referrer && referredById > 0 ? referredById : undefined,
       assignedMarkets: selectedMarkets.join(", "),
       markets: selectedMarkets.join(", "),
     }
@@ -913,16 +934,21 @@ export function EmployeesView({ onNavigate }: EmployeesViewProps) {
                     {["Salesman", "Admin"].map((r) => (
                       <Button
                         key={r}
+                        type="button"
                         size="sm"
                         shape="pill"
                         variant={role === r ? "default" : "outline"}
                         onClick={() => setRole(r)}
+                        aria-pressed={role === r}
                         className="flex-1 text-xs"
                       >
-                        {r}
+                        {r === "Salesman" ? "Staff (Salesman)" : r}
                       </Button>
                     ))}
                   </div>
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    Outside agents who bring customers go in Masters → Sub Agents.
+                  </p>
                 </div>
               </div>
 
@@ -1151,9 +1177,18 @@ export function EmployeesView({ onNavigate }: EmployeesViewProps) {
                 <ReferrerSelectModal
                   value={referredBy}
                   onChange={setReferredBy}
+                  onSelect={(sel) => {
+                    setReferredByType(sel?.referredByType || "")
+                    setReferredById(sel?.referredById || 0)
+                  }}
+                  selectedType={referredByType}
+                  selectedId={referredById}
                   employees={employees}
+                  subAgents={subAgents}
                   customers={customers}
                   suppliers={suppliers}
+                  excludeType="Staff"
+                  excludeId={editingId || undefined}
                   label="Referred By / Reference Person"
                 />
               </div>

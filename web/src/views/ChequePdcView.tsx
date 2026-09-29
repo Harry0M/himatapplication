@@ -62,6 +62,8 @@ export function ChequePdcView() {
   const [formPartyName, setFormPartyName] = useState("")
   const [formStatus, setFormStatus] = useState<ChequeStatus>("Pending")
   const [formNotes, setFormNotes] = useState("")
+  const [formIsSecurityCheque, setFormIsSecurityCheque] = useState(false)
+  const [formAccountNumber, setFormAccountNumber] = useState("")
 
   // Quick stats
   const dueTodayCheques = useMemo(() => {
@@ -97,6 +99,7 @@ export function ChequePdcView() {
         cheque.bankName.toLowerCase().includes(q) ||
         cheque.partyName.toLowerCase().includes(q) ||
         (cheque.notes && cheque.notes.toLowerCase().includes(q)) ||
+        (cheque.accountNumber && cheque.accountNumber.toLowerCase().includes(q)) ||
         cheque.amount.toString().includes(q)
 
       // Party Type filter
@@ -116,6 +119,8 @@ export function ChequePdcView() {
           (cheque.status === "Pending" || cheque.status === "Due Today")
       } else if (statusFilter === "UPCOMING_PDC") {
         matchesStatus = cheque.chequeDate > today && cheque.status === "Pending"
+      } else if (statusFilter === "SECURITY") {
+        matchesStatus = Boolean(cheque.isSecurityCheque || (cheque.notes && cheque.notes.toLowerCase().includes("security")))
       } else if (statusFilter !== "ALL") {
         matchesStatus =
           cheque.status.toUpperCase() === statusFilter.toUpperCase()
@@ -137,6 +142,8 @@ export function ChequePdcView() {
     setFormPartyName("")
     setFormStatus("Pending")
     setFormNotes("")
+    setFormIsSecurityCheque(false)
+    setFormAccountNumber("")
     setIsModalOpen(true)
   }
 
@@ -152,6 +159,8 @@ export function ChequePdcView() {
     setFormPartyName(cheque.partyName)
     setFormStatus(cheque.status)
     setFormNotes(cheque.notes || "")
+    setFormIsSecurityCheque(Boolean(cheque.isSecurityCheque || (cheque.notes && cheque.notes.toLowerCase().includes("security"))))
+    setFormAccountNumber(cheque.accountNumber || "")
     setIsModalOpen(true)
   }
 
@@ -175,6 +184,8 @@ export function ChequePdcView() {
         partyName: formPartyName,
         status: formStatus,
         notes: formNotes,
+        isSecurityCheque: formIsSecurityCheque,
+        accountNumber: formAccountNumber,
       })
       setIsModalOpen(false)
     } catch (err) {
@@ -435,6 +446,7 @@ export function ChequePdcView() {
             { id: "ALL", label: "All Status" },
             { id: "DUE_TODAY", label: "Due Today" },
             { id: "UPCOMING_PDC", label: "Upcoming PDC" },
+            { id: "SECURITY", label: "🛡️ Security Cheques" },
             { id: "PENDING", label: "Pending" },
             { id: "DEPOSITED", label: "Deposited" },
             { id: "CLEARED", label: "Cleared" },
@@ -514,7 +526,14 @@ export function ChequePdcView() {
                     >
                       {/* Cheque No */}
                       <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
-                        {cheque.chequeNo}
+                        <div className="flex flex-col items-start gap-0.5">
+                          <span>{cheque.chequeNo}</span>
+                          {(cheque.isSecurityCheque || (cheque.notes && cheque.notes.toLowerCase().includes("security"))) && (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-300">
+                              🛡️ Security
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Bank Name */}
@@ -852,6 +871,33 @@ export function ChequePdcView() {
                 <option value="Cleared">Cleared (Money credited/debited)</option>
                 <option value="Bounced">Bounced (Dishonored)</option>
               </select>
+            </div>
+
+            {/* Account Number & Security Cheque Checkbox */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">
+                  Bank Account Number (Optional)
+                </label>
+                <Input
+                  value={formAccountNumber}
+                  onChange={(e) => setFormAccountNumber(e.target.value)}
+                  placeholder="Optional A/C Number"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 p-2 bg-amber-50/70 border border-amber-200 rounded-lg">
+                <input
+                  type="checkbox"
+                  id="security_cheque_chk"
+                  checked={formIsSecurityCheque}
+                  onChange={(e) => setFormIsSecurityCheque(e.target.checked)}
+                  className="h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                />
+                <label htmlFor="security_cheque_chk" className="text-xs font-semibold text-amber-900 cursor-pointer select-none">
+                  🛡️ Security Cheque (सुरक्षा चेक)
+                </label>
+              </div>
             </div>
 
             {/* Notes */}

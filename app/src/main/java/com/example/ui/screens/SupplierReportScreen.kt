@@ -38,6 +38,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -65,9 +66,12 @@ import com.example.ui.theme.GoldAccent
 import com.example.ui.theme.NavyPrimary
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import com.example.ui.dialogs.SupplierOrderFormOptionsSheet
 import com.example.ui.viewmodel.HimatViewModel
 import com.example.util.PdfGenerator
+import com.example.util.RelatedLogic
 import com.example.util.ShareUtil
+import com.example.util.brandName
 
 @Composable
 fun SupplierReportScreen(
@@ -80,7 +84,9 @@ fun SupplierReportScreen(
     val allEntries by viewModel.visitEntries.collectAsStateWithLifecycle()
     val suppliers by viewModel.allSuppliers.collectAsStateWithLifecycle()
     val allCustomers by viewModel.allCustomers.collectAsStateWithLifecycle()
-    val customer = allCustomers.find { it.id == visit.customerId }
+    // Orphaned trips (no customer id) still find their customer by exact name
+    val customer = remember(allCustomers, visit) { RelatedLogic.customerOfTrip(visit, allCustomers) }
+    var showOrderFormOptions by remember { mutableStateOf(false) }
 
     // Helper to check if entry belongs to supplier by ID or canonical name
     val isSameSupplier: (PurchaseEntryEntity, SupplierEntity) -> Boolean = { entry, sup ->
@@ -107,6 +113,17 @@ fun SupplierReportScreen(
     val grandTotal = totalAmount + totalGst
     val totalCases = supplierEntries.sumOf { it.caseCount }
     val totalLoose = supplierEntries.sumOf { it.loosePieces }
+
+    if (showOrderFormOptions) {
+        SupplierOrderFormOptionsSheet(
+            supplierName = selectedSupplier.brandName(),
+            onDismiss = { showOrderFormOptions = false },
+            onCreate = { options ->
+                showOrderFormOptions = false
+                viewModel.shareSupplierCopyPdf(visit, selectedSupplier, options)
+            }
+        )
+    }
 
     Scaffold(
         bottomBar = {
@@ -156,9 +173,9 @@ fun SupplierReportScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // Standard Supplier Voucher PDF
+                        // Standard Supplier Order Form (Draft Bill) PDF: options sheet first
                         Button(
-                            onClick = { viewModel.shareSupplierCopyPdf(visit, selectedSupplier) },
+                            onClick = { showOrderFormOptions = true },
                             colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 9.dp),
@@ -166,7 +183,7 @@ fun SupplierReportScreen(
                         ) {
                             Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = GoldAccent, modifier = Modifier.size(15.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Supplier Voucher", fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = Color.White)
+                            Text("Order Form PDF", fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = Color.White)
                         }
 
                         // GST Purchase Order / Invoice PDF
@@ -189,7 +206,7 @@ fun SupplierReportScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFFF1F5F9))
+                .background(MaterialTheme.colorScheme.background)
                 .padding(paddingValues)
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -221,13 +238,13 @@ fun SupplierReportScreen(
                     Spacer(modifier = Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Supplier Purchase Copy",
+                            text = "Order Form (Draft Bill)",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = NavyPrimary
                         )
                         Text(
-                            text = "Wholesaler voucher & packing sheet",
+                            text = "All amounts are approximate • One Bill One LR",
                             fontSize = 11.sp,
                             color = TextSecondary,
                             maxLines = 1,
@@ -261,10 +278,11 @@ fun SupplierReportScreen(
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    val brandOrName = if (sup.brand.isNotBlank()) sup.brand else sup.name
                                     Text(
-                                        text = sup.name,
+                                        text = brandOrName,
                                         color = if (isSelected) Color.White else TextPrimary,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        fontWeight = FontWeight.SemiBold,
                                         fontSize = 11.5.sp
                                     )
                                     Spacer(modifier = Modifier.width(5.dp))
@@ -308,13 +326,13 @@ fun SupplierReportScreen(
                                         letterSpacing = 0.5.sp
                                     )
                                     Text(
-                                        text = "YOUR BUSINESS GUIDE ACROSS INDIA",
+                                        text = "YOUR GARMENT GUIDE ACROSS INDIA",
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = GoldAccent
                                     )
                                     Text(
-                                        text = "Spot Procurement Voucher for Wholesaler / Manufacturer",
+                                        text = "Wholesale Garment Order Form (Draft Bill)",
                                         fontSize = 8.5.sp,
                                         color = TextSecondary,
                                         maxLines = 1,
@@ -327,15 +345,15 @@ fun SupplierReportScreen(
 
                             Column(horizontalAlignment = Alignment.End) {
                                 Surface(
-                                    color = Color(0xFF7C3AED),
+                                    color = Color(0xFF0F172A),
                                     shape = RoundedCornerShape(4.dp)
                                 ) {
                                     Text(
-                                        text = "SUPPLIER VOUCHER",
+                                        text = "ORDER FORM",
                                         color = Color.White,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 9.sp,
-                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
                                     )
                                 }
                                 Spacer(modifier = Modifier.height(2.dp))
@@ -343,7 +361,24 @@ fun SupplierReportScreen(
                             }
                         }
 
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color(0xFFE2E8F0))
+                        // Draft Bill notice ribbon
+                        Surface(
+                            color = Color(0xFFFEF3C7),
+                            shape = RoundedCornerShape(4.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFD97706)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = "⚠️ DRAFT BILL • ALL AMOUNTS ARE APPROXIMATE • ONE BILL ONE LR",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFB45309),
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(vertical = 4.dp, horizontal = 6.dp)
+                            )
+                        }
 
                         // Supplier & Buyer Compact Info Box
                         Surface(
@@ -358,7 +393,8 @@ fun SupplierReportScreen(
                                     .padding(horizontal = 8.dp, vertical = 6.dp),
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                // Supplier Line
+                                // Supplier Line (Brand Name Highlighted)
+                                val suppBrand = if (selectedSupplier.brand.isNotBlank()) selectedSupplier.brand.uppercase() else selectedSupplier.name.uppercase()
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically
@@ -367,17 +403,18 @@ fun SupplierReportScreen(
                                     SupplierTypeBadge(type = selectedSupplier.type)
                                     Spacer(modifier = Modifier.width(5.dp))
                                     Text(
-                                        text = selectedSupplier.name,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp,
-                                        color = TextPrimary,
+                                        text = suppBrand,
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 12.5.sp,
+                                        color = NavyPrimary,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f)
                                     )
-                                    if (selectedSupplier.marketArea.isNotBlank()) {
+                                    val loc = if (selectedSupplier.marketArea.isNotBlank()) selectedSupplier.marketArea else selectedSupplier.city
+                                    if (loc.isNotBlank()) {
                                         Text(
-                                            text = selectedSupplier.marketArea,
+                                            text = loc,
                                             fontSize = 10.sp,
                                             color = TextSecondary,
                                             maxLines = 1,
@@ -388,37 +425,31 @@ fun SupplierReportScreen(
 
                                 HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.5.dp)
 
-                                // Buyer Line
+                                // Buyer Line (Customer ID ONLY - Trade Identity Protected)
+                                val buyerId = if (!customer?.customerId.isNullOrBlank()) customer?.customerId!! else if (customer != null && customer.id > 0) "CUST-${customer.id}" else if (visit.customerId > 0) "CUST-${visit.customerId}" else "CUST-TRADE"
+                                val destCity = customer?.city ?: "Ahmedabad"
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("BUYER: ", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                                    Text("BUYER ID: ", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
                                     Text(
-                                        text = customer?.name ?: visit.customerName,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp,
+                                        text = buyerId,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 12.5.sp,
                                         color = NavyPrimary,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f)
                                     )
-                                    val escortCity = buildString {
-                                        if (!customer?.city.isNullOrBlank()) append(customer?.city)
-                                        if (visit.employeeName.isNotBlank()) {
-                                            if (isNotEmpty()) append(" • ")
-                                            append("Escort: ${visit.employeeName}")
-                                        }
-                                    }
-                                    if (escortCity.isNotBlank()) {
-                                        Text(
-                                            text = escortCity,
-                                            fontSize = 10.sp,
-                                            color = TextSecondary,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
+                                    Text(
+                                        text = "Station: $destCity",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = TextSecondary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
                             }
                         }

@@ -17,6 +17,7 @@ import com.example.data.local.entity.TransactionLogEntity
 import com.example.data.local.entity.TransporterEntity
 import com.example.data.local.entity.VisitEntity
 import com.example.data.remote.FirebaseRtdbService
+import com.example.util.IdGenerator
 import com.example.util.RecordValidationException
 import com.example.util.RecordValidator
 import com.example.util.ValidationResult
@@ -50,9 +51,9 @@ class HimatRepository(private val database: AppDatabase) {
     suspend fun getChequeById(id: Long): ChequePdcEntity? = chequePdcDao.getChequeById(id)
     suspend fun saveChequePdc(cheque: ChequePdcEntity): Long {
         return if (cheque.id == 0L) {
-            chequePdcDao.insertCheque(cheque)
+            chequePdcDao.insertCheque(cheque.copy(id = IdGenerator.newId()))
         } else {
-            chequePdcDao.updateCheque(cheque)
+            chequePdcDao.insertCheque(cheque)
             cheque.id
         }
     }
@@ -83,9 +84,9 @@ class HimatRepository(private val database: AppDatabase) {
     suspend fun getCustomerById(id: Long) = customerDao.getCustomerById(id)
     suspend fun saveCustomer(customer: CustomerEntity): Long {
         return if (customer.id == 0L) {
-            customerDao.insertCustomer(customer)
+            customerDao.insertCustomer(customer.copy(id = IdGenerator.newId()))
         } else {
-            customerDao.updateCustomer(customer)
+            customerDao.insertCustomer(customer)
             customer.id
         }
     }
@@ -106,9 +107,9 @@ class HimatRepository(private val database: AppDatabase) {
             throw RecordValidationException(validation.errors)
         }
         return if (supplier.id == 0L) {
-            supplierDao.insertSupplier(supplier)
+            supplierDao.insertSupplier(supplier.copy(id = IdGenerator.newId()))
         } else {
-            supplierDao.updateSupplier(supplier)
+            supplierDao.insertSupplier(supplier)
             supplier.id
         }
     }
@@ -120,9 +121,9 @@ class HimatRepository(private val database: AppDatabase) {
     suspend fun getBrandById(id: Long) = brandDao.getBrandById(id)
     suspend fun saveBrand(brand: BrandEntity): Long {
         return if (brand.id == 0L) {
-            brandDao.insertBrand(brand)
+            brandDao.insertBrand(brand.copy(id = IdGenerator.newId()))
         } else {
-            brandDao.updateBrand(brand)
+            brandDao.insertBrand(brand)
             brand.id
         }
     }
@@ -133,9 +134,9 @@ class HimatRepository(private val database: AppDatabase) {
     suspend fun getTransporterById(id: Long) = transporterDao.getTransporterById(id)
     suspend fun saveTransporter(transporter: TransporterEntity): Long {
         return if (transporter.id == 0L) {
-            transporterDao.insertTransporter(transporter)
+            transporterDao.insertTransporter(transporter.copy(id = IdGenerator.newId()))
         } else {
-            transporterDao.updateTransporter(transporter)
+            transporterDao.insertTransporter(transporter)
             transporter.id
         }
     }
@@ -146,9 +147,9 @@ class HimatRepository(private val database: AppDatabase) {
     suspend fun getMarketById(id: Long) = marketDao.getMarketById(id)
     suspend fun saveMarket(market: MarketEntity): Long {
         return if (market.id == 0L) {
-            marketDao.insertMarket(market)
+            marketDao.insertMarket(market.copy(id = IdGenerator.newId()))
         } else {
-            marketDao.updateMarket(market)
+            marketDao.insertMarket(market)
             market.id
         }
     }
@@ -174,9 +175,9 @@ class HimatRepository(private val database: AppDatabase) {
             throw RecordValidationException(validation.errors)
         }
         return if (product.id == 0L) {
-            productDao.insertProduct(product)
+            productDao.insertProduct(product.copy(id = IdGenerator.newId()))
         } else {
-            productDao.updateProduct(product)
+            productDao.insertProduct(product)
             product.id
         }
     }
@@ -216,7 +217,7 @@ class HimatRepository(private val database: AppDatabase) {
     suspend fun getTransactionById(id: Long) = transactionDao.getTransactionById(id)
     suspend fun saveTransaction(transaction: TransactionEntity): Long {
         return if (transaction.id == 0L) {
-            transactionDao.insertTransaction(transaction)
+            transactionDao.insertTransaction(transaction.copy(id = IdGenerator.newId()))
         } else {
             transactionDao.updateTransaction(transaction)
             transaction.id
@@ -265,9 +266,9 @@ class HimatRepository(private val database: AppDatabase) {
     suspend fun getEmployeeById(id: Long) = employeeDao.getEmployeeById(id)
     suspend fun saveEmployee(employee: EmployeeEntity): Long {
         return if (employee.id == 0L) {
-            employeeDao.insertEmployee(employee)
+            employeeDao.insertEmployee(employee.copy(id = IdGenerator.newId()))
         } else {
-            employeeDao.updateEmployee(employee)
+            employeeDao.insertEmployee(employee)
             employee.id
         }
     }
@@ -277,11 +278,12 @@ class HimatRepository(private val database: AppDatabase) {
     val allVisits: Flow<List<VisitEntity>> = visitDao.getAllVisits()
     fun getVisitsByEmployee(employeeId: Long): Flow<List<VisitEntity>> = visitDao.getVisitsByEmployee(employeeId)
     suspend fun getVisitById(id: Long) = visitDao.getVisitById(id)
+    fun getVisitFlowById(id: Long): Flow<VisitEntity?> = visitDao.getVisitFlowById(id)
     suspend fun saveVisit(visit: VisitEntity): Long {
         return if (visit.id == 0L) {
-            visitDao.insertVisit(visit)
+            visitDao.insertVisit(visit.copy(id = IdGenerator.newId()))
         } else {
-            visitDao.updateVisit(visit)
+            visitDao.insertVisit(visit)
             visit.id
         }
     }
@@ -304,14 +306,17 @@ class HimatRepository(private val database: AppDatabase) {
     suspend fun getEntryById(id: Long) = purchaseEntryDao.getEntryById(id)
     suspend fun getTransactionByOrderNo(orderNo: String) = transactionDao.getTransactionByOrderNo(orderNo)
 
-    suspend fun getNextOrderNumber(): String {
+    /** Highest HT-<n> order sequence known on this device (never below 2600). */
+    suspend fun localMaxOrderSequence(): Int {
         val allEntries = purchaseEntryDao.getAllEntries().first()
         val allTxns = transactionDao.getAllTransactions().first()
         val maxEntryNum = allEntries.mapNotNull { it.orderNo.trim().removePrefix("HT-").toIntOrNull() }.maxOrNull() ?: 2600
         val maxTxnNum = allTxns.mapNotNull { it.orderNo.trim().removePrefix("HT-").toIntOrNull() }.maxOrNull() ?: 2600
-        val maxNum = maxOf(2600, maxOf(maxEntryNum, maxTxnNum))
-        return "HT-${maxNum + 1}"
+        return maxOf(2600, maxOf(maxEntryNum, maxTxnNum))
     }
+
+    /** Local-only fallback; prefer FirebaseRtdbService.allocateOrderSequence for multi-phone safety. */
+    suspend fun getNextOrderNumber(): String = "HT-${localMaxOrderSequence() + 1}"
 
     suspend fun savePurchaseEntry(entry: PurchaseEntryEntity): Long {
         val totalAmount = entry.pieces * entry.rate
@@ -333,12 +338,16 @@ class HimatRepository(private val database: AppDatabase) {
         )
 
         return if (processedEntry.id == 0L) {
-            purchaseEntryDao.insertEntry(processedEntry)
+            purchaseEntryDao.insertEntry(processedEntry.copy(id = IdGenerator.newId()))
         } else {
-            purchaseEntryDao.updateEntry(processedEntry)
+            // Upsert (REPLACE): works for edits and for new rows that already carry an id
+            purchaseEntryDao.insertEntry(processedEntry)
             processedEntry.id
         }
     }
+
+    suspend fun updateLrDetails(id: Long, lrNo: String, lrDate: String) =
+        purchaseEntryDao.updateLrDetails(id, lrNo, lrDate)
 
     suspend fun updateDeliveryStatus(id: Long, status: String, transporter: String) {
         purchaseEntryDao.updateDeliveryStatus(id, status, transporter)
@@ -411,15 +420,19 @@ class HimatRepository(private val database: AppDatabase) {
 
     suspend fun deletePurchaseEntry(entry: PurchaseEntryEntity) = purchaseEntryDao.deleteEntry(entry)
 
-    suspend fun cleanupOrphanEntries(): List<PurchaseEntryEntity> {
-        val allVisits = visitDao.getAllVisits().first()
-        val validVisitIds = allVisits.map { it.id }.toSet()
-        val allEntries = purchaseEntryDao.getAllEntries().first()
-        val orphans = allEntries.filter { it.visitId !in validVisitIds }
-        orphans.forEach { orphan ->
-            purchaseEntryDao.deleteEntry(orphan)
-        }
-        return orphans
+    /**
+     * Orders whose trip is not in this phone's database. Read-only on purpose.
+     *
+     * This used to delete them locally and then remove them from the cloud as well. Because the
+     * trips table can legitimately be empty or half-filled for a moment (first sign-in, a fresh
+     * install, or the trips snapshot arriving after the orders one), that classified perfectly good
+     * orders as orphans and destroyed them for the whole company. Nothing is deleted here any more:
+     * a missing trip is a sync gap, not a reason to throw away an order.
+     */
+    suspend fun findOrphanEntries(): List<PurchaseEntryEntity> {
+        val validVisitIds = visitDao.getAllVisits().first().map { it.id }.toSet()
+        if (validVisitIds.isEmpty()) return emptyList()
+        return purchaseEntryDao.getAllEntries().first().filter { it.visitId !in validVisitIds }
     }
 
     // Mixed Case Packing
@@ -452,6 +465,7 @@ class HimatRepository(private val database: AppDatabase) {
         }
 
         val packGroup = PackGroupEntity(
+            id = IdGenerator.newId(),
             visitId = visitId,
             packGroupCode = "MIX-${System.currentTimeMillis() % 10000}",
             linkedEntryIds = linkedIdsString,
@@ -472,7 +486,8 @@ class HimatRepository(private val database: AppDatabase) {
                 val othersDesc = otherEntries.joinToString(", ") { "${it.loosePieces} pcs ${it.itemCode} (${it.supplierName})" }
                 "Mixed Packing: ${entry.loosePieces} pcs packed with $othersDesc"
             }
-            purchaseEntryDao.updateMixedPackInfoWithOrderNo(entry.id, entry.orderNo, packGroupId, itemSpecificNote)
+            // By id only: two different orders can legitimately share an order number from older data
+            purchaseEntryDao.updateMixedPackInfo(entry.id, packGroupId, itemSpecificNote)
         }
 
         return packGroupId
@@ -486,17 +501,24 @@ class HimatRepository(private val database: AppDatabase) {
         packGroupDao.deletePackGroup(packGroup)
     }
 
-    // Cloud Sync Ingestion Operations
+    // -------------------------------------------------------------------------
+    // Cloud -> local ingestion
+    //
+    // These used to treat the cloud snapshot as absolute truth and hard-delete every local row the
+    // snapshot did not contain. That is how trips and orders "disappeared by themselves": a write
+    // that never reached the server (offline, or rejected) left the row only on the phone, and the
+    // very next snapshot deleted it for good.
+    //
+    // Now nothing is ever hard-deleted here. The cloud copy is merged in, real deletions travel as
+    // the isDeleted flag (which the lists already hide), and a row still waiting to be uploaded is
+    // left completely alone. Cleaning up a genuinely removed record is an explicit admin action.
+    // -------------------------------------------------------------------------
+
     suspend fun syncEmployeesFromCloud(employees: List<EmployeeEntity>) {
         val valid = employees.filter { it.id > 0L && it.name.isNotBlank() && !it.isDeleted }
             .distinctBy { it.id }
         if (valid.isNotEmpty()) {
             employeeDao.insertAll(valid)
-        }
-        val cloudIds = valid.map { it.id }.toSet()
-        val localRecords = employeeDao.getAllEmployees().first()
-        localRecords.filter { it.id > 0L && it.id !in cloudIds }.forEach {
-            employeeDao.deleteEmployeeById(it.id)
         }
     }
 
@@ -507,11 +529,6 @@ class HimatRepository(private val database: AppDatabase) {
         if (valid.isNotEmpty()) {
             customerDao.insertAll(valid)
         }
-        val cloudIds = valid.map { it.id }.toSet()
-        val localRecords = customerDao.getAllCustomers().first()
-        localRecords.filter { it.id > 0L && it.id !in cloudIds }.forEach {
-            customerDao.deleteCustomerById(it.id)
-        }
     }
 
     suspend fun syncSuppliersFromCloud(suppliers: List<SupplierEntity>) {
@@ -520,11 +537,6 @@ class HimatRepository(private val database: AppDatabase) {
             .distinctBy { "${it.name.trim().lowercase()}_${it.brand.trim().lowercase()}_${it.phone.trim()}" }
         if (valid.isNotEmpty()) {
             supplierDao.insertAll(valid)
-        }
-        val cloudIds = valid.map { it.id }.toSet()
-        val localRecords = supplierDao.getAllSuppliers().first()
-        localRecords.filter { it.id > 0L && it.id !in cloudIds }.forEach {
-            supplierDao.deleteSupplierById(it.id)
         }
     }
 
@@ -538,34 +550,33 @@ class HimatRepository(private val database: AppDatabase) {
         if (valid.isNotEmpty()) {
             productDao.insertAll(valid)
         }
-        val cloudIds = valid.map { it.id }.toSet()
-        val localRecords = productDao.getAllProducts().first()
-        localRecords.filter { it.id > 0L && it.id !in cloudIds }.forEach {
-            productDao.deleteProductById(it.id)
-        }
     }
 
+    /**
+     * Trips from the cloud. A local trip that is still [VisitEntity.pendingPush] keeps its local
+     * copy even if the cloud already has that id, so an unsent edit is not silently reverted.
+     */
     suspend fun syncVisitsFromCloud(visits: List<VisitEntity>) {
         val valid = visits.filter { it.id > 0L && !it.isDeleted }.distinctBy { it.id }
-        if (valid.isNotEmpty()) {
-            visitDao.insertAll(valid)
-        }
-        val cloudIds = valid.map { it.id }.toSet()
-        val localRecords = visitDao.getAllVisits().first()
-        localRecords.filter { it.id > 0L && it.id !in cloudIds }.forEach {
-            visitDao.deleteVisitById(it.id)
+        if (valid.isEmpty()) return
+        val stillPending = visitDao.getPendingPushVisitIds().toSet()
+        val toInsert = valid.filter { it.id !in stillPending }
+        if (toInsert.isNotEmpty()) {
+            visitDao.insertAll(toInsert)
         }
     }
 
+    /**
+     * Orders from the cloud. Same rule as trips: an order this phone has not managed to upload yet
+     * is never overwritten and never deleted.
+     */
     suspend fun syncEntriesFromCloud(entries: List<PurchaseEntryEntity>) {
         val valid = entries.filter { it.id > 0L && !it.isDeleted }.distinctBy { it.id }
-        if (valid.isNotEmpty()) {
-            purchaseEntryDao.insertAll(valid)
-        }
-        val cloudIds = valid.map { it.id }.toSet()
-        val localRecords = purchaseEntryDao.getAllEntries().first()
-        localRecords.filter { it.id > 0L && it.id !in cloudIds }.forEach {
-            purchaseEntryDao.deleteEntryById(it.id)
+        if (valid.isEmpty()) return
+        val stillPending = purchaseEntryDao.getPendingPushEntryIds().toSet()
+        val toInsert = valid.filter { it.id !in stillPending }
+        if (toInsert.isNotEmpty()) {
+            purchaseEntryDao.insertAll(toInsert)
         }
     }
 
@@ -574,22 +585,11 @@ class HimatRepository(private val database: AppDatabase) {
         if (valid.isNotEmpty()) {
             transactionDao.insertAll(valid)
         }
-        val cloudIds = valid.map { it.id }.toSet()
-        val localRecords = transactionDao.getAllTransactions().first()
-        localRecords.filter { it.id > 0L && it.id !in cloudIds }.forEach {
-            transactionDao.deleteTransaction(it)
-        }
     }
 
     suspend fun syncPackGroupsFromCloud(packGroups: List<PackGroupEntity>) {
-        val valid = packGroups.filter { it.id > 0L }.distinctBy { it.id }
-        valid.forEach {
+        packGroups.filter { it.id > 0L }.distinctBy { it.id }.forEach {
             packGroupDao.insertPackGroup(it)
-        }
-        val cloudIds = valid.map { it.id }.toSet()
-        val localRecords = packGroupDao.getAllPackGroups().first()
-        localRecords.filter { it.id > 0L && it.id !in cloudIds }.forEach {
-            packGroupDao.deletePackGroup(it)
         }
     }
 
@@ -598,11 +598,6 @@ class HimatRepository(private val database: AppDatabase) {
         if (valid.isNotEmpty()) {
             brandDao.insertAll(valid)
         }
-        val cloudIds = valid.map { it.id }.toSet()
-        val localRecords = brandDao.getAllBrands().first()
-        localRecords.filter { it.id > 0L && it.id !in cloudIds }.forEach {
-            brandDao.deleteBrandById(it.id)
-        }
     }
 
     suspend fun syncTransportersFromCloud(transporters: List<TransporterEntity>) {
@@ -610,22 +605,12 @@ class HimatRepository(private val database: AppDatabase) {
         if (valid.isNotEmpty()) {
             transporterDao.insertAll(valid)
         }
-        val cloudIds = valid.map { it.id }.toSet()
-        val localRecords = transporterDao.getAllTransporters().first()
-        localRecords.filter { it.id > 0L && it.id !in cloudIds }.forEach {
-            transporterDao.deleteTransporterById(it.id)
-        }
     }
 
     suspend fun syncMarketsFromCloud(markets: List<MarketEntity>) {
         val valid = markets.filter { it.id > 0L && it.marketName.isNotBlank() && !it.isDeleted }.distinctBy { it.id }
         if (valid.isNotEmpty()) {
             marketDao.insertAll(valid)
-        }
-        val cloudIds = valid.map { it.id }.toSet()
-        val localRecords = marketDao.getAllMarkets().first()
-        localRecords.filter { it.id > 0L && it.id !in cloudIds }.forEach {
-            marketDao.deleteMarketById(it.id)
         }
     }
 
@@ -639,11 +624,6 @@ class HimatRepository(private val database: AppDatabase) {
                 leadDao.insertLead(cloudLead)
             }
         }
-        val cloudLeadIds = valid.map { it.leadId }.toSet()
-        val localLeads = leadDao.getAllLeads().first()
-        localLeads.filter { it.leadId.isNotBlank() && it.leadId !in cloudLeadIds }.forEach {
-            leadDao.deleteLead(it)
-        }
     }
 
     suspend fun syncChequesFromCloud(cheques: List<ChequePdcEntity>) {
@@ -651,12 +631,29 @@ class HimatRepository(private val database: AppDatabase) {
         if (valid.isNotEmpty()) {
             chequePdcDao.insertAll(valid)
         }
-        val cloudIds = valid.map { it.id }.toSet()
-        val localRecords = chequePdcDao.getAllCheques().first()
-        localRecords.filter { it.id > 0L && it.id !in cloudIds }.forEach {
-            chequePdcDao.deleteChequeById(it.id)
-        }
     }
+
+    // -------------------------------------------------------------------------
+    // Local -> cloud recovery: anything still sitting on this phone
+    // -------------------------------------------------------------------------
+
+    /** Trips this phone has not managed to upload yet, oldest first. */
+    suspend fun pendingPushVisits(): List<VisitEntity> = visitDao.getPendingPushVisits()
+
+    /** Orders this phone has not managed to upload yet, oldest first. */
+    suspend fun pendingPushEntries(): List<PurchaseEntryEntity> = purchaseEntryDao.getPendingPushEntries()
+
+    suspend fun markVisitPushed(id: Long) = visitDao.setPendingPush(id, false)
+
+    suspend fun markEntryPushed(id: Long) = purchaseEntryDao.setPendingPush(id, false)
+
+    suspend fun markVisitPending(id: Long) = visitDao.setPendingPush(id, true)
+
+    suspend fun markEntryPending(id: Long) = purchaseEntryDao.setPendingPush(id, true)
+
+    /** How many trips + orders are still waiting to reach the office. */
+    suspend fun pendingPushCount(): Int =
+        visitDao.getPendingPushCount() + purchaseEntryDao.getPendingPushCount()
 
 
     // Startup & Sync Deduplication Routine
@@ -694,9 +691,16 @@ class HimatRepository(private val database: AppDatabase) {
                 }
             }
 
-            // 3. Deduplicate Purchase Entries by visitId + orderNo
+            // 3. Deduplicate Purchase Entries - only true double-saves (every business field identical).
+            // Several salesmen can add orders to one trip from different phones, so visitId + orderNo
+            // alone is NOT a safe duplicate key (it used to delete real orders).
             val currentEntries = purchaseEntryDao.getAllEntries().first()
-            val entryGroups = currentEntries.filter { it.orderNo.isNotBlank() }.groupBy { "${it.visitId}_${it.orderNo}" }
+            val entryGroups = currentEntries.filter { it.orderNo.isNotBlank() }.groupBy {
+                listOf(
+                    it.visitId, it.orderNo.trim(), it.supplierId, it.itemCode.trim().lowercase(),
+                    it.pieces, it.rate, it.caseCount, it.loosePieces, it.salesmanId, it.createdById
+                ).joinToString("_")
+            }
             entryGroups.forEach { (_, group) ->
                 if (group.size > 1) {
                     val canonical = group.find { it.packGroupId != null } ?: group.minByOrNull { it.id } ?: group.first()

@@ -312,7 +312,7 @@ fun CustomDateRangePickerDialog(
                             Text(
                                 text = preset,
                                 color = if (isSelected) Color.White else TextPrimary,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontWeight = FontWeight.SemiBold,
                                 fontSize = 11.sp,
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                             )

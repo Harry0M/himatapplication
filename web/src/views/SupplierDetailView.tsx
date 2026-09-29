@@ -31,6 +31,8 @@ import {
   Sparkles,
   Tag,
   Factory,
+  Trash2,
+  CreditCard,
 } from "lucide-react"
 import { useData } from "../context/DataContext"
 import { formatInr, formatDate, cn } from "../lib/utils"
@@ -43,16 +45,30 @@ import { Input } from "../components/ui/Input"
 import { Tabs } from "../components/ui/Tabs"
 import { Supplier, Visit, PurchaseEntry, Customer } from "../types"
 import { ReportViewerModal } from "../components/ui/ReportViewerModal"
+import { EnvelopePrintModal } from "../components/ui/EnvelopePrintModal"
+import { createSupplierEnvelopeData } from "../lib/envelopePrint"
 import {
   generateSupplierInvoiceHtml,
   buildSupplierInvoiceWhatsAppText,
+  type SupplierOrderFormOptions,
 } from "../lib/pdfReports"
 import { exportSupplierToTallyXml } from "../lib/tallyExport"
+import { ActivitySummary, CustomersTable, ReferredList, Section, TripsTable } from "../components/related/RelatedRecords"
+import { DateRangeFilter } from "../components/ui/DateRangeFilter"
+import {
+  ALL_TIME,
+  DateRange,
+  filterOrdersByDate,
+  filterTripsByDate,
+  ReferrerTypes,
+  referredRecords,
+} from "../lib/domain"
 
 interface SupplierDetailViewProps {
   supplierId: number
   onBack: () => void
   onEdit?: (supplier: Supplier) => void
+  onDelete?: (supplier: Supplier) => void
   onNavigate?: (tab: string) => void
 }
 
@@ -62,9 +78,10 @@ export function SupplierDetailView({
   supplierId,
   onBack,
   onEdit,
+  onDelete,
   onNavigate,
 }: SupplierDetailViewProps) {
-  const { suppliers, visits, entries, customers, employees, markets, brands } = useData()
+  const { suppliers, visits, entries, customers, employees, markets, brands, allPeople } = useData()
 
   const [activeTab, setActiveTab] = useState<string>("orders")
   const [searchQuery, setSearchQuery] = useState<string>("")
@@ -87,6 +104,8 @@ export function SupplierDetailView({
     title: string
     html: string
     whatsAppText: string
+    /** Order forms: rebuilds the document for the chosen options */
+    buildHtml?: (options: SupplierOrderFormOptions) => string
   }>({
     open: false,
     title: "",
@@ -94,10 +113,22 @@ export function SupplierDetailView({
     whatsAppText: "",
   })
 
+  // 24cm x 10.5cm Envelope Print Modal State
+  const [isEnvelopeModalOpen, setIsEnvelopeModalOpen] = useState<boolean>(false)
+
   // Target Supplier
   const supplier = useMemo(() => {
     return suppliers.find((s) => s.id === supplierId) || null
   }, [suppliers, supplierId])
+
+  // Customers, suppliers and people this supplier referred to us
+  const referrerNames = supplier ? [supplier.firmName, supplier.name] : []
+  const referredCustomers = supplier ? referredRecords(customers, ReferrerTypes.SUPPLIER, Number(supplier.id), referrerNames) : []
+  const referredSuppliers = supplier
+    ? referredRecords(suppliers, ReferrerTypes.SUPPLIER, Number(supplier.id), referrerNames, true)
+    : []
+  const referredPeople = supplier ? referredRecords(allPeople, ReferrerTypes.SUPPLIER, Number(supplier.id), referrerNames) : []
+  const referredCount = referredCustomers.length + referredSuppliers.length + referredPeople.length
 
   // Customer Map
   const customerMap = useMemo(() => {
@@ -114,14 +145,42 @@ export function SupplierDetailView({
     if (!supplier) return []
     const suppNameLower = supplier.name.trim().toLowerCase()
     const suppFirmLower = (supplier.firmName || "").trim().toLowerCase()
-    return entries.filter(
-      (e) =>
-        Number(e.supplierId) === supplier.id ||
-        (e.supplierName &&
-          (e.supplierName.trim().toLowerCase() === suppNameLower ||
-            (suppFirmLower && e.supplierName.trim().toLowerCase() === suppFirmLower)))
-    )
+    return entries.filter((e) => {
+      // Linked by id wins; two suppliers with the same name must not share orders
+      if (Number(e.supplierId) > 0) return Number(e.supplierId) === Number(supplier.id)
+      const n = (e.supplierName || "").trim().toLowerCase()
+      return Boolean(n) && (n === suppNameLower || (Boolean(suppFirmLower) && n === suppFirmLower))
+    })
   }, [entries, supplier])
+
+  // Trips that bought from this supplier, and the customers of those trips (shared date filter)
+  const [relatedRange, setRelatedRange] = useState<DateRange>(ALL_TIME)
+  const supplierTrips = useMemo(() => {
+    const seen = new Map<number, Visit>()
+    allSupplierEntries.forEach((e) => {
+      const v = visitMap.get(Number(e.visitId))
+      if (v && !seen.has(Number(v.id))) seen.set(Number(v.id), v)
+    })
+    return Array.from(seen.values())
+  }, [allSupplierEntries, visitMap])
+  const rangedTrips = useMemo(() => filterTripsByDate(supplierTrips, relatedRange), [supplierTrips, relatedRange])
+  const rangedOrders = useMemo(
+    () => filterOrdersByDate(allSupplierEntries, visitMap, relatedRange),
+    [allSupplierEntries, visitMap, relatedRange]
+  )
+  const buyerCustomers = useMemo(() => {
+    const byId = new Map<number, Customer>()
+    rangedTrips.forEach((v) => {
+      const c =
+        customerMap.get(Number(v.customerId)) ||
+        customers.find((x) => {
+          const n = (v.customerName || "").trim().toLowerCase()
+          return Boolean(n) && [x.firmName, x.name].some((s) => (s || "").trim().toLowerCase() === n)
+        })
+      if (c && !c.isDeleted) byId.set(Number(c.id), c)
+    })
+    return Array.from(byId.values()).sort((a, b) => (a.firmName || a.name || "").localeCompare(b.firmName || b.name || ""))
+  }, [rangedTrips, customerMap, customers])
 
   // Unique buyer customers list
   const uniqueBuyersList = useMemo(() => {
@@ -257,9 +316,10 @@ export function SupplierDetailView({
     const text = buildSupplierInvoiceWhatsAppText(reportData)
     setReportModal({
       open: true,
-      title: `Supplier Procurement Voucher - ${supplier.firmName || supplier.name}`,
+      title: `Supplier Procurement Voucher - ${supplier.brand || supplier.firmName || supplier.name}`,
       html,
       whatsAppText: text,
+      buildHtml: (options) => generateSupplierInvoiceHtml({ ...reportData, options }),
     })
   }
 
@@ -317,7 +377,8 @@ export function SupplierDetailView({
 
   const verificationDocs = [
     { label: "Visiting Card Photo", uri: supplier.visitingCardPhotoUri, key: "card" },
-    { label: "Shop / Mill Front Photo", uri: supplier.shopPhotoUri, key: "shop" },
+    { label: "Shop / Firm Front Photo", uri: supplier.shopPhotoUri, key: "shop" },
+    { label: "Godown Photo", uri: supplier.godownPhotoUri, key: "godown" },
     { label: "Cancelled Cheque Photo", uri: supplier.cancelChequePhotoUri, key: "cheque" },
   ]
 
@@ -368,6 +429,23 @@ export function SupplierDetailView({
             </Button>
           )}
 
+          {onDelete && (
+            <Button
+              onClick={() => {
+                if (window.confirm(`Are you sure you want to permanently delete supplier "${supplier.firmName || supplier.name}"? This action cannot be undone.`)) {
+                  onDelete(supplier)
+                  onBack()
+                }
+              }}
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 text-xs shadow-sm border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900/60 dark:text-red-400 dark:hover:bg-red-950/40"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>Delete Supplier</span>
+            </Button>
+          )}
+
           <Button
             onClick={handleExportTally}
             variant="outline"
@@ -387,6 +465,17 @@ export function SupplierDetailView({
           >
             <Printer className="h-3.5 w-3.5" />
             <span>Supplier Voucher</span>
+          </Button>
+
+          <Button
+            onClick={() => setIsEnvelopeModalOpen(true)}
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 text-xs shadow-sm border-amber-200 hover:bg-amber-50/50 text-amber-700 dark:border-amber-900 dark:text-amber-400"
+            title="Print 24cm x 10.5cm Postal Envelope"
+          >
+            <Mail className="h-3.5 w-3.5" />
+            <span>Print Envelope</span>
           </Button>
         </div>
       </div>
@@ -528,14 +617,38 @@ export function SupplierDetailView({
 
       {/* Main Tabbed Navigation */}
       <Tabs
+        className="flex-wrap"
         options={[
           { value: "orders", label: `Supply Orders (${allSupplierEntries.length})` },
+          { value: "trips", label: `Trips & Buyers (${supplierTrips.length})` },
+          { value: "referred", label: `Referred (${referredCount})` },
           { value: "profile", label: "Mill Profile & Factories" },
-          { value: "media", label: `Verification Media (${verificationDocs.filter((d) => d.uri).length}/2)` },
+          { value: "media", label: `Verification Media (${verificationDocs.filter((d) => d.uri).length}/${verificationDocs.length})` },
         ]}
         value={activeTab}
-        onValueChange={(val) => setActiveTab(val as "orders" | "profile" | "media")}
+        onValueChange={(val) => setActiveTab(val)}
       />
+
+      {/* Trips that bought here and the customers of those trips, with the shared date filter */}
+      {activeTab === "trips" && (
+        <div className="space-y-3">
+          <DateRangeFilter value={relatedRange} onChange={setRelatedRange} />
+          <ActivitySummary trips={rangedTrips} orders={rangedOrders} />
+          <Section title="Trips" count={rangedTrips.length}>
+            <TripsTable trips={rangedTrips} entries={allSupplierEntries} employees={employees} />
+          </Section>
+          <Section title="Customers who bought here" count={buyerCustomers.length}>
+            <CustomersTable customers={buyerCustomers} visits={rangedTrips} entries={rangedOrders} />
+          </Section>
+        </div>
+      )}
+
+      {/* Everybody this supplier referred */}
+      {activeTab === "referred" && (
+        <Section title={`Referred by ${supplier.firmName || supplier.name}`} count={referredCount}>
+          <ReferredList customers={referredCustomers} suppliers={referredSuppliers} people={referredPeople} />
+        </Section>
+      )}
 
       {/* TAB 1: SUPPLY ORDERS & PROCUREMENT HISTORY */}
       {activeTab === "orders" && (
@@ -850,6 +963,16 @@ export function SupplierDetailView({
                       </p>
                     </div>
                   )}
+                  {supplier.subCategories && (
+                    <div>
+                      <span className="text-[11px] text-muted-foreground font-medium block">
+                        Sub-Categories / Items:
+                      </span>
+                      <p className="text-xs text-indigo-700 dark:text-indigo-400 font-semibold mt-0.5">
+                        {supplier.subCategories}
+                      </p>
+                    </div>
+                  )}
                   {supplier.priceRange && (
                     <div>
                       <span className="text-[11px] text-muted-foreground font-medium block">
@@ -873,13 +996,9 @@ export function SupplierDetailView({
 
               <div className="grid grid-cols-2 gap-4 text-xs">
                 <div>
-                  <span className="text-muted-foreground block text-[11px]">Default Case Pack</span>
-                  <span className="font-bold text-zinc-900 dark:text-zinc-100">{supplier.defaultCaseSize || 24} pcs / case</span>
-                </div>
-                <div>
                   <span className="text-muted-foreground block text-[11px]">Referred By</span>
                   <span className="font-semibold text-zinc-800 dark:text-zinc-200">
-                    {supplier.referredBy || "Direct Mill Connection"}
+                    {supplier.referredBy || "Direct Connection"}
                   </span>
                 </div>
                 <div>
@@ -889,12 +1008,60 @@ export function SupplierDetailView({
                   </span>
                 </div>
                 <div>
+                  <span className="text-muted-foreground block text-[11px]">Factory / Unit Address</span>
+                  <span className="text-zinc-700 dark:text-zinc-300">
+                    {supplier.homeAddress || "—"}
+                  </span>
+                </div>
+                <div>
                   <span className="text-muted-foreground block text-[11px]">City / Location</span>
                   <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                     {supplier.city || "Ahmedabad"}
                   </span>
                 </div>
               </div>
+
+              {/* Wholesale System Rate Structure */}
+              {((supplier.systemMrpValue || supplier.systemMrpPercent || supplier.system?.mrp?.value || supplier.system?.mrp?.percentage) ||
+                (supplier.systemLessValue || supplier.systemLessPercent || supplier.system?.less?.value || supplier.system?.less?.percentage)) && (
+                <div className="pt-2 space-y-2 border-t border-zinc-100 dark:border-zinc-800">
+                  <span className="text-[11px] text-muted-foreground font-medium block">
+                    Trade System Rate Structure:
+                  </span>
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div className="p-2.5 rounded-xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40">
+                      <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold uppercase block">
+                        System MRP
+                      </span>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="font-bold text-zinc-900 dark:text-zinc-100">
+                          {supplier.systemMrpValue || supplier.system?.mrp?.value || "MRP"}
+                        </span>
+                        {(supplier.systemMrpPercent !== undefined && supplier.systemMrpPercent !== "") && (
+                          <Badge variant="outline" className="text-[10px] bg-indigo-100/70 text-indigo-700 border-indigo-200">
+                            {supplier.systemMrpPercent || supplier.system?.mrp?.percentage}%
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-amber-50/50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/40">
+                      <span className="text-[10px] text-amber-700 dark:text-amber-400 font-bold uppercase block">
+                        System Less (Discount)
+                      </span>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="font-bold text-zinc-900 dark:text-zinc-100">
+                          {supplier.systemLessValue || supplier.system?.less?.value || "Less"}
+                        </span>
+                        {(supplier.systemLessPercent !== undefined && supplier.systemLessPercent !== "") && (
+                          <Badge variant="outline" className="text-[10px] bg-rose-100/70 text-rose-700 border-rose-200">
+                            -{supplier.systemLessPercent || supplier.system?.less?.percentage}%
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {supplier.notes && (
                 <div className="pt-2">
@@ -907,6 +1074,31 @@ export function SupplierDetailView({
                 </div>
               )}
             </Card>
+
+            {/* Bank Account & Financial Settlement Card */}
+            {(supplier.bankName || supplier.accountNumber || supplier.ifscCode) && (
+              <Card className="p-5 border border-zinc-200/80 dark:border-zinc-800 shadow-xs bg-white dark:bg-zinc-950 space-y-4 col-span-1 lg:col-span-2">
+                <div className="flex items-center gap-2 pb-2 border-b border-zinc-100 dark:border-zinc-800">
+                  <CreditCard className="h-4 w-4 text-emerald-600" />
+                  <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-50">Bank Account & Settlement Details</h3>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                  <div>
+                    <span className="text-muted-foreground block text-[11px]">Bank Name</span>
+                    <span className="font-bold text-zinc-900 dark:text-zinc-100">{supplier.bankName || "—"}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block text-[11px]">Account Number</span>
+                    <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{supplier.accountNumber || "—"}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block text-[11px]">IFSC Code</span>
+                    <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{supplier.ifscCode || "—"}</span>
+                  </div>
+                </div>
+              </Card>
+            )}
           </div>
 
           {/* Contact Lines (Up to 5) */}
@@ -1157,6 +1349,15 @@ export function SupplierDetailView({
         title={reportModal.title}
         htmlContent={reportModal.html}
         whatsAppText={reportModal.whatsAppText}
+        buildHtml={reportModal.buildHtml}
+      />
+
+      {/* 24cm x 10.5cm Envelope Print Modal */}
+      <EnvelopePrintModal
+        open={isEnvelopeModalOpen}
+        onOpenChange={setIsEnvelopeModalOpen}
+        initialRecipient={supplier ? createSupplierEnvelopeData(supplier) : null}
+        defaultType="Supplier"
       />
     </div>
   )

@@ -38,11 +38,13 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.ExpandLess
@@ -110,10 +112,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.local.entity.CustomerEntity
+import com.example.data.local.entity.EmployeeEntity
 import com.example.data.local.entity.PurchaseEntryEntity
+import com.example.data.local.entity.SupplierEntity
 import com.example.data.local.entity.VisitEntity
 import com.example.ui.components.DeliveryStatusBadge
+import com.example.ui.components.PersonRow
+import com.example.ui.components.ReferredList
+import com.example.ui.components.SectionHeader
 import com.example.ui.components.SupplierTypeBadge
+import com.example.util.ReferrerTypes
+import com.example.util.RelatedLogic
+import com.example.util.brandName
+import com.example.util.Roles
 import com.example.ui.viewmodel.HimatViewModel
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
@@ -123,18 +134,30 @@ fun CustomerDetailScreen(
     customer: CustomerEntity,
     onBack: () -> Unit,
     onCreateVisit: () -> Unit,
-    onOpenVisit: (VisitEntity) -> Unit = {}
+    onOpenVisit: (VisitEntity) -> Unit = {},
+    onEditCustomer: ((CustomerEntity) -> Unit)? = null,
+    onDeleteCustomer: ((CustomerEntity) -> Unit)? = null,
+    onOpenCustomer: (CustomerEntity) -> Unit = { viewModel.openCustomerDetail(it) },
+    onOpenSupplier: (SupplierEntity) -> Unit = { viewModel.openSupplierDetail(it) },
+    onOpenEmployee: (EmployeeEntity) -> Unit = { viewModel.openEmployeeDetail(it) }
 ) {
     val context = LocalContext.current
     val allVisits by viewModel.allVisits.collectAsStateWithLifecycle()
     val allEntries by viewModel.allEntries.collectAsStateWithLifecycle()
+    val allCheques by viewModel.allChequesPdc.collectAsStateWithLifecycle()
+    val allCustomers by viewModel.allCustomers.collectAsStateWithLifecycle()
+    val allSuppliers by viewModel.allSuppliers.collectAsStateWithLifecycle()
+    val allPeople by viewModel.allPeople.collectAsStateWithLifecycle()
 
     var searchQuery by remember { mutableStateOf("") }
     var filterStatus by remember { mutableStateOf("All") } // "All", "Pending", "Delivered"
-    var filterDateRange by remember { mutableStateOf("ALL") } // "ALL", "TODAY", "LAST_7", "THIS_MONTH"
+    var filterDateRange by remember { mutableStateOf("ALL") } // "ALL", "TODAY", "LAST_7", "THIS_MONTH", "CUSTOM"
+    var customDateRange by remember { mutableStateOf(com.example.util.DateRangeFilter()) }
+    var showCustomRangePicker by remember { mutableStateOf(false) }
     var filterSupplier by remember { mutableStateOf("All") }
     var filterTransporter by remember { mutableStateOf("All") }
     var activeFilterCategory by remember { mutableStateOf<String?>(null) } // "Date", "Status", "Supplier", "Transporter", or null
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
     // Date calculations for date filtering
     val todayStr = remember {
@@ -151,9 +174,10 @@ fun CustomerDetailScreen(
         String.format("%04d-%02d", cal.get(java.util.Calendar.YEAR), cal.get(java.util.Calendar.MONTH) + 1)
     }
 
-    // All visits for this specific customer
-    val customerVisits = remember(allVisits, customer.id) {
-        allVisits.filter { it.customerId == customer.id }
+    // All visits for this specific customer (also trips saved without / with a stale customer id)
+    val knownCustomerIds = remember(allCustomers) { allCustomers.map { it.id }.toSet() }
+    val customerVisits = remember(allVisits, customer, knownCustomerIds) {
+        RelatedLogic.tripsOfCustomer(allVisits, customer, knownCustomerIds)
             .sortedByDescending { it.date }
     }
     val customerVisitIds = remember(customerVisits) {
@@ -181,13 +205,14 @@ fun CustomerDetailScreen(
     val deliveredEntriesCount = customerEntries.count { it.deliveryStatus == "Delivered" }
 
     // Filtered visits based on search, status, date-wise and entity-wise filters
-    val filteredVisits = remember(customerVisits, customerEntries, searchQuery, filterStatus, filterDateRange, filterSupplier, filterTransporter) {
+    val filteredVisits = remember(customerVisits, customerEntries, searchQuery, filterStatus, filterDateRange, customDateRange, filterSupplier, filterTransporter) {
         customerVisits.filter { visit ->
             // 1. Date Range Filter
             val matchesDate = when (filterDateRange) {
                 "TODAY" -> visit.date == todayStr
                 "LAST_7" -> visit.date >= last7DaysCutoff
                 "THIS_MONTH" -> visit.date.startsWith(thisMonthPrefix)
+                "CUSTOM" -> customDateRange.matches(visit.date)
                 else -> true
             }
             if (!matchesDate) return@filter false
@@ -230,19 +255,23 @@ fun CustomerDetailScreen(
     var showDateRangeDialog by remember { mutableStateOf(false) }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
                     Column {
                         Text(
-                            text = customer.name,
+                            text = customer.brandName(),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "Customer Entries & Day Reports (${customer.customerId})",
+                            text = listOf(
+                                customer.name.trim().takeIf { it.isNotBlank() && !it.equals(customer.brandName(), ignoreCase = true) },
+                                customer.customerId.takeIf { it.isNotBlank() }
+                            ).filterNotNull().joinToString(" • ").ifBlank { "Customer trips & orders" },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -257,6 +286,40 @@ fun CustomerDetailScreen(
                     }
                 },
                 actions = {
+                    if (onEditCustomer != null) {
+                        FilledTonalIconButton(
+                            onClick = { onEditCustomer(customer) },
+                            modifier = Modifier
+                                .size(38.dp)
+                                .minimumInteractiveComponentSize()
+                        ) {
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = "Edit Customer",
+                                tint = Color(0xFF4338CA),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+
+                    if (onDeleteCustomer != null) {
+                        FilledTonalIconButton(
+                            onClick = { showDeleteConfirmDialog = true },
+                            modifier = Modifier
+                                .size(38.dp)
+                                .minimumInteractiveComponentSize()
+                        ) {
+                            Icon(
+                                Icons.Default.DeleteOutline,
+                                contentDescription = "Delete Customer",
+                                tint = Color(0xFFDC2626),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+
                     FilledTonalIconButton(
                         onClick = { showDateRangeDialog = true },
                         modifier = Modifier
@@ -293,7 +356,7 @@ fun CustomerDetailScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFFF6F8FB)
+                    containerColor = MaterialTheme.colorScheme.surface
                 )
             )
         }
@@ -302,7 +365,7 @@ fun CustomerDetailScreen(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFFF6F8FB))
+                .background(MaterialTheme.colorScheme.background)
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp),
             contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp),
@@ -343,7 +406,7 @@ fun CustomerDetailScreen(
                                 Text(
                                     text = (customer.firmName.ifBlank { customer.name }).take(2).uppercase(),
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 22.sp,
+                                    style = MaterialTheme.typography.headlineSmall,
                                     color = Color(0xFF1D4ED8)
                                 )
                             }
@@ -356,7 +419,7 @@ fun CustomerDetailScreen(
                     val primaryName = customer.firmName.ifBlank { customer.name }
                     Text(
                         text = primaryName,
-                        fontSize = 18.sp,
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF0F172A),
                         maxLines = 1,
@@ -368,7 +431,7 @@ fun CustomerDetailScreen(
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = "Prop: ${customer.name}",
-                            fontSize = 12.5.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Medium,
                             color = Color(0xFF64748B)
                         )
@@ -389,7 +452,7 @@ fun CustomerDetailScreen(
                                 Text(
                                     text = "GST: ${customer.gstin}",
                                     fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                    fontSize = 10.5.sp,
+                                    style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.SemiBold,
                                     color = Color(0xFF334155),
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -403,7 +466,7 @@ fun CustomerDetailScreen(
                             ) {
                                 Text(
                                     text = customer.religion,
-                                    fontSize = 10.5.sp,
+                                    style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFF1D4ED8),
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -419,7 +482,7 @@ fun CustomerDetailScreen(
                                 Text(
                                     text = "PAN: ${customer.panNumber}",
                                     fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                    fontSize = 10.sp,
+                                    style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Medium,
                                     color = Color(0xFF475569),
                                     modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
@@ -452,7 +515,7 @@ fun CustomerDetailScreen(
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     Icon(Icons.Default.Call, contentDescription = "Call", tint = Color(0xFF059669), modifier = Modifier.size(13.dp))
-                                    Text(text = customer.phone, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF065F46))
+                                    Text(text = customer.phone, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = Color(0xFF065F46))
                                 }
                             }
                         }
@@ -483,7 +546,7 @@ fun CustomerDetailScreen(
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     Icon(Icons.Default.Place, contentDescription = "Map Directions", tint = Color(0xFF2563EB), modifier = Modifier.size(13.dp))
-                                    Text(text = "Direction", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1D4ED8))
+                                    Text(text = "Direction", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = Color(0xFF1D4ED8))
                                 }
                             }
                         }
@@ -506,7 +569,7 @@ fun CustomerDetailScreen(
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     Icon(Icons.Default.Email, contentDescription = "Email", tint = Color(0xFF475569), modifier = Modifier.size(13.dp))
-                                    Text(text = "Email", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
+                                    Text(text = "Email", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
                                 }
                             }
                         }
@@ -524,13 +587,13 @@ fun CustomerDetailScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = "$totalVisits",
-                            fontSize = 17.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF0F172A)
                         )
                         Text(
                             text = "Visits / Days",
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             color = Color(0xFF64748B)
                         )
                     }
@@ -545,13 +608,13 @@ fun CustomerDetailScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = String.format("%,d", totalPieces),
-                            fontSize = 17.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF0F172A)
                         )
                         Text(
                             text = "Total Pieces",
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             color = Color(0xFF64748B)
                         )
                     }
@@ -566,13 +629,13 @@ fun CustomerDetailScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = "$deliveredEntriesCount",
-                            fontSize = 17.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF059669)
                         )
                         Text(
                             text = "Delivered",
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             color = Color(0xFF64748B)
                         )
                     }
@@ -587,26 +650,31 @@ fun CustomerDetailScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = "$pendingEntriesCount",
-                            fontSize = 17.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = if (pendingEntriesCount > 0) Color(0xFFDC2626) else Color(0xFF059669)
                         )
                         Text(
                             text = "Pending",
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             color = Color(0xFF64748B)
                         )
                     }
                 }
 
-                // Extended Details (Addresses, Markets, Garments, Transport)
+                // Extended Details (Addresses, Markets, Working Markets, DOB, Religion, Garments, Bank, Transport)
                 val fullAddress = customer.shopAddress.ifBlank { customer.address }
+                val hasBankDetails = customer.bankName.isNotBlank() || customer.accountNumber.isNotBlank() || customer.ifscCode.isNotBlank()
                 val hasExtendedDetails = fullAddress.isNotBlank() ||
                         customer.marketArea.isNotBlank() ||
+                        customer.workingMarkets.isNotBlank() ||
+                        customer.dob.isNotBlank() ||
+                        customer.religion.isNotBlank() ||
                         customer.city.isNotBlank() ||
                         customer.garmentTypes.isNotBlank() ||
                         customer.preferredTransporterName.isNotBlank() ||
-                        customer.referredBy.isNotBlank()
+                        customer.referredBy.isNotBlank() ||
+                        hasBankDetails
 
                 if (hasExtendedDetails) {
                     Surface(
@@ -618,45 +686,94 @@ fun CustomerDetailScreen(
                         Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             if (fullAddress.isNotBlank()) {
                                 Row(verticalAlignment = Alignment.Top) {
-                                    Text("Address: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                    Text("Address: ", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
                                     Text(
                                         text = listOfNotNull(
                                             fullAddress.takeIf { it.isNotBlank() },
                                             customer.city.takeIf { it.isNotBlank() },
-                                            customer.state.takeIf { it.isNotBlank() }
+                                            customer.district.takeIf { it.isNotBlank() },
+                                            customer.state.takeIf { it.isNotBlank() },
+                                            customer.pincode.takeIf { it.isNotBlank() }
                                         ).joinToString(", "),
-                                        fontSize = 11.sp,
+                                        style = MaterialTheme.typography.labelSmall,
                                         color = Color(0xFF1E293B)
                                     )
                                 }
                             }
                             if (customer.marketArea.isNotBlank()) {
                                 Row(verticalAlignment = Alignment.Top) {
-                                    Text("Market: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
-                                    Text(customer.marketArea, fontSize = 11.sp, color = Color(0xFF0F766E), fontWeight = FontWeight.Medium)
+                                    Text("Market: ", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                    Text(customer.marketArea, style = MaterialTheme.typography.labelSmall, color = Color(0xFF0F766E), fontWeight = FontWeight.Medium)
+                                }
+                            }
+                            if (customer.workingMarkets.isNotBlank()) {
+                                Row(verticalAlignment = Alignment.Top) {
+                                    Text("Working Mkts: ", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                    Text(customer.workingMarkets, style = MaterialTheme.typography.labelSmall, color = Color(0xFF1D4ED8), fontWeight = FontWeight.SemiBold)
                                 }
                             }
                             if (customer.garmentTypes.isNotBlank()) {
                                 Row(verticalAlignment = Alignment.Top) {
-                                    Text("Deals In: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
-                                    Text(customer.garmentTypes, fontSize = 11.sp, color = Color(0xFF6366F1), fontWeight = FontWeight.Medium)
+                                    Text("Deals In: ", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                    Text(customer.garmentTypes, style = MaterialTheme.typography.labelSmall, color = Color(0xFF6366F1), fontWeight = FontWeight.Medium)
+                                }
+                            }
+                            if (customer.dob.isNotBlank()) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("DOB: ", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                    Text(customer.dob, style = MaterialTheme.typography.labelSmall, color = Color(0xFF1E293B))
+                                }
+                            }
+                            if (customer.religion.isNotBlank()) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Community: ", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                    Text(customer.religion, style = MaterialTheme.typography.labelSmall, color = Color(0xFF1E293B))
+                                }
+                            }
+                            if (hasBankDetails) {
+                                Row(verticalAlignment = Alignment.Top) {
+                                    Text("Bank A/C: ", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                    val bankParts = listOfNotNull(
+                                        customer.bankName.takeIf { it.isNotBlank() },
+                                        customer.accountNumber.takeIf { it.isNotBlank() }?.let { "A/C: $it" },
+                                        customer.ifscCode.takeIf { it.isNotBlank() }?.let { "IFSC: $it" }
+                                    )
+                                    Text(bankParts.joinToString(" • "), style = MaterialTheme.typography.labelSmall, color = Color(0xFF047857), fontWeight = FontWeight.SemiBold)
                                 }
                             }
                             if (customer.preferredTransporterName.isNotBlank()) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Transporter: ", fontSize = 11.sp, color = Color(0xFF64748B))
+                                    Text("Transporter: ", style = MaterialTheme.typography.labelSmall, color = Color(0xFF64748B))
                                     Text(
                                         customer.preferredTransporterName,
-                                        fontSize = 11.sp,
+                                        style = MaterialTheme.typography.labelSmall,
                                         color = Color(0xFF1E293B),
                                         fontWeight = FontWeight.Medium
                                     )
                                 }
                             }
+                            if (customer.transportPreference.isNotBlank()) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.LocalShipping,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(10.dp),
+                                        tint = Color(0xFF64748B)
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text("Station: ", style = MaterialTheme.typography.labelSmall, color = Color(0xFF64748B))
+                                    Text(
+                                        customer.transportPreference,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color(0xFF047857),
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
                             if (customer.referredBy.isNotBlank()) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Referred by: ", fontSize = 11.sp, color = Color(0xFF64748B))
-                                    Text(customer.referredBy, fontSize = 11.sp, color = Color(0xFF1E293B), fontWeight = FontWeight.Medium)
+                                    Text("Referred by: ", style = MaterialTheme.typography.labelSmall, color = Color(0xFF64748B))
+                                    Text(customer.referredBy, style = MaterialTheme.typography.labelSmall, color = Color(0xFF1E293B), fontWeight = FontWeight.Medium)
                                 }
                             }
                         }
@@ -700,7 +817,7 @@ fun CustomerDetailScreen(
                                 Text(
                                     text = "See KYC Documents",
                                     fontWeight = FontWeight.SemiBold,
-                                    fontSize = 12.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = Color(0xFF065F46)
                                 )
                                 Surface(
@@ -709,7 +826,7 @@ fun CustomerDetailScreen(
                                 ) {
                                     Text(
                                         text = "${customerDocs.size}",
-                                        fontSize = 10.sp,
+                                        style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = Color(0xFF065F46),
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
@@ -764,7 +881,7 @@ fun CustomerDetailScreen(
                                         Spacer(modifier = Modifier.height(6.dp))
                                         Text(
                                             text = label,
-                                            fontSize = 11.sp,
+                                            style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.SemiBold,
                                             color = MaterialTheme.colorScheme.onSurface,
                                             maxLines = 1,
@@ -772,7 +889,7 @@ fun CustomerDetailScreen(
                                         )
                                         Text(
                                             text = if (url.startsWith("http")) "Firebase Cloud" else "Local File",
-                                            fontSize = 9.5.sp,
+                                            style = MaterialTheme.typography.labelSmall,
                                             color = if (url.startsWith("http")) Color(0xFF059669) else Color(0xFF64748B)
                                         )
                                     }
@@ -789,20 +906,222 @@ fun CustomerDetailScreen(
                         }
                     }
                 }
+
+                // Compact "See Security Cheques" Expandable Option (Text Data)
+                val customerSecurityCheques = remember(allCheques, customer.id, customer.firmName, customer.name) {
+                    allCheques.filter { cheque ->
+                        !cheque.isDeleted &&
+                        (cheque.partyId == customer.id || 
+                         (cheque.partyType.equals("Customer", ignoreCase = true) && 
+                          (cheque.partyName.equals(customer.firmName, ignoreCase = true) || cheque.partyName.equals(customer.name, ignoreCase = true)))) &&
+                        (cheque.notes.contains("Security", ignoreCase = true) || 
+                         cheque.notes.contains("Sec CHQ", ignoreCase = true) || 
+                         cheque.notes.contains("Guarantee", ignoreCase = true))
+                    }
+                }
+
+                if (customerSecurityCheques.isNotEmpty()) {
+                    var showSecurityCheques by remember { mutableStateOf(false) }
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFFEFF6FF),
+                        border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { showSecurityCheques = !showSecurityCheques }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(
+                                    Icons.Default.AccountBalance,
+                                    contentDescription = null,
+                                    tint = Color(0xFF1D4ED8),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "See Security Cheques",
+                                    fontWeight = FontWeight.SemiBold,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFF1E40AF)
+                                )
+                                Surface(
+                                    color = Color(0xFFDBEAFE),
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
+                                    Text(
+                                        text = "${customerSecurityCheques.size}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF1E40AF),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                    )
+                                }
+                            }
+                            Icon(
+                                imageVector = if (showSecurityCheques) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = null,
+                                tint = Color(0xFF1D4ED8),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    if (showSecurityCheques) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            customerSecurityCheques.forEach { cheque ->
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFF8FAFC),
+                                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Text(
+                                                    text = "CHQ #${cheque.chequeNo}",
+                                                    fontWeight = FontWeight.Bold,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = Color(0xFF0F172A)
+                                                )
+                                                val statusColor = when (cheque.status.lowercase()) {
+                                                    "cleared" -> Color(0xFF166534) to Color(0xFFDCFCE7)
+                                                    "bounced" -> Color(0xFF991B1B) to Color(0xFFFEE2E2)
+                                                    "deposited" -> Color(0xFF1E40AF) to Color(0xFFDBEAFE)
+                                                    else -> Color(0xFF92400E) to Color(0xFFFEF3C7)
+                                                }
+                                                Surface(
+                                                    color = statusColor.second,
+                                                    shape = RoundedCornerShape(4.dp)
+                                                ) {
+                                                    Text(
+                                                        text = cheque.status.uppercase(),
+                                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = statusColor.first
+                                                    )
+                                                }
+                                            }
+                                            Text(
+                                                text = "₹${PdfGenerator.formatInr(cheque.amount)}",
+                                                fontWeight = FontWeight.ExtraBold,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = Color(0xFF2563EB)
+                                            )
+                                        }
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "Bank: ${cheque.bankName.ifBlank { "Not Specified" }}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color(0xFF475569),
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                            Text(
+                                                text = "Due: ${cheque.chequeDate.ifBlank { "Undated" }}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = if (cheque.chequeDate == todayStr) Color(0xFFDC2626) else Color(0xFF64748B),
+                                                fontWeight = if (cheque.chequeDate == todayStr) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                        }
+
+                                        if (cheque.notes.isNotBlank()) {
+                                            Text(
+                                                text = cheque.notes.removePrefix("[Security Cheque]").trim().ifBlank { "Security / Guarantee Cheque" },
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color(0xFF64748B),
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                }
+            }
+
+            // Links: which Sub Agent brought this customer, and who this customer referred
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val linkedAgent = remember(allPeople, customer) {
+                        allPeople.firstOrNull { p ->
+                            Roles.isAgent(p.role) && (p.id == customer.subAgentId ||
+                                (customer.subAgentId == null && customer.subAgentName.isNotBlank() && p.name.equals(customer.subAgentName, true)))
+                        }
+                    }
+                    if (linkedAgent != null || customer.subAgentName.isNotBlank()) {
+                        PersonRow(
+                            title = linkedAgent?.name ?: customer.subAgentName,
+                            subtitle = "Sub Agent who brought this customer" +
+                                (linkedAgent?.phone?.takeIf { it.isNotBlank() }?.let { " • $it" } ?: ""),
+                            badge = "Sub Agent",
+                            badgeColor = Color(0xFFB45309),
+                            onClick = linkedAgent?.let { a -> { onOpenEmployee(a) } }
+                        )
+                    }
+                    val referrerNames = listOf(customer.firmName, customer.name)
+                    val referredCustomers = remember(allCustomers, customer) {
+                        RelatedLogic.referredCustomers(allCustomers, ReferrerTypes.CUSTOMER, customer.id, referrerNames)
+                    }
+                    val referredSuppliers = remember(allSuppliers, customer) {
+                        RelatedLogic.referredSuppliers(allSuppliers, ReferrerTypes.CUSTOMER, customer.id, referrerNames)
+                    }
+                    val referredPeople = remember(allPeople, customer) {
+                        RelatedLogic.referredPeople(allPeople, ReferrerTypes.CUSTOMER, customer.id, referrerNames)
+                    }
+                    SectionHeader(
+                        title = "Referred by this customer",
+                        count = referredCustomers.size + referredSuppliers.size + referredPeople.size
+                    )
+                    ReferredList(
+                        customers = referredCustomers,
+                        suppliers = referredSuppliers,
+                        people = referredPeople,
+                        onOpenCustomer = onOpenCustomer,
+                        onOpenSupplier = onOpenSupplier,
+                        onOpenEmployee = onOpenEmployee,
+                        emptyText = "Nobody has been referred by this customer yet."
+                    )
                 }
             }
 
             // 2. Fixed/Pinned Search Bar
             stickyHeader {
                 Surface(
-                    color = Color(0xFFF6F8FB),
+                    color = MaterialTheme.colorScheme.background,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 4.dp)
                 ) {
                     Surface(
                         shape = CircleShape,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
                         border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -828,7 +1147,7 @@ fun CustomerDetailScreen(
                                 if (searchQuery.isEmpty()) {
                                     Text(
                                         text = "Search date, order #, item, supplier...",
-                                        fontSize = 12.sp,
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = Color(0xFF94A3B8),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
@@ -892,6 +1211,7 @@ fun CustomerDetailScreen(
                             "TODAY" -> "Today"
                             "LAST_7" -> "7 Days"
                             "THIS_MONTH" -> "This Month"
+                            "CUSTOM" -> customDateRange.customLabel.ifBlank { "Custom" }
                             else -> "Date"
                         }
                         FilterChip(
@@ -911,8 +1231,8 @@ fun CustomerDetailScreen(
                             label = {
                                 Text(
                                     text = if (isDateActive) "Date: $dateLabel" else "Date",
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isDateActive || activeFilterCategory == "Date") FontWeight.Bold else FontWeight.Medium
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold
                                 )
                             }
                         )
@@ -936,8 +1256,8 @@ fun CustomerDetailScreen(
                             label = {
                                 Text(
                                     text = if (isStatusActive) "Status: $filterStatus" else "Status",
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isStatusActive || activeFilterCategory == "Status") FontWeight.Bold else FontWeight.Medium
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold
                                 )
                             }
                         )
@@ -963,8 +1283,8 @@ fun CustomerDetailScreen(
                                     val supName = if (filterSupplier.length > 10) filterSupplier.take(10) + "…" else filterSupplier
                                     Text(
                                         text = if (isSupplierActive) "Sup: $supName" else "Supplier",
-                                        fontSize = 11.sp,
-                                        fontWeight = if (isSupplierActive || activeFilterCategory == "Supplier") FontWeight.Bold else FontWeight.Medium
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold
                                     )
                                 }
                             )
@@ -991,8 +1311,8 @@ fun CustomerDetailScreen(
                                     val trName = if (filterTransporter.length > 10) filterTransporter.take(10) + "…" else filterTransporter
                                     Text(
                                         text = if (isTransporterActive) "Trans: $trName" else "Transporter",
-                                        fontSize = 11.sp,
-                                        fontWeight = if (isTransporterActive || activeFilterCategory == "Transporter") FontWeight.Bold else FontWeight.Medium
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold
                                     )
                                 }
                             )
@@ -1027,7 +1347,7 @@ fun CustomerDetailScreen(
                                     )
                                     Text(
                                         text = "Reset",
-                                        fontSize = 10.5.sp,
+                                        style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = Color(0xFFB91C1C)
                                     )
@@ -1052,19 +1372,22 @@ fun CustomerDetailScreen(
                                                 "ALL" to "All Dates",
                                                 "TODAY" to "Today",
                                                 "LAST_7" to "Last 7 Days",
-                                                "THIS_MONTH" to "This Month"
+                                                "THIS_MONTH" to "This Month",
+                                                "CUSTOM" to (if (filterDateRange == "CUSTOM" && customDateRange.customLabel.isNotBlank()) customDateRange.customLabel else "Custom range")
                                             ).forEach { (rangeKey, label) ->
                                                 val isSelected = filterDateRange == rangeKey
                                                 FilterChip(
                                                     selected = isSelected,
-                                                    onClick = { filterDateRange = rangeKey },
+                                                    onClick = {
+                                                        if (rangeKey == "CUSTOM") showCustomRangePicker = true else filterDateRange = rangeKey
+                                                    },
                                                     shape = RoundedCornerShape(12.dp),
                                                     modifier = Modifier.defaultMinSize(minHeight = 28.dp),
                                                     label = {
                                                         Text(
                                                             text = label,
-                                                            fontSize = 10.5.sp,
-                                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = FontWeight.SemiBold
                                                         )
                                                     }
                                                 )
@@ -1085,8 +1408,8 @@ fun CustomerDetailScreen(
                                                     label = {
                                                         Text(
                                                             text = label,
-                                                            fontSize = 10.5.sp,
-                                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = FontWeight.SemiBold
                                                         )
                                                     }
                                                 )
@@ -1102,8 +1425,8 @@ fun CustomerDetailScreen(
                                                 label = {
                                                     Text(
                                                         "All Suppliers",
-                                                        fontSize = 10.5.sp,
-                                                        fontWeight = if (allSelected) FontWeight.Bold else FontWeight.Normal
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.SemiBold
                                                     )
                                                 }
                                             )
@@ -1117,8 +1440,8 @@ fun CustomerDetailScreen(
                                                     label = {
                                                         Text(
                                                             sup,
-                                                            fontSize = 10.5.sp,
-                                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = FontWeight.SemiBold
                                                         )
                                                     }
                                                 )
@@ -1134,8 +1457,8 @@ fun CustomerDetailScreen(
                                                 label = {
                                                     Text(
                                                         "All Transporters",
-                                                        fontSize = 10.5.sp,
-                                                        fontWeight = if (allSelected) FontWeight.Bold else FontWeight.Normal
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.SemiBold
                                                     )
                                                 }
                                             )
@@ -1149,8 +1472,8 @@ fun CustomerDetailScreen(
                                                     label = {
                                                         Text(
                                                             tr,
-                                                            fontSize = 10.5.sp,
-                                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = FontWeight.SemiBold
                                                         )
                                                     }
                                                 )
@@ -1187,7 +1510,7 @@ fun CustomerDetailScreen(
                             tint = Color(0xFF1D4ED8)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("PDF Report", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1D4ED8))
+                        Text("PDF Report", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFF1D4ED8))
                     }
                 }
             }
@@ -1244,6 +1567,24 @@ fun CustomerDetailScreen(
         }
     }
 
+    if (showCustomRangePicker) {
+        com.example.ui.dialogs.CustomDateRangePickerDialog(
+            initialStartMillis = customDateRange.customStartMillis,
+            initialEndMillis = customDateRange.customEndMillis,
+            onDismissRequest = { showCustomRangePicker = false },
+            onDateRangeSelected = { start, end, label ->
+                customDateRange = com.example.util.DateRangeFilter(
+                    preset = com.example.util.DatePreset.CUSTOM,
+                    customStartMillis = start,
+                    customEndMillis = end,
+                    customLabel = label
+                )
+                filterDateRange = "CUSTOM"
+                showCustomRangePicker = false
+            }
+        )
+    }
+
     if (showDateRangeDialog) {
         CustomerDateRangeDialog(
             customer = customer,
@@ -1253,6 +1594,30 @@ fun CustomerDetailScreen(
             onGeneratePdf = { sDate: String, eDate: String, sFilter: String ->
                 showDateRangeDialog = false
                 viewModel.shareCustomerDateRangeReportPdf(customer, sDate, eDate, sFilter)
+            }
+        )
+    }
+
+    if (showDeleteConfirmDialog && onDeleteCustomer != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmDialog = false },
+            title = { Text("Delete Customer?", fontWeight = FontWeight.Bold, color = Color(0xFFDC2626)) },
+            text = { Text("Are you sure you want to permanently delete \"${customer.firmName.ifBlank { customer.name }}\"? This action cannot be undone.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirmDialog = false
+                        onDeleteCustomer(customer)
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFDC2626))
+                ) {
+                    Text("Delete", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmDialog = false }) {
+                    Text("Cancel")
+                }
             }
         )
     }
@@ -1501,7 +1866,7 @@ fun DayVisitCard(
                         "Delete Day Visit?",
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFDC2626),
-                        fontSize = 16.sp
+                        style = MaterialTheme.typography.titleMedium
                     )
                 }
             },
@@ -1509,7 +1874,7 @@ fun DayVisitCard(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         "Are you sure you want to delete visit ${visit.visitCode} on ${visit.date}?",
-                        fontSize = 13.5.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Surface(
@@ -1519,7 +1884,7 @@ fun DayVisitCard(
                     ) {
                         Text(
                             text = "⚠ WARNING: Deleting this trip will also permanently delete all ${entries.size} deliveries/orders recorded on this day.",
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.SemiBold,
                             color = Color(0xFFB91C1C),
                             modifier = Modifier.padding(10.dp)
@@ -1736,8 +2101,9 @@ fun CustomerDateRangeDialog(
     var endDate by remember { mutableStateOf(today) }
     var statusFilter by remember { mutableStateOf("All") }
 
-    val customerVisits = remember(allVisits, customer.id) { allVisits.filter { it.customerId == customer.id } }
-    val visitMap = remember(customerVisits) { customerVisits.associateBy { it.id } }
+    // [entries] already belong to this customer; look up their trips by id (covers trips with a stale customer id)
+    val entryVisitIds = remember(entries) { entries.map { it.visitId }.toSet() }
+    val visitMap = remember(allVisits, entryVisitIds) { allVisits.filter { it.id in entryVisitIds }.associateBy { it.id } }
 
     val filteredEntries = remember(entries, startDate, endDate, statusFilter) {
         entries.filter { entry ->
@@ -1784,13 +2150,13 @@ fun CustomerDateRangeDialog(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "Customer Statement PDF",
-                            fontSize = 17.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF0F172A)
                         )
                         Text(
                             text = customer.firmName.ifBlank { customer.name },
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFF64748B)
                         )
                     }
@@ -1802,7 +2168,7 @@ fun CustomerDateRangeDialog(
                 HorizontalDivider(color = Color(0xFFE2E8F0))
 
                 // Quick Date Presets
-                Text("Select Period:", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
+                Text("Select Period:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
                 Row(
                     modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1838,7 +2204,7 @@ fun CustomerDateRangeDialog(
                                 }
                             },
                             shape = RoundedCornerShape(12.dp),
-                            label = { Text(label, fontSize = 11.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal) }
+                            label = { Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold) }
                         )
                     }
                 }
@@ -1854,8 +2220,8 @@ fun CustomerDateRangeDialog(
                             startDate = it
                             selectedPreset = "CUSTOM"
                         },
-                        label = { Text("From Date", fontSize = 11.sp) },
-                        placeholder = { Text("YYYY-MM-DD", fontSize = 11.sp) },
+                        label = { Text("From Date", style = MaterialTheme.typography.labelSmall) },
+                        placeholder = { Text("YYYY-MM-DD", style = MaterialTheme.typography.labelSmall) },
                         singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
@@ -1865,15 +2231,15 @@ fun CustomerDateRangeDialog(
                             endDate = it
                             selectedPreset = "CUSTOM"
                         },
-                        label = { Text("To Date", fontSize = 11.sp) },
-                        placeholder = { Text("YYYY-MM-DD", fontSize = 11.sp) },
+                        label = { Text("To Date", style = MaterialTheme.typography.labelSmall) },
+                        placeholder = { Text("YYYY-MM-DD", style = MaterialTheme.typography.labelSmall) },
                         singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
                 }
 
                 // Status Filter
-                Text("Dispatch Filter:", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
+                Text("Dispatch Filter:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1885,7 +2251,7 @@ fun CustomerDateRangeDialog(
                             onClick = { statusFilter = filterKey },
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1f),
-                            label = { Text(label, fontSize = 10.5.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal) }
+                            label = { Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold) }
                         )
                     }
                 }
@@ -1901,24 +2267,24 @@ fun CustomerDateRangeDialog(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("Matching Orders:", fontSize = 11.sp, color = Color(0xFF64748B))
-                            Text("${filteredEntries.size} Orders (${matchPieces} Pcs)", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                            Text("Matching Orders:", style = MaterialTheme.typography.labelSmall, color = Color(0xFF64748B))
+                            Text("${filteredEntries.size} Orders (${matchPieces} Pcs)", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
                         }
                         Spacer(modifier = Modifier.height(3.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("Dispatch Status:", fontSize = 11.sp, color = Color(0xFF64748B))
-                            Text("$dispatchedCount Dispatched • $pendingCount Pending", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = if (pendingCount > 0) Color(0xFFD97706) else Color(0xFF059669))
+                            Text("Dispatch Status:", style = MaterialTheme.typography.labelSmall, color = Color(0xFF64748B))
+                            Text("$dispatchedCount Dispatched • $pendingCount Pending", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = if (pendingCount > 0) Color(0xFFD97706) else Color(0xFF059669))
                         }
                         Spacer(modifier = Modifier.height(3.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("Total Value:", fontSize = 11.sp, color = Color(0xFF64748B))
-                            Text(PdfGenerator.formatInr(matchAmount), fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E3A8A))
+                            Text("Total Value:", style = MaterialTheme.typography.labelSmall, color = Color(0xFF64748B))
+                            Text(PdfGenerator.formatInr(matchAmount), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = Color(0xFF1E3A8A))
                         }
                     }
                 }
@@ -1933,7 +2299,7 @@ fun CustomerDateRangeDialog(
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.weight(0.8f)
                     ) {
-                        Text("Cancel", fontSize = 12.sp)
+                        Text("Cancel", style = MaterialTheme.typography.bodySmall)
                     }
 
                     Button(
@@ -1944,7 +2310,7 @@ fun CustomerDateRangeDialog(
                     ) {
                         Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = Color(0xFFFDE047), modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Generate PDF", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text("Generate PDF", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
             }

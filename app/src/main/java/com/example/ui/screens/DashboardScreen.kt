@@ -290,7 +290,7 @@ fun DashboardScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF6F8FB))
+            .background(MaterialTheme.colorScheme.background)
     ) {
         // NO HEADER TITLE OR BUTTONS. Start directly with Role Scope & Time Filter Pills
         Row(
@@ -1104,7 +1104,7 @@ fun DashboardCylindricalChart(
                             Text(
                                 text = item.label,
                                 fontSize = 9.5.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontWeight = FontWeight.SemiBold,
                                 color = if (isSelected) NavyPrimary else TextSecondary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -1620,7 +1620,7 @@ private fun TimePeriodFilterChip(
         ) {
             Text(
                 text = label,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                fontWeight = FontWeight.SemiBold,
                 fontSize = 12.sp,
                 color = if (isSelected) Color.White else NavyPrimary
             )

@@ -2,7 +2,6 @@ package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -42,6 +41,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.Handshake
 import androidx.compose.material.icons.filled.Inventory
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.LocationCity
@@ -67,6 +67,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -82,12 +83,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
@@ -103,6 +100,8 @@ import com.example.data.local.entity.MarketEntity
 import com.example.data.local.entity.ProductEntity
 import com.example.data.local.entity.SupplierEntity
 import com.example.data.local.entity.TransporterEntity
+import com.example.ui.components.ListRow
+import com.example.ui.components.StatusPill
 import com.example.ui.components.SupplierTypeBadge
 import com.example.ui.theme.GoldAccent
 import com.example.ui.theme.NavyPrimary
@@ -168,32 +167,33 @@ fun MastersScreen(
     val markets by viewModel.visibleMarkets.collectAsStateWithLifecycle()
     val products by viewModel.visibleProducts.collectAsStateWithLifecycle()
     val employees by viewModel.allEmployees.collectAsStateWithLifecycle()
+    val subAgents by viewModel.subAgents.collectAsStateWithLifecycle()
+    val subAgentCount = subAgents.count { !it.status.equals("Deactivated", true) }
     val pendingRequestsCount by viewModel.pendingRegistrationRequestsCount.collectAsStateWithLifecycle()
     val pendingSupplierRequestsCount by viewModel.pendingSupplierRegistrationRequestsCount.collectAsStateWithLifecycle()
+    val pendingCountByCustomer by viewModel.pendingCountByCustomer.collectAsStateWithLifecycle()
     var showRequestsDialog by remember { mutableStateOf(false) }
     var showSupplierRequestsDialog by remember { mutableStateOf(false) }
     var showSupplierRegistrationDialog by remember { mutableStateOf(false) }
     var inviteShareType by remember { mutableStateOf<MasterTab?>(null) }
 
-    // Active Category Selection: null means on the Masters Hub Directory
-    var selectedCategory by remember { mutableStateOf<MasterTab?>(initialTab) }
-
-    LaunchedEffect(initialTab) {
-        if (initialTab != null) {
-            selectedCategory = initialTab
-        }
-    }
-
-    // Hardware / System Back Button: Returns to Masters Hub if currently in a specific master screen
-    BackHandler(enabled = selectedCategory != null) {
-        selectedCategory = null
-    }
+    // Active master list (null = Masters hub). Lives in the ViewModel so it survives opening a
+    // record and coming back; hub -> list -> back is a normal back-stack step.
+    val vmCategory by viewModel.mastersCategory.collectAsStateWithLifecycle()
+    val selectedCategory: MasterTab? = vmCategory ?: initialTab
+    val isAgentUser by viewModel.isAgentUser.collectAsStateWithLifecycle()
+    val currentEmployeeForLink by viewModel.currentEmployee.collectAsStateWithLifecycle()
+    // Sub Agents share their personal link so new customers are linked to them
+    val agentLinkId = if (isAgentUser) currentEmployeeForLink?.id else null
 
     // Search and Filter States
     var hubSearchQuery by remember { mutableStateOf("") }
     var searchQuery by remember { mutableStateOf("") }
     var isSearchVisible by remember { mutableStateOf(false) }
-    var supplierTypeFilter by remember { mutableStateOf("All") } // "All", "Manufacturer", "Wholesaler"
+    var supplierTypeFilter by remember { mutableStateOf("All") } // "All", "Manufacturer", "Trading", "Distributor", "Fabric"
+    var supplierCategoryFilter by remember { mutableStateOf("All") }
+    var customerGarmentFilter by remember { mutableStateOf("All") }
+    var customerCreditFilter by remember { mutableStateOf("All") }
 
     // Dialog States for Delete & View
     var deleteConfirmRequest by remember { mutableStateOf<MasterDeleteRequest?>(null) }
@@ -208,29 +208,8 @@ fun MastersScreen(
     val marketListState = rememberLazyListState()
     val productListState = rememberLazyListState()
 
-    var isHeaderVisible by remember { mutableStateOf(true) }
-
-    val nestedScrollConnection = remember {
-        object : NestedScrollConnection {
-            private var accumulatedDelta = 0f
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (source == NestedScrollSource.UserInput) {
-                    val delta = available.y
-                    if (delta < 0) {
-                        if (accumulatedDelta > 0) accumulatedDelta = 0f
-                        accumulatedDelta += delta
-                        if (accumulatedDelta < -25f) isHeaderVisible = false
-                    } else if (delta > 0) {
-                        if (accumulatedDelta < 0) accumulatedDelta = 0f
-                        accumulatedDelta += delta
-                        if (accumulatedDelta > 18f) isHeaderVisible = true
-                    }
-                }
-                return Offset.Zero
-            }
-        }
-    }
-
+    // The title, search box and filters stay put while the list scrolls: the header used to slide
+    // away and come back, which made the screen jump and hid the search box mid-typing.
     val context = LocalContext.current
 
     // Master Categories metadata
@@ -298,8 +277,8 @@ fun MastersScreen(
             ),
             MasterCategoryItem(
                 tab = MasterTab.EMPLOYEES,
-                title = "Salesmen / Employee Master",
-                subtitle = "Salesmen, territory assignments & mobile logins",
+                title = "Staff Master",
+                subtitle = "Salesmen & admins: logins, trips, orders and customers",
                 icon = Icons.Default.Person,
                 count = employees.size,
                 iconBgColor = Color(0xFFF1F5F9),
@@ -310,17 +289,17 @@ fun MastersScreen(
     }
 
     Scaffold(
-        containerColor = Color(0xFFF6F8FB),
+        containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
             // Show FAB on Specific Master screen for instant record creation
             val currentTab = selectedCategory
-            if (currentTab != null && (currentTab != MasterTab.EMPLOYEES || isSuperAdmin)) {
+            if (currentTab != null && !isAgentUser && (currentTab != MasterTab.EMPLOYEES || isSuperAdmin)) {
                 FloatingActionButton(
                     onClick = {
                         viewModel.openAddMaster(currentTab)
                     },
-                    containerColor = NavyPrimary,
-                    contentColor = GoldAccent,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
                     shape = CircleShape
                 ) {
                     Icon(Icons.Default.Add, contentDescription = "Add New Record")
@@ -331,7 +310,7 @@ fun MastersScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFFF6F8FB))
+                .background(MaterialTheme.colorScheme.background)
                 .padding(paddingValues)
         ) {
             val activeTab = selectedCategory
@@ -354,15 +333,15 @@ fun MastersScreen(
                     ) {
                         Surface(
                             shape = CircleShape,
-                            color = Color.White,
-                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                             modifier = Modifier.size(42.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = Icons.Default.Storefront,
                                     contentDescription = null,
-                                    tint = NavyPrimary,
+                                    tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(22.dp)
                                 )
                             }
@@ -373,15 +352,15 @@ fun MastersScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "Business Masters",
-                                fontSize = 20.sp,
+                                style = MaterialTheme.typography.headlineSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = NavyPrimary,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 letterSpacing = (-0.3).sp
                             )
                             Text(
                                 text = "Select a master directory to manage records",
-                                fontSize = 12.sp,
-                                color = TextSecondary
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
 
@@ -389,13 +368,13 @@ fun MastersScreen(
                         val totalRecords = customers.size + suppliers.size + products.size + brands.size + transporters.size + markets.size + employees.size
                         Surface(
                             shape = RoundedCornerShape(20.dp),
-                            color = NavyPrimary.copy(alpha = 0.08f)
+                            color = MaterialTheme.colorScheme.primaryContainer
                         ) {
                             Text(
                                 text = "$totalRecords Total",
-                                fontSize = 11.5.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Bold,
-                                color = NavyPrimary,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                             )
                         }
@@ -404,8 +383,8 @@ fun MastersScreen(
                     // Compact Pill Search Bar on Masters Directory
                     Surface(
                         shape = CircleShape,
-                        color = Color.White,
-                        border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(36.dp)
@@ -430,7 +409,7 @@ fun MastersScreen(
                                 if (hubSearchQuery.isEmpty()) {
                                     Text(
                                         text = "Search master categories...",
-                                        fontSize = 12.sp,
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = Color(0xFF94A3B8),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
@@ -471,29 +450,65 @@ fun MastersScreen(
                     }
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Master Categories List
-                    val filteredCategories = categories.filter {
+                    // Master Categories List (Sub Agents sit right after Suppliers)
+                    val matchesHubSearch: (MasterCategoryItem) -> Boolean = {
                         it.title.contains(hubSearchQuery, ignoreCase = true) ||
                                 it.subtitle.contains(hubSearchQuery, ignoreCase = true) ||
                                 it.tag.contains(hubSearchQuery, ignoreCase = true)
                     }
+                    val filteredCategories = categories
+                        .filter { !isAgentUser || it.tab == MasterTab.CUSTOMERS }
+                        .filter(matchesHubSearch)
+                    val subAgentCard = MasterCategoryItem(
+                        tab = MasterTab.EMPLOYEES,
+                        title = "Sub Agent Master",
+                        subtitle = "Outside agents who bring customers, with their customers & orders",
+                        icon = Icons.Default.Handshake,
+                        count = subAgentCount,
+                        iconBgColor = Color(0xFFFFF7ED),
+                        iconTintColor = Color(0xFFB45309),
+                        tag = "Agents"
+                    )
+                    val showSubAgentCard = !isAgentUser && matchesHubSearch(subAgentCard)
 
                     LazyColumn(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         contentPadding = PaddingValues(bottom = 80.dp)
                     ) {
-                        items(filteredCategories) { item ->
-                            MasterHubCard(
-                                item = item,
-                                onClick = {
-                                    selectedCategory = item.tab
-                                    searchQuery = ""
-                                },
-                                onQuickAdd = {
-                                    viewModel.openAddMaster(item.tab)
-                                },
-                                canAdd = item.tab != MasterTab.EMPLOYEES || isSuperAdmin
-                            )
+                        filteredCategories.forEach { item ->
+                            item(key = "hub_${item.tab.name}") {
+                                MasterHubCard(
+                                    item = item,
+                                    onClick = {
+                                        searchQuery = ""
+                                        viewModel.openMasterList(item.tab)
+                                    },
+                                    onQuickAdd = {
+                                        viewModel.openAddMaster(item.tab)
+                                    },
+                                    canAdd = !isAgentUser && (item.tab != MasterTab.EMPLOYEES || isSuperAdmin)
+                                )
+                            }
+                            if (item.tab == MasterTab.SUPPLIERS && showSubAgentCard) {
+                                item(key = "hub_sub_agents") {
+                                    MasterHubCard(
+                                        item = subAgentCard,
+                                        onClick = { viewModel.openSubAgents() },
+                                        onQuickAdd = { viewModel.openAddSubAgent() },
+                                        canAdd = true
+                                    )
+                                }
+                            }
+                        }
+                        if (showSubAgentCard && filteredCategories.none { it.tab == MasterTab.SUPPLIERS }) {
+                            item(key = "hub_sub_agents_end") {
+                                MasterHubCard(
+                                    item = subAgentCard,
+                                    onClick = { viewModel.openSubAgents() },
+                                    onQuickAdd = { viewModel.openAddSubAgent() },
+                                    canAdd = true
+                                )
+                            }
                         }
                     }
                 }
@@ -506,321 +521,397 @@ fun MastersScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .nestedScroll(nestedScrollConnection)
                         .padding(horizontal = 16.dp, vertical = 10.dp)
                 ) {
-                    AnimatedVisibility(
-                        visible = isHeaderVisible,
-                        enter = expandVertically(tween(240, easing = FastOutSlowInEasing)) + fadeIn(tween(200)),
-                        exit = shrinkVertically(tween(220, easing = FastOutSlowInEasing)) + fadeOut(tween(180))
-                    ) {
-                        Column {
-                            // Specific Screen Top Bar with Back Button
-                            Row(
+                    Column {
+                        // Specific Screen Top Bar with Back Button
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 2.dp, bottom = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Back Button to Masters Hub
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.White,
+                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 2.dp, bottom = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .clickable { viewModel.navigateBack() }
                             ) {
-                                // Back Button to Masters Hub
-                                Surface(
-                                    shape = CircleShape,
-                                    color = Color.White,
-                                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .clickable { selectedCategory = null }
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                            contentDescription = "Back to Masters Hub",
-                                            tint = NavyPrimary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.width(8.dp))
-
-                                // Category Icon & Title
-                                Surface(
-                                    shape = CircleShape,
-                                    color = currentCategoryMeta.iconBgColor,
-                                    modifier = Modifier.size(34.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = currentCategoryMeta.icon,
-                                            contentDescription = null,
-                                            tint = currentCategoryMeta.iconTintColor,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.width(8.dp))
-
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = currentCategoryMeta.title,
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = NavyPrimary,
-                                        letterSpacing = (-0.2).sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    val countText = when (activeTab) {
-                                        MasterTab.CUSTOMERS -> "${customers.size} customers"
-                                        MasterTab.SUPPLIERS -> "${suppliers.size} suppliers & mills"
-                                        MasterTab.BRANDS -> "${brands.size} garment brands"
-                                        MasterTab.TRANSPORTERS -> "${transporters.size} transport partners"
-                                        MasterTab.EMPLOYEES -> "${employees.size} salesmen"
-                                        MasterTab.MARKETS -> "${markets.size} textile markets"
-                                        MasterTab.PRODUCTS -> "${products.size} active catalog items"
-                                    }
-                                    Text(
-                                        text = countText,
-                                        fontSize = 11.5.sp,
-                                        color = TextSecondary,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = "Back to Masters Hub",
+                                        tint = NavyPrimary,
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
+                            }
 
-                                // Circular Customer Registration Requests Button with Red-dot indicator (Admin only)
-                                if (activeTab == MasterTab.CUSTOMERS && isSuperAdmin) {
-                                    Box(modifier = Modifier.padding(end = 6.dp)) {
-                                        Surface(
-                                            shape = CircleShape,
-                                            color = if (pendingRequestsCount > 0) Color(0xFFFEF3C7) else Color.White,
-                                            border = BorderStroke(1.dp, if (pendingRequestsCount > 0) Color(0xFFF59E0B) else Color(0xFFE2E8F0)),
-                                            modifier = Modifier
-                                                .size(34.dp)
-                                                .clip(CircleShape)
-                                                .clickable { showRequestsDialog = true }
-                                        ) {
-                                            Box(contentAlignment = Alignment.Center) {
-                                                Icon(
-                                                    imageVector = Icons.Default.PersonAdd,
-                                                    contentDescription = "Registration Requests",
-                                                    tint = if (pendingRequestsCount > 0) Color(0xFFB45309) else NavyPrimary,
-                                                    modifier = Modifier.size(17.dp)
-                                                )
-                                            }
-                                        }
+                            Spacer(modifier = Modifier.width(8.dp))
 
-                                        // Red-dot notification indicator
-                                        if (pendingRequestsCount > 0) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(9.dp)
-                                                    .align(Alignment.TopEnd)
-                                                    .clip(CircleShape)
-                                                    .background(Color(0xFFDC2626))
-                                            )
-                                        }
-                                    }
+                            // Category Icon & Title
+                            Surface(
+                                shape = CircleShape,
+                                color = currentCategoryMeta.iconBgColor,
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = currentCategoryMeta.icon,
+                                        contentDescription = null,
+                                        tint = currentCategoryMeta.iconTintColor,
+                                        modifier = Modifier.size(18.dp)
+                                    )
                                 }
+                            }
 
-                                // Circular Supplier Registration Requests Button (Supplier Master)
-                                if (activeTab == MasterTab.SUPPLIERS && isSuperAdmin) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Surface(
-                                            shape = CircleShape,
-                                            color = if (pendingSupplierRequestsCount > 0) Color(0xFFFEF3C7) else Color(0xFFECFDF5),
-                                            border = BorderStroke(1.dp, if (pendingSupplierRequestsCount > 0) Color(0xFFF59E0B) else Color(0xFFA7F3D0)),
-                                            modifier = Modifier
-                                                .size(34.dp)
-                                                .clip(CircleShape)
-                                                .clickable { showSupplierRequestsDialog = true }
-                                        ) {
-                                            Box(contentAlignment = Alignment.Center) {
-                                                Icon(
-                                                    imageVector = Icons.Default.PersonAdd,
-                                                    contentDescription = "Supplier Registration Requests",
-                                                    tint = if (pendingSupplierRequestsCount > 0) Color(0xFFB45309) else Color(0xFF059669),
-                                                    modifier = Modifier.size(17.dp)
-                                                )
-                                            }
-                                        }
+                            Spacer(modifier = Modifier.width(8.dp))
 
-                                        // Red-dot notification indicator
-                                        if (pendingSupplierRequestsCount > 0) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(9.dp)
-                                                    .align(Alignment.TopEnd)
-                                                    .clip(CircleShape)
-                                                    .background(Color(0xFFDC2626))
-                                            )
-                                        }
-                                    }
-                                    Spacer(modifier = Modifier.width(6.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = currentCategoryMeta.title,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = NavyPrimary,
+                                    letterSpacing = (-0.2).sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                val countText = when (activeTab) {
+                                    MasterTab.CUSTOMERS -> "${customers.size} customers"
+                                    MasterTab.SUPPLIERS -> "${suppliers.size} suppliers & mills"
+                                    MasterTab.BRANDS -> "${brands.size} garment brands"
+                                    MasterTab.TRANSPORTERS -> "${transporters.size} transport partners"
+                                    MasterTab.EMPLOYEES -> "${employees.size} salesmen"
+                                    MasterTab.MARKETS -> "${markets.size} textile markets"
+                                    MasterTab.PRODUCTS -> "${products.size} active catalog items"
                                 }
+                                Text(
+                                    text = countText,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
 
-                                // Tally XML Export Button
-                                if (activeTab == MasterTab.CUSTOMERS || activeTab == MasterTab.SUPPLIERS) {
+                            // Circular Customer Registration Requests Button with Red-dot indicator (Admin only)
+                            if (activeTab == MasterTab.CUSTOMERS && isSuperAdmin) {
+                                Box(modifier = Modifier.padding(end = 6.dp)) {
                                     Surface(
                                         shape = CircleShape,
-                                        color = Color(0xFF0F766E),
+                                        color = if (pendingRequestsCount > 0) Color(0xFFFEF3C7) else Color.White,
+                                        border = BorderStroke(1.dp, if (pendingRequestsCount > 0) Color(0xFFF59E0B) else Color(0xFFE2E8F0)),
                                         modifier = Modifier
                                             .size(34.dp)
                                             .clip(CircleShape)
-                                            .clickable {
-                                                if (activeTab == MasterTab.CUSTOMERS) {
-                                                    viewModel.exportCustomersToTallyXml(context)
-                                                } else {
-                                                    viewModel.exportSuppliersToTallyXml(context)
-                                                }
-                                            }
+                                            .clickable { showRequestsDialog = true }
                                     ) {
                                         Box(contentAlignment = Alignment.Center) {
                                             Icon(
-                                                Icons.Default.FileDownload,
-                                                contentDescription = "Export Tally XML",
-                                                tint = Color.White,
+                                                imageVector = Icons.Default.PersonAdd,
+                                                contentDescription = "Registration Requests",
+                                                tint = if (pendingRequestsCount > 0) Color(0xFFB45309) else NavyPrimary,
                                                 modifier = Modifier.size(17.dp)
                                             )
                                         }
                                     }
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                }
 
-                                // Search Toggle Button
-                                Surface(
-                                    shape = CircleShape,
-                                    color = if (isSearchVisible || searchQuery.isNotBlank()) NavyPrimary else Color.White,
-                                    border = BorderStroke(1.dp, if (isSearchVisible || searchQuery.isNotBlank()) NavyPrimary else Color(0xFFE2E8F0)),
-                                    modifier = Modifier
-                                        .size(34.dp)
-                                        .clip(CircleShape)
-                                        .clickable {
-                                            isSearchVisible = !isSearchVisible
-                                            if (!isSearchVisible) searchQuery = ""
-                                        }
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = if (isSearchVisible || searchQuery.isNotBlank()) Icons.Default.Clear else Icons.Default.Search,
-                                            contentDescription = "Toggle Search",
-                                            tint = if (isSearchVisible || searchQuery.isNotBlank()) Color.White else NavyPrimary,
-                                            modifier = Modifier.size(16.dp)
+                                    // Red-dot notification indicator
+                                    if (pendingRequestsCount > 0) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(9.dp)
+                                                .align(Alignment.TopEnd)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFFDC2626))
                                         )
                                     }
                                 }
                             }
-                            // Compact Pill Search Bar for Current Master
-                            AnimatedVisibility(
-                                visible = isSearchVisible || searchQuery.isNotBlank(),
-                                enter = expandVertically(tween(200)) + fadeIn(tween(180)),
-                                exit = shrinkVertically(tween(180)) + fadeOut(tween(160))
-                            ) {
-                                Column {
-                                    Spacer(modifier = Modifier.height(8.dp))
+
+                            // Circular Supplier Registration Requests Button (Supplier Master)
+                            if (activeTab == MasterTab.SUPPLIERS && isSuperAdmin) {
+                                Box(contentAlignment = Alignment.Center) {
                                     Surface(
                                         shape = CircleShape,
-                                        color = Color.White,
-                                        border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                        color = if (pendingSupplierRequestsCount > 0) Color(0xFFFEF3C7) else Color(0xFFECFDF5),
+                                        border = BorderStroke(1.dp, if (pendingSupplierRequestsCount > 0) Color(0xFFF59E0B) else Color(0xFFA7F3D0)),
                                         modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(36.dp)
+                                            .size(34.dp)
+                                            .clip(CircleShape)
+                                            .clickable { showSupplierRequestsDialog = true }
                                     ) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .padding(horizontal = 12.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
+                                        Box(contentAlignment = Alignment.Center) {
                                             Icon(
-                                                imageVector = Icons.Default.Search,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(16.dp),
-                                                tint = Color(0xFF64748B)
+                                                imageVector = Icons.Default.PersonAdd,
+                                                contentDescription = "Supplier Registration Requests",
+                                                tint = if (pendingSupplierRequestsCount > 0) Color(0xFFB45309) else Color(0xFF059669),
+                                                modifier = Modifier.size(17.dp)
                                             )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Box(
-                                                modifier = Modifier.weight(1f),
-                                                contentAlignment = Alignment.CenterStart
-                                            ) {
-                                                if (searchQuery.isEmpty()) {
-                                                    Text(
-                                                        text = "Search in ${currentCategoryMeta.title}...",
-                                                        fontSize = 12.sp,
-                                                        color = Color(0xFF94A3B8),
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis
-                                                    )
-                                                }
-                                                BasicTextField(
-                                                    value = searchQuery,
-                                                    onValueChange = { searchQuery = it },
-                                                    singleLine = true,
-                                                    textStyle = androidx.compose.ui.text.TextStyle(
-                                                        fontSize = 12.sp,
-                                                        color = Color(0xFF0F172A),
-                                                        fontWeight = FontWeight.Medium
-                                                    ),
-                                                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Color(0xFF2563EB)),
-                                                    modifier = Modifier.fillMaxWidth()
+                                        }
+                                    }
+
+                                    // Red-dot notification indicator
+                                    if (pendingSupplierRequestsCount > 0) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(9.dp)
+                                                .align(Alignment.TopEnd)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFFDC2626))
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(6.dp))
+                            }
+
+                            // Tally XML Export Button
+                            if (activeTab == MasterTab.CUSTOMERS || activeTab == MasterTab.SUPPLIERS) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color(0xFF0F766E),
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .clickable {
+                                            if (activeTab == MasterTab.CUSTOMERS) {
+                                                viewModel.exportCustomersToTallyXml(context)
+                                            } else {
+                                                viewModel.exportSuppliersToTallyXml(context)
+                                            }
+                                        }
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            Icons.Default.FileDownload,
+                                            contentDescription = "Export Tally XML",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(17.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(6.dp))
+                            }
+
+                            // Search Toggle Button
+                            Surface(
+                                shape = CircleShape,
+                                color = if (isSearchVisible || searchQuery.isNotBlank()) NavyPrimary else Color.White,
+                                border = BorderStroke(1.dp, if (isSearchVisible || searchQuery.isNotBlank()) NavyPrimary else Color(0xFFE2E8F0)),
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        isSearchVisible = !isSearchVisible
+                                        if (!isSearchVisible) searchQuery = ""
+                                    }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = if (isSearchVisible || searchQuery.isNotBlank()) Icons.Default.Clear else Icons.Default.Search,
+                                        contentDescription = "Toggle Search",
+                                        tint = if (isSearchVisible || searchQuery.isNotBlank()) Color.White else NavyPrimary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                        // Compact Pill Search Bar for Current Master
+                        AnimatedVisibility(
+                            visible = isSearchVisible || searchQuery.isNotBlank(),
+                            enter = expandVertically(tween(200)) + fadeIn(tween(180)),
+                            exit = shrinkVertically(tween(180)) + fadeOut(tween(160))
+                        ) {
+                            Column {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color.White,
+                                    border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(36.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Search,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = Color(0xFF64748B)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Box(
+                                            modifier = Modifier.weight(1f),
+                                            contentAlignment = Alignment.CenterStart
+                                        ) {
+                                            if (searchQuery.isEmpty()) {
+                                                Text(
+                                                    text = "Search in ${currentCategoryMeta.title}...",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = Color(0xFF94A3B8),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
                                                 )
                                             }
-                                            if (searchQuery.isNotEmpty()) {
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(18.dp)
-                                                        .clip(CircleShape)
-                                                        .background(Color(0xFFE2E8F0))
-                                                        .clickable { searchQuery = "" },
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Clear,
-                                                        contentDescription = "Clear",
-                                                        modifier = Modifier.size(11.dp),
-                                                        tint = Color(0xFF475569)
-                                                    )
-                                                }
+                                            BasicTextField(
+                                                value = searchQuery,
+                                                onValueChange = { searchQuery = it },
+                                                singleLine = true,
+                                                textStyle = androidx.compose.ui.text.TextStyle(
+                                                    fontSize = 12.sp,
+                                                    color = Color(0xFF0F172A),
+                                                    fontWeight = FontWeight.Medium
+                                                ),
+                                                cursorBrush = androidx.compose.ui.graphics.SolidColor(Color(0xFF2563EB)),
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
+                                        if (searchQuery.isNotEmpty()) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(18.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color(0xFFE2E8F0))
+                                                    .clickable { searchQuery = "" },
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Clear,
+                                                    contentDescription = "Clear",
+                                                    modifier = Modifier.size(11.dp),
+                                                    tint = Color(0xFF475569)
+                                                )
                                             }
                                         }
                                     }
                                 }
                             }
+                        }
 
-                            // Supplier Type Filter (Manufacturer vs Wholesaler)
-                            if (activeTab == MasterTab.SUPPLIERS) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    listOf("All", "Manufacturer", "Wholesaler").forEach { type ->
-                                        val isSelected = supplierTypeFilter == type
-                                        Surface(
-                                            color = if (isSelected) NavyPrimary else Color.White,
-                                            shape = CircleShape,
-                                            border = BorderStroke(1.dp, if (isSelected) NavyPrimary else Color(0xFFE2E8F0)),
-                                            modifier = Modifier
-                                                .clip(CircleShape)
-                                                .clickable { supplierTypeFilter = type }
-                                        ) {
-                                            Text(
-                                                text = type,
-                                                color = if (isSelected) Color.White else TextPrimary,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                                fontSize = 11.5.sp,
-                                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 4.dp)
-                                            )
-                                        }
+                        // Customer Filters (Garments & Terms)
+                        if (activeTab == MasterTab.CUSTOMERS) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Garment filter
+                                listOf("All", "Gents", "Ladies", "Kids", "Handloom", "Family Shop").forEach { garment ->
+                                    val isSelected = customerGarmentFilter == garment
+                                    Surface(
+                                        color = if (isSelected) NavyPrimary else Color.White,
+                                        shape = CircleShape,
+                                        border = BorderStroke(1.dp, if (isSelected) NavyPrimary else Color(0xFFE2E8F0)),
+                                        modifier = Modifier
+                                            .clip(CircleShape)
+                                            .clickable { customerGarmentFilter = garment }
+                                    ) {
+                                        Text(
+                                            text = garment,
+                                            color = if (isSelected) Color.White else TextPrimary,
+                                            fontWeight = FontWeight.SemiBold,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+
+                                // Divider dot
+                                Text("•", color = Color(0xFFCBD5E1), style = MaterialTheme.typography.bodySmall)
+
+                                // Credit type
+                                listOf("All", "Cash", "Credit").forEach { term ->
+                                    val isSelected = customerCreditFilter == term
+                                    Surface(
+                                        color = if (isSelected) Color(0xFF4338CA) else Color.White,
+                                        shape = CircleShape,
+                                        border = BorderStroke(1.dp, if (isSelected) Color(0xFF4338CA) else Color(0xFFE2E8F0)),
+                                        modifier = Modifier
+                                            .clip(CircleShape)
+                                            .clickable { customerCreditFilter = term }
+                                    ) {
+                                        Text(
+                                            text = if (term == "All") "All Terms" else term,
+                                            color = if (isSelected) Color.White else TextPrimary,
+                                            fontWeight = FontWeight.SemiBold,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                        )
                                     }
                                 }
                             }
-
-                            Spacer(modifier = Modifier.height(10.dp))
                         }
+
+                        // Supplier Type & Category Filter
+                        if (activeTab == MasterTab.SUPPLIERS) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                listOf("All", "Manufacturer", "Trading", "Distributor", "Fabric").forEach { type ->
+                                    val isSelected = supplierTypeFilter == type
+                                    Surface(
+                                        color = if (isSelected) NavyPrimary else Color.White,
+                                        shape = CircleShape,
+                                        border = BorderStroke(1.dp, if (isSelected) NavyPrimary else Color(0xFFE2E8F0)),
+                                        modifier = Modifier
+                                            .clip(CircleShape)
+                                            .clickable { supplierTypeFilter = type }
+                                    ) {
+                                        Text(
+                                            text = type,
+                                            color = if (isSelected) Color.White else TextPrimary,
+                                            fontWeight = FontWeight.SemiBold,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+
+                                // Divider dot
+                                Text("•", color = Color(0xFFCBD5E1), style = MaterialTheme.typography.bodySmall)
+
+                                listOf("All", "Ladies", "Gents", "Kids", "Handloom").forEach { cat ->
+                                    val isSelected = supplierCategoryFilter == cat
+                                    Surface(
+                                        color = if (isSelected) Color(0xFF0F766E) else Color.White,
+                                        shape = CircleShape,
+                                        border = BorderStroke(1.dp, if (isSelected) Color(0xFF0F766E) else Color(0xFFE2E8F0)),
+                                        modifier = Modifier
+                                            .clip(CircleShape)
+                                            .clickable { supplierCategoryFilter = cat }
+                                    ) {
+                                        Text(
+                                            text = if (cat == "All") "All Cats" else cat,
+                                            color = if (isSelected) Color.White else TextPrimary,
+                                            fontWeight = FontWeight.SemiBold,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
                     }
 
                     // -------------------------------------------------------------
@@ -829,12 +920,25 @@ fun MastersScreen(
                     when (activeTab) {
                         MasterTab.CUSTOMERS -> {
                             val filtered = customers.filter {
-                                it.name.contains(searchQuery, ignoreCase = true) ||
+                                val matchesSearch = it.name.contains(searchQuery, ignoreCase = true) ||
                                         it.firmName.contains(searchQuery, ignoreCase = true) ||
                                         it.city.contains(searchQuery, ignoreCase = true) ||
                                         it.phone.contains(searchQuery, ignoreCase = true) ||
                                         it.gstin.contains(searchQuery, ignoreCase = true) ||
+                                        it.workingMarkets.contains(searchQuery, ignoreCase = true) ||
+                                        it.marketArea.contains(searchQuery, ignoreCase = true) ||
                                         it.customerId.contains(searchQuery, ignoreCase = true)
+
+                                val matchesGarment = if (customerGarmentFilter == "All") true else {
+                                    val cats = "${it.preferredCategories} ${it.garmentTypes}"
+                                    cats.contains(customerGarmentFilter, ignoreCase = true)
+                                }
+
+                                val matchesCredit = if (customerCreditFilter == "All") true else {
+                                    it.customerType.equals(customerCreditFilter, ignoreCase = true)
+                                }
+
+                                matchesSearch && matchesGarment && matchesCredit
                             }
                             if (filtered.isEmpty()) {
                                 MasterEmptyState(
@@ -844,8 +948,7 @@ fun MastersScreen(
                             } else {
                                 LazyColumn(
                                     state = customerListState,
-                                    contentPadding = PaddingValues(bottom = 88.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    contentPadding = PaddingValues(bottom = 88.dp)
                                 ) {
                                     item(key = "whatsapp_reg_banner") {
                                         Card(
@@ -884,12 +987,12 @@ fun MastersScreen(
                                                     Text(
                                                         text = "Share Registration Link via WhatsApp",
                                                         fontWeight = FontWeight.Bold,
-                                                        fontSize = 12.sp,
+                                                        style = MaterialTheme.typography.bodySmall,
                                                         color = Color(0xFF166534)
                                                     )
                                                     Text(
                                                         text = "Send web portal link with SMS OTP to new retail buyers",
-                                                        fontSize = 10.sp,
+                                                        style = MaterialTheme.typography.labelSmall,
                                                         color = Color(0xFF15803D)
                                                     )
                                                 }
@@ -897,7 +1000,7 @@ fun MastersScreen(
                                                 Text(
                                                     text = "Share ➜",
                                                     fontWeight = FontWeight.Bold,
-                                                    fontSize = 11.sp,
+                                                    style = MaterialTheme.typography.labelSmall,
                                                     color = Color(0xFF166534)
                                                 )
                                             }
@@ -907,6 +1010,7 @@ fun MastersScreen(
                                     items(filtered, key = { it.id }) { customer ->
                                         CustomerCard(
                                             customer = customer,
+                                            pendingCount = pendingCountByCustomer[customer.id.toLong()] ?: 0,
                                             onClick = { onOpenCustomer(customer) },
                                             onEdit = { viewModel.openEditCustomer(customer) },
                                             onDelete = {
@@ -929,13 +1033,23 @@ fun MastersScreen(
                                         it.marketArea.contains(searchQuery, ignoreCase = true) ||
                                         it.brand.contains(searchQuery, ignoreCase = true) ||
                                         it.city.contains(searchQuery, ignoreCase = true) ||
-                                        it.gstin.contains(searchQuery, ignoreCase = true)
+                                        it.gstin.contains(searchQuery, ignoreCase = true) ||
+                                        it.productsMade.contains(searchQuery, ignoreCase = true)
+
                                 val matchesType = when (supplierTypeFilter) {
-                                    "Manufacturer" -> it.type.equals("Manufacturer", ignoreCase = true)
-                                    "Wholesaler" -> it.type.equals("Wholesaler", ignoreCase = true)
+                                    "Manufacturer" -> it.type.contains("Manufacturer", ignoreCase = true) || it.type.contains("Mill", ignoreCase = true)
+                                    "Trading" -> it.type.contains("Trading", ignoreCase = true) || it.type.contains("Wholesaler", ignoreCase = true) || it.type.contains("Trader", ignoreCase = true)
+                                    "Distributor" -> it.type.contains("Distributor", ignoreCase = true) || it.type.contains("Dealer", ignoreCase = true)
+                                    "Fabric" -> it.type.contains("Fabric", ignoreCase = true) || it.type.contains("Processor", ignoreCase = true) || it.type.contains("Jobworker", ignoreCase = true)
                                     else -> true
                                 }
-                                matchesSearch && matchesType
+
+                                val matchesCategory = if (supplierCategoryFilter == "All") true else {
+                                    val cats = "${it.categories} ${it.subCategories} ${it.productsMade} ${it.garmentTypes}"
+                                    cats.contains(supplierCategoryFilter, ignoreCase = true)
+                                }
+
+                                matchesSearch && matchesType && matchesCategory
                             }
                             if (filtered.isEmpty()) {
                                 MasterEmptyState(
@@ -945,8 +1059,7 @@ fun MastersScreen(
                             } else {
                                 LazyColumn(
                                     state = supplierListState,
-                                    contentPadding = PaddingValues(bottom = 88.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    contentPadding = PaddingValues(bottom = 88.dp)
                                 ) {
                                     item(key = "whatsapp_supplier_reg_banner") {
                                         Card(
@@ -985,12 +1098,12 @@ fun MastersScreen(
                                                     Text(
                                                         text = "Share Registration Link via WhatsApp",
                                                         fontWeight = FontWeight.Bold,
-                                                        fontSize = 12.sp,
+                                                        style = MaterialTheme.typography.bodySmall,
                                                         color = Color(0xFF166534)
                                                     )
                                                     Text(
                                                         text = "Send web portal link to new textile mills & fabric suppliers",
-                                                        fontSize = 10.sp,
+                                                        style = MaterialTheme.typography.labelSmall,
                                                         color = Color(0xFF15803D)
                                                     )
                                                 }
@@ -998,7 +1111,7 @@ fun MastersScreen(
                                                 Text(
                                                     text = "Share ➜",
                                                     fontWeight = FontWeight.Bold,
-                                                    fontSize = 11.sp,
+                                                    style = MaterialTheme.typography.labelSmall,
                                                     color = Color(0xFF166534)
                                                 )
                                             }
@@ -1038,8 +1151,7 @@ fun MastersScreen(
                             } else {
                                 LazyColumn(
                                     state = productListState,
-                                    contentPadding = PaddingValues(bottom = 88.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    contentPadding = PaddingValues(bottom = 88.dp)
                                 ) {
                                     items(filtered, key = { it.id }) { product ->
                                         ProductCard(
@@ -1073,8 +1185,7 @@ fun MastersScreen(
                             } else {
                                 LazyColumn(
                                     state = brandListState,
-                                    contentPadding = PaddingValues(bottom = 88.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    contentPadding = PaddingValues(bottom = 88.dp)
                                 ) {
                                     items(filtered, key = { it.id }) { brand ->
                                         BrandCard(
@@ -1109,8 +1220,7 @@ fun MastersScreen(
                             } else {
                                 LazyColumn(
                                     state = transporterListState,
-                                    contentPadding = PaddingValues(bottom = 88.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    contentPadding = PaddingValues(bottom = 88.dp)
                                 ) {
                                     items(filtered, key = { it.id }) { transporter ->
                                         TransporterCard(
@@ -1145,8 +1255,7 @@ fun MastersScreen(
                             } else {
                                 LazyColumn(
                                     state = marketListState,
-                                    contentPadding = PaddingValues(bottom = 88.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    contentPadding = PaddingValues(bottom = 88.dp)
                                 ) {
                                     items(filtered, key = { it.id }) { market ->
                                         MarketCard(
@@ -1183,8 +1292,7 @@ fun MastersScreen(
                             } else {
                                 LazyColumn(
                                     state = employeeListState,
-                                    contentPadding = PaddingValues(bottom = 88.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    contentPadding = PaddingValues(bottom = 88.dp)
                                 ) {
                                     items(filtered, key = { it.id }) { employee ->
                                         EmployeeCard(
@@ -1237,7 +1345,7 @@ fun MastersScreen(
                             } else {
                                 "Are you sure you want to request deletion of \"${req.itemName}\"? This will be sent to Admin for approval."
                             },
-                            fontSize = 13.5.sp,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = TextSecondary
                         )
                     },
@@ -1308,7 +1416,7 @@ fun MastersScreen(
                         "Send registration link to prospective textile mills & fabric suppliers",
                     onSendToPhone = { phone ->
                         if (type == MasterTab.CUSTOMERS) {
-                            ShareUtil.shareCustomerRegistrationLink(context, phone)
+                            ShareUtil.shareCustomerRegistrationLink(context, phone, agentLinkId)
                         } else {
                             ShareUtil.shareSupplierRegistrationLink(context, phone)
                         }
@@ -1316,7 +1424,7 @@ fun MastersScreen(
                     },
                     onSendGeneral = {
                         if (type == MasterTab.CUSTOMERS) {
-                            ShareUtil.shareCustomerRegistrationLink(context, null)
+                            ShareUtil.shareCustomerRegistrationLink(context, null, agentLinkId)
                         } else {
                             ShareUtil.shareSupplierRegistrationLink(context, null)
                         }
@@ -1378,7 +1486,7 @@ fun MasterHubCard(
                     Text(
                         text = item.title,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
+                        style = MaterialTheme.typography.titleSmall,
                         color = NavyPrimary
                     )
                     Spacer(modifier = Modifier.width(6.dp))
@@ -1388,7 +1496,7 @@ fun MasterHubCard(
                     ) {
                         Text(
                             text = "${item.count}",
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = item.iconTintColor,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp)
@@ -1398,7 +1506,7 @@ fun MasterHubCard(
                 Spacer(modifier = Modifier.height(3.dp))
                 Text(
                     text = item.subtitle,
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary,
                     maxLines = 2,
                     lineHeight = 16.sp
@@ -1474,7 +1582,7 @@ fun MasterEmptyState(
         Text(
             text = "No $entityName Found",
             fontWeight = FontWeight.Bold,
-            fontSize = 16.sp,
+            style = MaterialTheme.typography.titleMedium,
             color = NavyPrimary
         )
 
@@ -1482,7 +1590,7 @@ fun MasterEmptyState(
 
         Text(
             text = "Try adjusting your search or add a new record.",
-            fontSize = 12.5.sp,
+            style = MaterialTheme.typography.bodySmall,
             color = TextSecondary
         )
 
@@ -1503,7 +1611,7 @@ fun MasterEmptyState(
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = "Add New Record",
-                    fontSize = 12.5.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Bold,
                     color = GoldAccent
                 )
@@ -1544,14 +1652,14 @@ fun MasterDetailDialog(
                 Text(
                     text = item.title,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 16.5.sp,
+                    style = MaterialTheme.typography.titleMedium,
                     color = NavyPrimary
                 )
                 if (item.subtitle.isNotBlank()) {
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = item.subtitle,
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )
                 }
@@ -1569,13 +1677,13 @@ fun MasterDetailDialog(
                         Column(modifier = Modifier.fillMaxWidth()) {
                             Text(
                                 text = label,
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = TextSecondary
                             )
                             Text(
                                 text = value,
-                                fontSize = 13.5.sp,
+                                style = MaterialTheme.typography.bodyMedium,
                                 color = TextPrimary,
                                 fontWeight = FontWeight.Medium
                             )
@@ -1614,70 +1722,59 @@ fun MasterDetailDialog(
 // Component: Master Card Action Buttons (Edit, Delete, Details)
 // -------------------------------------------------------------
 
+/**
+ * Edit / Delete on a master row. Every button is a 40dp circle inside a 44dp tap area so it can be
+ * hit with a thumb, and each one says out loud what it does. "Open" is the row itself, so there is
+ * no third arrow button competing for space.
+ */
 @Composable
 fun MasterCardActions(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onClick: () -> Unit,
     canEdit: Boolean = true,
-    canDelete: Boolean = true
+    canDelete: Boolean = true,
+    /** Used in the spoken label, e.g. "Edit Ramesh Textiles". */
+    itemLabel: String = ""
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(3.dp)
-    ) {
+    val suffix = if (itemLabel.isBlank()) "" else " $itemLabel"
+    Row(verticalAlignment = Alignment.CenterVertically) {
         if (canEdit) {
-            Surface(
-                shape = CircleShape,
-                color = NavyPrimary.copy(alpha = 0.08f),
-                modifier = Modifier
-                    .size(26.dp)
-                    .clip(CircleShape)
-                    .clickable { onEdit() }
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = "Edit",
-                        tint = NavyPrimary,
-                        modifier = Modifier.size(13.dp)
-                    )
+            IconButton(onClick = onEdit, modifier = Modifier.size(44.dp)) {
+                Surface(shape = CircleShape, color = NavyPrimary.copy(alpha = 0.08f), modifier = Modifier.size(34.dp)) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Edit$suffix",
+                            tint = NavyPrimary,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
                 }
             }
         }
         if (canDelete) {
-            Surface(
-                shape = CircleShape,
-                color = Color(0xFFFEE2E2),
-                modifier = Modifier
-                    .size(26.dp)
-                    .clip(CircleShape)
-                    .clickable { onDelete() }
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.DeleteOutline,
-                        contentDescription = "Delete",
-                        tint = Color(0xFFDC2626),
-                        modifier = Modifier.size(13.dp)
-                    )
+            IconButton(onClick = onDelete, modifier = Modifier.size(44.dp)) {
+                Surface(shape = CircleShape, color = Color(0xFFFEE2E2), modifier = Modifier.size(34.dp)) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = "Delete$suffix",
+                            tint = Color(0xFFDC2626),
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
                 }
             }
         }
-        Surface(
-            shape = CircleShape,
-            color = Color(0xFFF1F5F9),
-            modifier = Modifier
-                .size(26.dp)
-                .clip(CircleShape)
-                .clickable { onClick() }
-        ) {
-            Box(contentAlignment = Alignment.Center) {
+        if (!canEdit && !canDelete) {
+            // Read-only row still needs an affordance that it opens
+            IconButton(onClick = onClick, modifier = Modifier.size(44.dp)) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                    contentDescription = "Open Details",
+                    contentDescription = "Open$suffix",
                     tint = TextSecondary,
-                    modifier = Modifier.size(12.5.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }
@@ -1685,12 +1782,43 @@ fun MasterCardActions(
 }
 
 // -------------------------------------------------------------
-// Component: CustomerCard (Minimalist & Compact)
+// Master list rows
+//
+// Every master list (customers, suppliers, staff, products, brands, transporters, markets) uses
+// the same row: small avatar, name, one line of detail, then Edit / Delete. Text uses the theme's
+// typography so it follows the phone's font size instead of a hard-coded sp value, and the row
+// keeps one height whether or not a badge, photo or phone number is present.
 // -------------------------------------------------------------
+
+/** Shared 36dp avatar: the photo when there is one, otherwise a tinted icon. */
+@Composable
+private fun MasterAvatar(
+    photoUri: String,
+    icon: ImageVector,
+    background: Color,
+    tint: Color,
+    label: String
+) {
+    Surface(shape = CircleShape, color = background, modifier = Modifier.size(36.dp)) {
+        if (photoUri.isNotBlank()) {
+            AsyncImage(
+                model = photoUri,
+                contentDescription = label,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
+            }
+        }
+    }
+}
 
 @Composable
 fun CustomerCard(
     customer: CustomerEntity,
+    pendingCount: Int = 0,
     onClick: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
@@ -1712,81 +1840,26 @@ fun CustomerCard(
         }
     }.ifBlank { "Customer" }
 
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
-        shape = RoundedCornerShape(10.dp),
-        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .clickable { onClick() }
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            val custAvatarPhoto = customer.shopPhotoUri.ifBlank { customer.purchaserPhotoUri }
-            Surface(
-                shape = CircleShape,
-                color = Color(0xFFEFF6FF),
-                modifier = Modifier.size(36.dp)
-            ) {
-                if (custAvatarPhoto.isNotBlank()) {
-                    AsyncImage(
-                        model = custAvatarPhoto,
-                        contentDescription = customer.name,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.People,
-                            contentDescription = null,
-                            tint = Color(0xFF2563EB),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.width(10.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = displayName,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp,
-                    color = TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = subtitle,
-                    fontSize = 11.sp,
-                    color = TextSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Spacer(modifier = Modifier.width(6.dp))
-
-            MasterCardActions(
-                onEdit = onEdit,
-                onDelete = onDelete,
-                onClick = onClick
+    ListRow(
+        horizontalPadding = 0.dp,
+        title = displayName,
+        detail = subtitle,
+        leading = {
+            MasterAvatar(
+                photoUri = customer.shopPhotoUri.ifBlank { customer.purchaserPhotoUri },
+                icon = Icons.Default.People,
+                background = Color(0xFFEFF6FF),
+                tint = Color(0xFF2563EB),
+                label = displayName
             )
-        }
-    }
+        },
+        status = if (pendingCount > 0) {
+            { StatusPill("$pendingCount pending", Color(0xFFFFF3CD), Color(0xFF92400E)) }
+        } else null,
+        trailing = { MasterCardActions(onEdit = onEdit, onDelete = onDelete, onClick = onClick, itemLabel = displayName) },
+        onClick = onClick
+    )
 }
-
-// -------------------------------------------------------------
-// Component: SupplierCard (Minimalist & Compact)
-// -------------------------------------------------------------
 
 @Composable
 fun SupplierCard(
@@ -1812,81 +1885,23 @@ fun SupplierCard(
         }
     }.ifBlank { "Supplier / Mill" }
 
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
-        shape = RoundedCornerShape(10.dp),
-        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .clickable { onClick() }
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            val suppAvatarPhoto = supplier.shopPhotoUri.ifBlank { supplier.visitingCardPhotoUri }
-            Surface(
-                shape = CircleShape,
-                color = Color(0xFFECFDF5),
-                modifier = Modifier.size(36.dp)
-            ) {
-                if (suppAvatarPhoto.isNotBlank()) {
-                    AsyncImage(
-                        model = suppAvatarPhoto,
-                        contentDescription = supplier.name,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.Store,
-                            contentDescription = null,
-                            tint = Color(0xFF059669),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.width(10.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = displayName,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp,
-                    color = TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = subtitle,
-                    fontSize = 11.sp,
-                    color = TextSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Spacer(modifier = Modifier.width(6.dp))
-
-            MasterCardActions(
-                onEdit = onEdit,
-                onDelete = onDelete,
-                onClick = onClick
+    ListRow(
+        horizontalPadding = 0.dp,
+        title = displayName,
+        detail = subtitle,
+        leading = {
+            MasterAvatar(
+                photoUri = supplier.shopPhotoUri.ifBlank { supplier.visitingCardPhotoUri },
+                icon = Icons.Default.Store,
+                background = Color(0xFFECFDF5),
+                tint = Color(0xFF059669),
+                label = displayName
             )
-        }
-    }
+        },
+        trailing = { MasterCardActions(onEdit = onEdit, onDelete = onDelete, onClick = onClick, itemLabel = displayName) },
+        onClick = onClick
+    )
 }
-
-// -------------------------------------------------------------
-// Component: EmployeeCard (Minimalist & Compact)
-// -------------------------------------------------------------
 
 @Composable
 fun EmployeeCard(
@@ -1896,73 +1911,32 @@ fun EmployeeCard(
     onDelete: () -> Unit,
     isAdmin: Boolean = false
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
-        shape = RoundedCornerShape(10.dp),
-        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .clickable { onClick() }
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = Color(0xFFF1F5F9),
-                modifier = Modifier.size(36.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Default.Person,
-                        contentDescription = null,
-                        tint = NavyPrimary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.width(10.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = employee.name,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp,
-                    color = TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = "${employee.role}${if (employee.employeeId.isNotBlank()) " • ${employee.employeeId}" else ""}",
-                    fontSize = 11.sp,
-                    color = TextSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Spacer(modifier = Modifier.width(6.dp))
-
+    ListRow(
+        horizontalPadding = 0.dp,
+        title = employee.name,
+        detail = "${employee.role}${if (employee.employeeId.isNotBlank()) " • ${employee.employeeId}" else ""}",
+        leading = {
+            MasterAvatar(
+                photoUri = "",
+                icon = Icons.Default.Person,
+                background = Color(0xFFF1F5F9),
+                tint = NavyPrimary,
+                label = employee.name
+            )
+        },
+        trailing = {
             MasterCardActions(
                 onEdit = onEdit,
                 onDelete = onDelete,
                 onClick = onClick,
                 canEdit = isAdmin,
-                canDelete = isAdmin
+                canDelete = isAdmin,
+                itemLabel = employee.name
             )
-        }
-    }
+        },
+        onClick = onClick
+    )
 }
-
-// -------------------------------------------------------------
-// Component: ProductCard (Minimalist & Compact)
-// -------------------------------------------------------------
 
 @Composable
 fun ProductCard(
@@ -1971,74 +1945,27 @@ fun ProductCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
-        shape = RoundedCornerShape(10.dp),
-        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .clickable { onClick() }
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = GoldAccent.copy(alpha = 0.15f),
-                modifier = Modifier.size(36.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.Inventory,
-                        contentDescription = null,
-                        tint = NavyPrimary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
+    val rateText = if (product.defaultRate > 0) "₹${product.defaultRate.toInt()}" else ""
+    val catText = product.category.ifBlank { product.productCode }
+    val subtitle = if (rateText.isNotBlank() && catText.isNotBlank()) "$rateText • $catText" else rateText.ifBlank { catText }
 
-            Spacer(modifier = Modifier.width(10.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = product.name,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp,
-                    color = TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                val rateText = if (product.defaultRate > 0) "₹${product.defaultRate.toInt()}" else ""
-                val catText = product.category.ifBlank { product.productCode }
-                val sub = if (rateText.isNotBlank() && catText.isNotBlank()) "$rateText • $catText" else rateText.ifBlank { catText }
-                Text(
-                    text = sub,
-                    fontSize = 11.sp,
-                    color = TextSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Spacer(modifier = Modifier.width(6.dp))
-
-            MasterCardActions(
-                onEdit = onEdit,
-                onDelete = onDelete,
-                onClick = onClick
+    ListRow(
+        horizontalPadding = 0.dp,
+        title = product.name,
+        detail = subtitle,
+        leading = {
+            MasterAvatar(
+                photoUri = "",
+                icon = Icons.Default.Inventory,
+                background = GoldAccent.copy(alpha = 0.15f),
+                tint = NavyPrimary,
+                label = product.name
             )
-        }
-    }
+        },
+        trailing = { MasterCardActions(onEdit = onEdit, onDelete = onDelete, onClick = onClick, itemLabel = product.name) },
+        onClick = onClick
+    )
 }
-
-// -------------------------------------------------------------
-// Component: BrandCard (Minimalist & Compact)
-// -------------------------------------------------------------
 
 @Composable
 fun BrandCard(
@@ -2047,82 +1974,26 @@ fun BrandCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
-        shape = RoundedCornerShape(10.dp),
-        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .clickable { onClick() }
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = Color(0xFFFFFBEB),
-                modifier = Modifier.size(36.dp)
-            ) {
-                if (brand.logoPhotoUri.isNotBlank()) {
-                    AsyncImage(
-                        model = brand.logoPhotoUri,
-                        contentDescription = brand.brandName,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Default.Sell,
-                            contentDescription = null,
-                            tint = Color(0xFFD97706),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-            }
+    val cat = brand.category.ifBlank { "Garment Brand" }
+    val subtitle = if (brand.manufacturerName.isNotBlank()) "$cat • ${brand.manufacturerName}" else cat
 
-            Spacer(modifier = Modifier.width(10.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = brand.brandName,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp,
-                    color = TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                val cat = brand.category.ifBlank { "Garment Brand" }
-                val sub = if (brand.manufacturerName.isNotBlank()) "$cat • ${brand.manufacturerName}" else cat
-                Text(
-                    text = sub,
-                    fontSize = 11.sp,
-                    color = TextSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Spacer(modifier = Modifier.width(6.dp))
-
-            MasterCardActions(
-                onEdit = onEdit,
-                onDelete = onDelete,
-                onClick = onClick
+    ListRow(
+        horizontalPadding = 0.dp,
+        title = brand.brandName,
+        detail = subtitle,
+        leading = {
+            MasterAvatar(
+                photoUri = brand.logoPhotoUri,
+                icon = Icons.Default.Sell,
+                background = Color(0xFFFFFBEB),
+                tint = Color(0xFFD97706),
+                label = brand.brandName
             )
-        }
-    }
+        },
+        trailing = { MasterCardActions(onEdit = onEdit, onDelete = onDelete, onClick = onClick, itemLabel = brand.brandName) },
+        onClick = onClick
+    )
 }
-
-// -------------------------------------------------------------
-// Component: TransporterCard (Minimalist & Compact)
-// -------------------------------------------------------------
 
 @Composable
 fun TransporterCard(
@@ -2131,73 +2002,26 @@ fun TransporterCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
-        shape = RoundedCornerShape(10.dp),
-        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .clickable { onClick() }
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = Color(0xFFECFEFF),
-                modifier = Modifier.size(36.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Default.LocalShipping,
-                        contentDescription = null,
-                        tint = Color(0xFF0891B2),
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
+    val cityText = transporter.city.ifBlank { "Transport Desk" }
+    val subtitle = if (transporter.phone1.isNotBlank()) "$cityText • ${transporter.phone1}" else cityText
 
-            Spacer(modifier = Modifier.width(10.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = transporter.transporterName,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp,
-                    color = TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                val cityText = transporter.city.ifBlank { "Transport Desk" }
-                val sub = if (transporter.phone1.isNotBlank()) "$cityText • ${transporter.phone1}" else cityText
-                Text(
-                    text = sub,
-                    fontSize = 11.sp,
-                    color = TextSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Spacer(modifier = Modifier.width(6.dp))
-
-            MasterCardActions(
-                onEdit = onEdit,
-                onDelete = onDelete,
-                onClick = onClick
+    ListRow(
+        horizontalPadding = 0.dp,
+        title = transporter.transporterName,
+        detail = subtitle,
+        leading = {
+            MasterAvatar(
+                photoUri = "",
+                icon = Icons.Default.LocalShipping,
+                background = Color(0xFFECFEFF),
+                tint = Color(0xFF0891B2),
+                label = transporter.transporterName
             )
-        }
-    }
+        },
+        trailing = { MasterCardActions(onEdit = onEdit, onDelete = onDelete, onClick = onClick, itemLabel = transporter.transporterName) },
+        onClick = onClick
+    )
 }
-
-// -------------------------------------------------------------
-// Component: MarketCard (Minimalist & Compact)
-// -------------------------------------------------------------
 
 @Composable
 fun MarketCard(
@@ -2206,66 +2030,23 @@ fun MarketCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
-        shape = RoundedCornerShape(10.dp),
-        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .clickable { onClick() }
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = Color(0xFFFAF5FF),
-                modifier = Modifier.size(36.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Default.LocationCity,
-                        contentDescription = null,
-                        tint = Color(0xFF9333EA),
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
+    val typeText = market.marketType.ifBlank { "Textile Market" }
+    val subtitle = if (market.city.isNotBlank()) "$typeText • ${market.city}" else typeText
 
-            Spacer(modifier = Modifier.width(10.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = market.marketName,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp,
-                    color = TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                val typeText = market.marketType.ifBlank { "Textile Market" }
-                val sub = if (market.city.isNotBlank()) "$typeText • ${market.city}" else typeText
-                Text(
-                    text = sub,
-                    fontSize = 11.sp,
-                    color = TextSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Spacer(modifier = Modifier.width(6.dp))
-
-            MasterCardActions(
-                onEdit = onEdit,
-                onDelete = onDelete,
-                onClick = onClick
+    ListRow(
+        horizontalPadding = 0.dp,
+        title = market.marketName,
+        detail = subtitle,
+        leading = {
+            MasterAvatar(
+                photoUri = "",
+                icon = Icons.Default.LocationCity,
+                background = Color(0xFFFAF5FF),
+                tint = Color(0xFF9333EA),
+                label = market.marketName
             )
-        }
-    }
+        },
+        trailing = { MasterCardActions(onEdit = onEdit, onDelete = onDelete, onClick = onClick, itemLabel = market.marketName) },
+        onClick = onClick
+    )
 }

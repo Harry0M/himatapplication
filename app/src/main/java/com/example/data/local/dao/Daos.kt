@@ -134,6 +134,9 @@ interface VisitDao {
     @Query("SELECT * FROM visits WHERE id = :id LIMIT 1")
     suspend fun getVisitById(id: Long): VisitEntity?
 
+    @Query("SELECT * FROM visits WHERE id = :id LIMIT 1")
+    fun getVisitFlowById(id: Long): Flow<VisitEntity?>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertVisit(visit: VisitEntity): Long
 
@@ -148,6 +151,19 @@ interface VisitDao {
 
     @Query("DELETE FROM visits WHERE id = :id")
     suspend fun deleteVisitById(id: Long)
+
+    // Trips this phone has not managed to upload yet
+    @Query("SELECT * FROM visits WHERE pendingPush = 1 ORDER BY createdAt ASC")
+    suspend fun getPendingPushVisits(): List<VisitEntity>
+
+    @Query("SELECT id FROM visits WHERE pendingPush = 1")
+    suspend fun getPendingPushVisitIds(): List<Long>
+
+    @Query("SELECT COUNT(*) FROM visits WHERE pendingPush = 1")
+    suspend fun getPendingPushCount(): Int
+
+    @Query("UPDATE visits SET pendingPush = :pending WHERE id = :id")
+    suspend fun setPendingPush(id: Long, pending: Boolean)
 }
 
 @Dao
@@ -191,6 +207,9 @@ interface PurchaseEntryDao {
     @Query("UPDATE purchase_entries SET deliveryStatus = :status, transporter = :transporter WHERE orderNo = :orderNo")
     suspend fun updateDeliveryStatusByOrderNo(orderNo: String, status: String, transporter: String)
 
+    @Query("UPDATE purchase_entries SET lrNo = :lrNo, lrDate = :lrDate WHERE id = :id")
+    suspend fun updateLrDetails(id: Long, lrNo: String, lrDate: String)
+
     @Query("UPDATE purchase_entries SET packGroupId = :packGroupId, mixedPackNote = :note WHERE id = :id")
     suspend fun updateMixedPackInfo(id: Long, packGroupId: Long?, note: String?)
 
@@ -211,6 +230,19 @@ interface PurchaseEntryDao {
 
     @Query("DELETE FROM purchase_entries WHERE id = :id")
     suspend fun deleteEntryById(id: Long)
+
+    // Orders this phone has not managed to upload yet
+    @Query("SELECT * FROM purchase_entries WHERE pendingPush = 1 ORDER BY createdAt ASC")
+    suspend fun getPendingPushEntries(): List<PurchaseEntryEntity>
+
+    @Query("SELECT id FROM purchase_entries WHERE pendingPush = 1")
+    suspend fun getPendingPushEntryIds(): List<Long>
+
+    @Query("SELECT COUNT(*) FROM purchase_entries WHERE pendingPush = 1")
+    suspend fun getPendingPushCount(): Int
+
+    @Query("UPDATE purchase_entries SET pendingPush = :pending WHERE id = :id")
+    suspend fun setPendingPush(id: Long, pending: Boolean)
 }
 
 @Dao

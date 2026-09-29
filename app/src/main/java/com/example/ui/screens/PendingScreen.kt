@@ -71,6 +71,8 @@ import com.example.data.local.entity.PurchaseEntryEntity
 import com.example.data.local.entity.SupplierEntity
 import com.example.data.local.entity.VisitEntity
 import com.example.ui.components.DeliveryStatusBadge
+import com.example.ui.components.ListRow
+import com.example.ui.components.StatusPill
 import com.example.ui.components.StatusBadge
 import com.example.ui.theme.GoldAccent
 import com.example.ui.theme.NavyPrimary
@@ -215,11 +217,11 @@ fun PendingScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF6F8FB))
+            .background(MaterialTheme.colorScheme.background)
     ) {
         // TOP HEADER BAR
         Surface(
-            color = Color.White,
+            color = MaterialTheme.colorScheme.surface,
             shadowElevation = 2.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -230,7 +232,7 @@ fun PendingScreen(
                 ) {
                     Surface(
                         shape = CircleShape,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
                         shadowElevation = 2.dp,
                         modifier = Modifier.size(36.dp)
                     ) {
@@ -238,7 +240,7 @@ fun PendingScreen(
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Back",
-                                tint = NavyPrimary,
+                                tint = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.size(18.dp)
                             )
                         }
@@ -251,12 +253,12 @@ fun PendingScreen(
                             text = "Pending Operations",
                             fontSize = 17.5.sp,
                             fontWeight = FontWeight.Bold,
-                            color = NavyPrimary
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
                             text = if (totalPendingCount > 0) "$totalPendingCount pending items requiring action" else "All tasks are cleared ✓",
                             fontSize = 11.5.sp,
-                            color = TextSecondary,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -265,7 +267,7 @@ fun PendingScreen(
                     // Search Toggle Icon Button in top-right header corner
                     Surface(
                         shape = CircleShape,
-                        color = if (isSearchVisible || searchQuery.isNotBlank()) NavyPrimary else Color.White,
+                        color = if (isSearchVisible || searchQuery.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
                         shadowElevation = 2.dp,
                         modifier = Modifier.size(36.dp)
                     ) {
@@ -505,7 +507,7 @@ fun PendingScreen(
                             Text(
                                 text = label,
                                 fontSize = 12.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontWeight = FontWeight.SemiBold,
                                 color = if (isSelected) GoldAccent else TextPrimary,
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
                             )
@@ -532,92 +534,37 @@ fun PendingScreen(
                         val customerName = visitMap[entry.visitId]?.customerName ?: "Customer"
                         val billTotal = entry.totalAmount + entry.gstAmount
                         val dueBalance = maxOf(0.0, billTotal - entry.paidAmount)
+                        val isPartial = entry.paymentStatus.equals("Partial", true)
 
-                        Card(
-                            shape = RoundedCornerShape(14.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                        ListRow(
+                            horizontalPadding = 0.dp,
+                            title = "${entry.orderNo.ifBlank { "Order" }} • ${entry.itemCode}",
+                            value = "₹${PdfGenerator.formatInr(dueBalance)} due",
+                            valueColor = Color(0xFFDC2626),
+                            detail = "$customerName • ${entry.supplierName}",
+                            note = "Bill ₹${PdfGenerator.formatInr(billTotal)} • Paid ₹${PdfGenerator.formatInr(entry.paidAmount)}",
+                            status = {
+                                StatusPill(
+                                    text = if (isPartial) "Partial" else "Pending",
+                                    background = if (isPartial) Color(0xFFFEF3C7) else Color(0xFFFEE2E2),
+                                    foreground = if (isPartial) Color(0xFFB45309) else Color(0xFFDC2626)
+                                )
+                            },
+                            onClick = { paymentEntryToUpdate = entry },
+                            trailing = {
+                                IconButton(
+                                    onClick = { paymentEntryToUpdate = entry },
+                                    modifier = Modifier.size(40.dp)
                                 ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = "Order ${entry.orderNo} • ${entry.itemCode}",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp,
-                                            color = NavyPrimary
-                                        )
-                                        Text(
-                                            text = "👤 $customerName • 🏭 ${entry.supplierName}",
-                                            fontSize = 11.5.sp,
-                                            color = TextSecondary,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = if (entry.paymentStatus.equals("Partial", true)) Color(0xFFFEF3C7) else Color(0xFFFEE2E2)
-                                    ) {
-                                        Text(
-                                            text = if (entry.paymentStatus.equals("Partial", true)) "Partial" else "Pending Due",
-                                            color = if (entry.paymentStatus.equals("Partial", true)) Color(0xFFB45309) else Color(0xFFDC2626),
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 11.sp,
-                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column {
-                                        Text(
-                                            text = "Due Balance",
-                                            fontSize = 10.5.sp,
-                                            color = TextSecondary
-                                        )
-                                        Text(
-                                            text = "₹${PdfGenerator.formatInr(dueBalance)}",
-                                            fontSize = 15.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = Color(0xFFDC2626)
-                                        )
-                                        Text(
-                                            text = "Total: ₹${PdfGenerator.formatInr(billTotal)} • Paid: ₹${PdfGenerator.formatInr(entry.paidAmount)}",
-                                            fontSize = 10.5.sp,
-                                            color = TextSecondary
-                                        )
-                                    }
-
-                                    Button(
-                                        onClick = { paymentEntryToUpdate = entry },
-                                        colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
-                                        shape = CircleShape,
-                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                                        modifier = Modifier.defaultMinSize(minHeight = 32.dp)
-                                    ) {
-                                        Text(
-                                            text = "Record Payment",
-                                            fontSize = 11.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = GoldAccent
-                                        )
-                                    }
+                                    Icon(
+                                        imageVector = Icons.Default.Payments,
+                                        contentDescription = "Record payment for ${entry.orderNo}",
+                                        tint = NavyPrimary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
                                 }
                             }
-                        }
+                        )
                     }
                 }
             }
@@ -636,76 +583,30 @@ fun PendingScreen(
 
                     items(filteredDeliveries, key = { "delivery_${it.id}" }) { entry ->
                         val customerName = visitMap[entry.visitId]?.customerName ?: "Customer"
+                        val packing = "${entry.pieces} pcs • ${entry.caseCount} cs" +
+                            if (entry.loosePieces > 0) " • ${entry.loosePieces} loose" else ""
 
-                        Card(
-                            shape = RoundedCornerShape(14.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                        ListRow(
+                            horizontalPadding = 0.dp,
+                            title = "${entry.orderNo.ifBlank { "Order" }} • ${entry.itemCode}",
+                            detail = "${entry.supplierName} • $customerName",
+                            note = "$packing • ${entry.transporter.ifBlank { "No transporter yet" }}",
+                            status = { DeliveryStatusBadge(status = entry.deliveryStatus) },
+                            onClick = { deliveryEntryToUpdate = entry },
+                            trailing = {
+                                IconButton(
+                                    onClick = { deliveryEntryToUpdate = entry },
+                                    modifier = Modifier.size(40.dp)
                                 ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = "Order ${entry.orderNo} • ${entry.itemCode}",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp,
-                                            color = NavyPrimary
-                                        )
-                                        Text(
-                                            text = "🏭 ${entry.supplierName} • 👤 $customerName",
-                                            fontSize = 11.5.sp,
-                                            color = TextSecondary,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-
-                                    DeliveryStatusBadge(status = entry.deliveryStatus)
-                                }
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = "${entry.pieces} pcs (${entry.caseCount} cases, ${entry.loosePieces} loose)",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = TextPrimary
-                                        )
-                                        Text(
-                                            text = if (entry.transporter.isNotBlank()) "🚚 ${entry.transporter}" else "⚠️ No transporter LR assigned",
-                                            fontSize = 11.sp,
-                                            color = if (entry.transporter.isNotBlank()) TextSecondary else Color(0xFFD97706)
-                                        )
-                                    }
-
-                                    Button(
-                                        onClick = { deliveryEntryToUpdate = entry },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                                        shape = CircleShape,
-                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                                        modifier = Modifier.defaultMinSize(minHeight = 32.dp)
-                                    ) {
-                                        Text(
-                                            text = "Update Status",
-                                            fontSize = 11.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White
-                                        )
-                                    }
+                                    Icon(
+                                        imageVector = Icons.Default.LocalShipping,
+                                        contentDescription = "Update delivery status for ${entry.orderNo}",
+                                        tint = Color(0xFF0284C7),
+                                        modifier = Modifier.size(18.dp)
+                                    )
                                 }
                             }
-                        }
+                        )
                     }
                 }
             }
@@ -727,78 +628,24 @@ fun PendingScreen(
                         val tripPieces = tripEntries.sumOf { it.pieces }
                         val tripCases = tripEntries.sumOf { it.caseCount }
 
-                        Card(
-                            shape = RoundedCornerShape(14.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = trip.customerName,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.5.sp,
-                                            color = NavyPrimary
-                                        )
-                                        Text(
-                                            text = "${trip.visitCode} • ${trip.date} • Agent: ${trip.employeeName}",
-                                            fontSize = 11.5.sp,
-                                            color = TextSecondary
-                                        )
-                                    }
-
-                                    StatusBadge(status = trip.status)
-                                }
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "${tripEntries.size} supplier stops • $tripPieces pcs ($tripCases cases)",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = TextPrimary,
-                                        modifier = Modifier.weight(1f)
+                        ListRow(
+                            horizontalPadding = 0.dp,
+                            title = trip.customerName.ifBlank { "Customer" },
+                            detail = "${trip.visitCode} • ${trip.date} • ${trip.employeeName}",
+                            note = "${tripEntries.size} supplier stops • $tripPieces pcs ($tripCases cases)",
+                            status = { StatusBadge(status = trip.status) },
+                            onClick = { onOpenVisit(trip) },
+                            trailing = {
+                                IconButton(onClick = { onOpenVisit(trip) }, modifier = Modifier.size(40.dp)) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                        contentDescription = "Open trip ${trip.visitCode}",
+                                        tint = NavyPrimary,
+                                        modifier = Modifier.size(18.dp)
                                     )
-
-                                    Button(
-                                        onClick = { onOpenVisit(trip) },
-                                        colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
-                                        shape = CircleShape,
-                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                                        modifier = Modifier.defaultMinSize(minHeight = 32.dp)
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Text(
-                                                text = "Open Trip",
-                                                fontSize = 11.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = GoldAccent
-                                            )
-                                            Icon(
-                                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                                contentDescription = null,
-                                                tint = GoldAccent,
-                                                modifier = Modifier.size(13.dp)
-                                            )
-                                        }
-                                    }
                                 }
                             }
-                        }
+                        )
                     }
                 }
             }
@@ -818,79 +665,30 @@ fun PendingScreen(
                     items(filteredLooseEntries, key = { "loose_${it.id}" }) { entry ->
                         val customerName = visitMap[entry.visitId]?.customerName ?: "Customer"
 
-                        Card(
-                            shape = RoundedCornerShape(14.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = "Order ${entry.orderNo} • ${entry.itemCode}",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp,
-                                            color = NavyPrimary
-                                        )
-                                        Text(
-                                            text = "🏭 ${entry.supplierName} • 👤 $customerName",
-                                            fontSize = 11.5.sp,
-                                            color = TextSecondary,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = Color(0xFFFFEDD5)
-                                    ) {
-                                        Text(
-                                            text = "${entry.loosePieces} Loose Pcs",
-                                            color = Color(0xFFC2410C),
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 11.sp,
-                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "${entry.caseCount} full cases • Case size: ${entry.caseSize} pcs",
-                                        fontSize = 11.5.sp,
-                                        color = TextSecondary,
-                                        modifier = Modifier.weight(1f)
+                        ListRow(
+                            horizontalPadding = 0.dp,
+                            title = "${entry.orderNo.ifBlank { "Order" }} • ${entry.itemCode}",
+                            detail = "${entry.supplierName} • $customerName",
+                            note = "${entry.caseCount} full cases • ${entry.loosePieces} loose pcs",
+                            status = {
+                                StatusPill(
+                                    text = "${entry.loosePieces} loose",
+                                    background = Color(0xFFFFEDD5),
+                                    foreground = Color(0xFFC2410C)
+                                )
+                            },
+                            onClick = onOpenMixedPack,
+                            trailing = {
+                                IconButton(onClick = onOpenMixedPack, modifier = Modifier.size(40.dp)) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.FactCheck,
+                                        contentDescription = "Pack loose pieces of ${entry.orderNo}",
+                                        tint = Color(0xFFEA580C),
+                                        modifier = Modifier.size(18.dp)
                                     )
-
-                                    Button(
-                                        onClick = onOpenMixedPack,
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEA580C)),
-                                        shape = CircleShape,
-                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                                        modifier = Modifier.defaultMinSize(minHeight = 32.dp)
-                                    ) {
-                                        Text(
-                                            text = "Pack Loose Pcs",
-                                            fontSize = 11.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White
-                                        )
-                                    }
                                 }
                             }
-                        }
+                        )
                     }
                 }
             }

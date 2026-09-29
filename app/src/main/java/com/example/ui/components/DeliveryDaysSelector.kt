@@ -165,7 +165,7 @@ fun DeliveryDaysSelector(
                     Text(
                         text = label,
                         fontSize = 9.5.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        fontWeight = FontWeight.SemiBold,
                         color = if (isSelected) GoldAccent else TextPrimary,
                         modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
                     )

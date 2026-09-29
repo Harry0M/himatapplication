@@ -3,8 +3,12 @@ package com.example.ui.screens
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -15,6 +19,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -26,6 +31,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -47,10 +53,13 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.HourglassTop
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Store
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -75,6 +84,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -83,9 +93,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -122,6 +137,44 @@ fun ChequePdcScreen(
     var selectedStatusFilter by remember { mutableStateOf("ALL") } // "ALL", "DUE_TODAY", "UPCOMING_PDC", "PENDING", "DEPOSITED", "CLEARED", "BOUNCED"
     var selectedPartyId by remember { mutableStateOf<Long?>(null) } // Specific Customer or Supplier ID filter
     var selectedPartyName by remember { mutableStateOf("") }
+
+    val listState = rememberLazyListState()
+    var isHeaderVisible by remember { mutableStateOf(true) }
+
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            private var accumulatedDelta = 0f
+
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source == NestedScrollSource.UserInput) {
+                    val delta = available.y
+                    if (delta < 0) {
+                        // Scrolling DOWN (swiping up) -> collapse header to let list fill entire screen
+                        if (accumulatedDelta > 0) accumulatedDelta = 0f
+                        accumulatedDelta += delta
+                        if (accumulatedDelta < -20f) {
+                            isHeaderVisible = false
+                        }
+                    } else if (delta > 0) {
+                        // Scrolling UP (pulling down) -> expand header back
+                        if (accumulatedDelta < 0) accumulatedDelta = 0f
+                        accumulatedDelta += delta
+                        if (accumulatedDelta > 15f) {
+                            isHeaderVisible = true
+                        }
+                    }
+                }
+                return Offset.Zero
+            }
+        }
+    }
+
+    // Automatically expand header when at top of list or actively searching
+    LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, searchQuery) {
+        if (searchQuery.isNotBlank() || (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset <= 10)) {
+            isHeaderVisible = true
+        }
+    }
 
     // Dialog state
     var showAddEditDialog by remember { mutableStateOf(false) }
@@ -216,27 +269,51 @@ fun ChequePdcScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(onClick = onBack) {
+                        IconButton(
+                            onClick = onBack,
+                            modifier = Modifier.size(32.dp)
+                        ) {
                             Icon(
                                 Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Back",
+                                modifier = Modifier.size(18.dp),
                                 tint = MaterialTheme.colorScheme.onSurface
                             )
                         }
                         Column(modifier = Modifier.weight(1f).padding(start = 4.dp)) {
                             Text(
                                 text = "Cheques & PDC",
-                                style = MaterialTheme.typography.titleLarge,
+                                fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
-                            Text(
-                                text = "Post-Dated & Regular Cheques Register",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            if (isHeaderVisible) {
+                                Text(
+                                    text = "Post-Dated & Regular Cheques Register",
+                                    fontSize = 9.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else {
+                                Text(
+                                    text = "${filteredCheques.size} Cheques • ₹${PdfGenerator.formatInr(filteredCheques.sumOf { it.amount })}",
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                        IconButton(
+                            onClick = { isHeaderVisible = !isHeaderVisible },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isHeaderVisible) Icons.Default.KeyboardArrowUp else Icons.Default.Tune,
+                                contentDescription = if (isHeaderVisible) "Collapse Summary" else "Expand Summary",
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.primary
                             )
                         }
                         Button(
@@ -244,15 +321,16 @@ fun ChequePdcScreen(
                                 chequeToEdit = null
                                 showAddEditDialog = true
                             },
+                            modifier = Modifier.defaultMinSize(minHeight = 28.dp, minWidth = 1.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primary
                             ),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            shape = RoundedCornerShape(6.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 3.dp)
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("New Cheque", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(2.dp))
+                            Text("New", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -264,26 +342,44 @@ fun ChequePdcScreen(
                     chequeToEdit = null
                     showAddEditDialog = true
                 },
+                modifier = Modifier.size(42.dp),
+                shape = RoundedCornerShape(12.dp),
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Add Cheque")
+                Icon(Icons.Default.Add, contentDescription = "Add Cheque", modifier = Modifier.size(18.dp))
             }
         }
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .nestedScroll(nestedScrollConnection)
                 .padding(innerPadding)
         ) {
-            // KPI Summary Row
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            // Collapsible Header Section (KPI Summary, Alert, Search, Filters)
+            AnimatedVisibility(
+                visible = isHeaderVisible,
+                enter = expandVertically(
+                    animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing)
+                ) + fadeIn(
+                    animationSpec = tween(durationMillis = 200)
+                ),
+                exit = shrinkVertically(
+                    animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                ) + fadeOut(
+                    animationSpec = tween(durationMillis = 180)
+                )
             ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // KPI Summary Row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                 KpiCard(
                     title = "Due Today",
                     count = dueTodayCheques.size,
@@ -348,15 +444,15 @@ fun ChequePdcScreen(
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                        .padding(horizontal = 10.dp, vertical = 3.dp),
                     color = Color(0xFFFEE2E2),
-                    shape = RoundedCornerShape(10.dp),
-                    border = BorderStroke(1.5.dp, Color(0xFFEF4444))
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, Color(0xFFEF4444))
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(12.dp),
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
@@ -366,7 +462,7 @@ fun ChequePdcScreen(
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(36.dp)
+                                    .size(26.dp)
                                     .clip(CircleShape)
                                     .background(Color(0xFFDC2626)),
                                 contentAlignment = Alignment.Center
@@ -375,31 +471,32 @@ fun ChequePdcScreen(
                                     Icons.Default.NotificationsActive,
                                     contentDescription = null,
                                     tint = Color.White,
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(14.dp)
                                 )
                             }
-                            Spacer(Modifier.width(10.dp))
+                            Spacer(Modifier.width(6.dp))
                             Column {
                                 Text(
                                     text = "DEPOSIT TODAY: ${dueTodayCheques.size} Cheque${if (dueTodayCheques.size > 1) "s" else ""}",
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFF991B1B),
-                                    fontSize = 14.sp
+                                    fontSize = 10.5.sp
                                 )
                                 Text(
                                     text = "Total Value: ₹${PdfGenerator.formatInr(dueTodayCheques.sumOf { it.amount })} due today for deposit!",
                                     color = Color(0xFF7F1D1D),
-                                    fontSize = 12.sp
+                                    fontSize = 9.sp
                                 )
                             }
                         }
                         Button(
                             onClick = { selectedStatusFilter = "DUE_TODAY" },
+                            modifier = Modifier.defaultMinSize(minHeight = 24.dp, minWidth = 1.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            shape = RoundedCornerShape(6.dp),
+                            contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)
                         ) {
-                            Text("View", fontSize = 12.sp, color = Color.White)
+                            Text("View", fontSize = 9.5.sp, color = Color.White)
                         }
                     }
                 }
@@ -411,18 +508,19 @@ fun ChequePdcScreen(
                 onValueChange = { searchQuery = it },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                placeholder = { Text("Search by cheque no, bank, party name...") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    .padding(horizontal = 10.dp, vertical = 3.dp),
+                textStyle = TextStyle(fontSize = 11.5.sp),
+                placeholder = { Text("Search by cheque no, bank, party name...", fontSize = 11.sp) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
                 trailingIcon = {
                     if (searchQuery.isNotBlank()) {
-                        IconButton(onClick = { searchQuery = "" }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear")
+                        IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(28.dp)) {
+                            Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.size(16.dp))
                         }
                     }
                 },
                 singleLine = true,
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(8.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = MaterialTheme.colorScheme.primary,
                     unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
@@ -433,14 +531,14 @@ fun ChequePdcScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 2.dp),
+                    .padding(horizontal = 10.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 // Party Type Chips
                 Row(
                     modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     FilterChip(
                         selected = selectedPartyTypeFilter == "ALL",
@@ -449,8 +547,9 @@ fun ChequePdcScreen(
                             selectedPartyId = null
                             selectedPartyName = ""
                         },
-                        label = { Text("All Parties") },
-                        shape = RoundedCornerShape(8.dp)
+                        modifier = Modifier.defaultMinSize(minHeight = 26.dp),
+                        label = { Text("All Parties", fontSize = 9.5.sp) },
+                        shape = RoundedCornerShape(6.dp)
                     )
                     FilterChip(
                         selected = selectedPartyTypeFilter == "CUSTOMER",
@@ -459,8 +558,9 @@ fun ChequePdcScreen(
                             selectedPartyId = null
                             selectedPartyName = ""
                         },
-                        label = { Text("Customers") },
-                        shape = RoundedCornerShape(8.dp)
+                        modifier = Modifier.defaultMinSize(minHeight = 26.dp),
+                        label = { Text("Customers", fontSize = 9.5.sp) },
+                        shape = RoundedCornerShape(6.dp)
                     )
                     FilterChip(
                         selected = selectedPartyTypeFilter == "SUPPLIER",
@@ -469,8 +569,9 @@ fun ChequePdcScreen(
                             selectedPartyId = null
                             selectedPartyName = ""
                         },
-                        label = { Text("Suppliers") },
-                        shape = RoundedCornerShape(8.dp)
+                        modifier = Modifier.defaultMinSize(minHeight = 26.dp),
+                        label = { Text("Suppliers", fontSize = 9.5.sp) },
+                        shape = RoundedCornerShape(6.dp)
                     )
                 }
 
@@ -497,29 +598,29 @@ fun ChequePdcScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 2.dp),
+                        .padding(horizontal = 10.dp, vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Surface(
                         color = MaterialTheme.colorScheme.primaryContainer,
-                        shape = RoundedCornerShape(6.dp)
+                        shape = RoundedCornerShape(5.dp)
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
                                 text = "Filtered by: $selectedPartyName",
-                                style = MaterialTheme.typography.bodySmall,
+                                fontSize = 9.5.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
-                            Spacer(Modifier.width(4.dp))
+                            Spacer(Modifier.width(3.dp))
                             Icon(
                                 Icons.Default.Close,
                                 contentDescription = "Clear filter",
                                 modifier = Modifier
-                                    .size(16.dp)
+                                    .size(12.dp)
                                     .clickable {
                                         selectedPartyId = null
                                         selectedPartyName = ""
@@ -536,8 +637,8 @@ fun ChequePdcScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    .padding(horizontal = 10.dp, vertical = 3.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 listOf(
                     "ALL" to "All Status",
@@ -551,8 +652,9 @@ fun ChequePdcScreen(
                     FilterChip(
                         selected = selectedStatusFilter == statusKey,
                         onClick = { selectedStatusFilter = statusKey },
-                        label = { Text(label, fontSize = 12.sp) },
-                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.defaultMinSize(minHeight = 26.dp),
+                        label = { Text(label, fontSize = 9.5.sp) },
+                        shape = RoundedCornerShape(6.dp),
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = if (statusKey == "DUE_TODAY") Color(0xFFDC2626) else MaterialTheme.colorScheme.secondaryContainer,
                             selectedLabelColor = if (statusKey == "DUE_TODAY") Color.White else MaterialTheme.colorScheme.onSecondaryContainer
@@ -560,27 +662,69 @@ fun ChequePdcScreen(
                     )
                 }
             }
+        }
+    }
 
-            // Results count
-            Row(
+            // Results count & Quick Summary / Expand Bar
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                shape = RoundedCornerShape(6.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(horizontal = 10.dp, vertical = 2.dp)
+                    .clickable { isHeaderVisible = !isHeaderVisible }
             ) {
-                Text(
-                    text = "${filteredCheques.size} Cheque${if (filteredCheques.size != 1) "s" else ""}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Medium
-                )
-                Text(
-                    text = "Total: ₹${PdfGenerator.formatInr(filteredCheques.sumOf { it.amount })}",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "${filteredCheques.size} Cheque${if (filteredCheques.size != 1) "s" else ""}",
+                            fontSize = 9.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = " • Total: ₹${PdfGenerator.formatInr(filteredCheques.sumOf { it.amount })}",
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        if (!isHeaderVisible && (selectedStatusFilter != "ALL" || selectedPartyTypeFilter != "ALL" || selectedPartyId != null || searchQuery.isNotBlank())) {
+                            Spacer(Modifier.width(4.dp))
+                            Surface(
+                                shape = RoundedCornerShape(3.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                            ) {
+                                Text(
+                                    text = "Filtered",
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = if (isHeaderVisible) "Hide Summary" else "Show Filters & Stats",
+                            fontSize = 9.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Icon(
+                            imageVector = if (isHeaderVisible) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = null,
+                            modifier = Modifier.size(13.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
             }
 
             // Cheque List
@@ -619,9 +763,10 @@ fun ChequePdcScreen(
                 }
             } else {
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 88.dp, top = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    contentPadding = PaddingValues(start = 10.dp, end = 10.dp, bottom = 72.dp, top = 2.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     items(filteredCheques, key = { it.id }) { cheque ->
                         ChequeCard(
@@ -725,12 +870,12 @@ private fun KpiCard(
 ) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(8.dp),
         color = if (isSelected) color.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface,
-        border = BorderStroke(if (isSelected) 2.dp else 1.dp, if (isSelected) color else MaterialTheme.colorScheme.outlineVariant),
-        modifier = Modifier.width(135.dp)
+        border = BorderStroke(if (isSelected) 1.5.dp else 1.dp, if (isSelected) color else MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.width(96.dp)
     ) {
-        Column(modifier = Modifier.padding(10.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 7.dp, vertical = 6.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -738,30 +883,30 @@ private fun KpiCard(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(24.dp)
+                        .size(18.dp)
                         .clip(CircleShape)
                         .background(color.copy(alpha = 0.2f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(14.dp))
+                    Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(11.dp))
                 }
                 Text(
                     text = "$count",
                     fontWeight = FontWeight.ExtraBold,
-                    fontSize = 16.sp,
+                    fontSize = 12.sp,
                     color = color
                 )
             }
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(3.dp))
             Text(
                 text = title,
-                fontSize = 11.sp,
+                fontSize = 8.5.sp,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
                 text = "₹${PdfGenerator.formatInr(amount)}",
-                fontSize = 12.sp,
+                fontSize = 9.5.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
@@ -797,14 +942,14 @@ private fun ChequeCard(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(9.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isDueToday) Color(0xFFFFF1F2) else MaterialTheme.colorScheme.surface
         ),
-        border = BorderStroke(if (isDueToday) 2.dp else 1.dp, cardBorderColor),
-        elevation = CardDefaults.cardElevation(if (isDueToday) 4.dp else 1.dp)
+        border = BorderStroke(if (isDueToday) 1.5.dp else 1.dp, cardBorderColor),
+        elevation = CardDefaults.cardElevation(if (isDueToday) 3.dp else 1.dp)
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp)) {
             // Header: Cheque No + Badges + Amount
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -816,19 +961,19 @@ private fun ChequeCard(
                         Text(
                             text = "CH N: ${cheque.chequeNo}",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
+                            fontSize = 11.5.sp,
                             color = MaterialTheme.colorScheme.onSurface
                         )
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.width(6.dp))
                         // Party Type Chip
                         Surface(
-                            shape = RoundedCornerShape(4.dp),
+                            shape = RoundedCornerShape(3.dp),
                             color = if (cheque.partyType.equals("Customer", ignoreCase = true)) Color(0xFFE0E7FF) else Color(0xFFFEF3C7)
                         ) {
                             Text(
                                 text = cheque.partyType.uppercase(),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                fontSize = 10.sp,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                fontSize = 8.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (cheque.partyType.equals("Customer", ignoreCase = true)) Color(0xFF3730A3) else Color(0xFF92400E)
                             )
@@ -839,7 +984,7 @@ private fun ChequeCard(
                     Text(
                         text = cheque.partyName,
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp,
+                        fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -848,12 +993,12 @@ private fun ChequeCard(
                 Text(
                     text = "₹${PdfGenerator.formatInr(cheque.amount)}",
                     fontWeight = FontWeight.ExtraBold,
-                    fontSize = 18.sp,
+                    fontSize = 13.5.sp,
                     color = if (isDueToday) Color(0xFFDC2626) else MaterialTheme.colorScheme.primary
                 )
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(5.dp))
 
             // Bank Name & Date Row
             Row(
@@ -865,13 +1010,13 @@ private fun ChequeCard(
                     Icon(
                         Icons.Default.AccountBalance,
                         contentDescription = null,
-                        modifier = Modifier.size(15.dp),
+                        modifier = Modifier.size(12.dp),
                         tint = MaterialTheme.colorScheme.outline
                     )
-                    Spacer(Modifier.width(4.dp))
+                    Spacer(Modifier.width(3.dp))
                     Text(
                         text = cheque.bankName,
-                        fontSize = 13.sp,
+                        fontSize = 10.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -880,13 +1025,13 @@ private fun ChequeCard(
                     Icon(
                         Icons.Default.CalendarToday,
                         contentDescription = null,
-                        modifier = Modifier.size(14.dp),
+                        modifier = Modifier.size(11.dp),
                         tint = if (isDueToday) Color(0xFFDC2626) else MaterialTheme.colorScheme.outline
                     )
-                    Spacer(Modifier.width(4.dp))
+                    Spacer(Modifier.width(3.dp))
                     Text(
                         text = cheque.chequeDate,
-                        fontSize = 13.sp,
+                        fontSize = 10.sp,
                         fontWeight = if (isDueToday) FontWeight.Bold else FontWeight.Normal,
                         color = if (isDueToday) Color(0xFFDC2626) else MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -894,7 +1039,7 @@ private fun ChequeCard(
             }
 
             // Status Banner / Alert
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(5.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -904,18 +1049,18 @@ private fun ChequeCard(
                 when {
                     isDueToday -> {
                         Surface(
-                            shape = RoundedCornerShape(6.dp),
+                            shape = RoundedCornerShape(5.dp),
                             color = Color(0xFFDC2626)
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Default.NotificationsActive, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
-                                Spacer(Modifier.width(4.dp))
+                                Icon(Icons.Default.NotificationsActive, contentDescription = null, tint = Color.White, modifier = Modifier.size(10.dp))
+                                Spacer(Modifier.width(3.dp))
                                 Text(
                                     text = "DUE TODAY FOR DEPOSIT",
-                                    fontSize = 11.sp,
+                                    fontSize = 9.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
                                 )
@@ -924,13 +1069,13 @@ private fun ChequeCard(
                     }
                     isPdc -> {
                         Surface(
-                            shape = RoundedCornerShape(6.dp),
+                            shape = RoundedCornerShape(5.dp),
                             color = Color(0xFFEFF6FF)
                         ) {
                             Text(
                                 text = "PDC (${cheque.chequeDate})",
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                fontSize = 11.sp,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                fontSize = 9.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color(0xFF1D4ED8)
                             )
@@ -938,13 +1083,13 @@ private fun ChequeCard(
                     }
                     isOverdue -> {
                         Surface(
-                            shape = RoundedCornerShape(6.dp),
+                            shape = RoundedCornerShape(5.dp),
                             color = Color(0xFFFFF7ED)
                         ) {
                             Text(
                                 text = "OVERDUE (Date Passed)",
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                fontSize = 11.sp,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFFC2410C)
                             )
@@ -952,13 +1097,13 @@ private fun ChequeCard(
                     }
                     cheque.status.equals("Deposited", ignoreCase = true) -> {
                         Surface(
-                            shape = RoundedCornerShape(6.dp),
+                            shape = RoundedCornerShape(5.dp),
                             color = Color(0xFFFEF3C7)
                         ) {
                             Text(
                                 text = "DEPOSITED (Pending Clearance)",
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                fontSize = 11.sp,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                fontSize = 9.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color(0xFFB45309)
                             )
@@ -966,13 +1111,13 @@ private fun ChequeCard(
                     }
                     cheque.status.equals("Cleared", ignoreCase = true) -> {
                         Surface(
-                            shape = RoundedCornerShape(6.dp),
+                            shape = RoundedCornerShape(5.dp),
                             color = Color(0xFFDCFCE7)
                         ) {
                             Text(
                                 text = "CLEARED ✓ ${if (cheque.clearedDate.isNotBlank()) "(${cheque.clearedDate})" else ""}",
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                fontSize = 11.sp,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF15803D)
                             )
@@ -980,13 +1125,13 @@ private fun ChequeCard(
                     }
                     cheque.status.equals("Bounced", ignoreCase = true) -> {
                         Surface(
-                            shape = RoundedCornerShape(6.dp),
+                            shape = RoundedCornerShape(5.dp),
                             color = Color(0xFFFEE2E2)
                         ) {
                             Text(
                                 text = "BOUNCED ✕",
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                fontSize = 11.sp,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF991B1B)
                             )
@@ -996,21 +1141,21 @@ private fun ChequeCard(
 
                 // Edit / Delete icons
                 Row {
-                    IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.outline)
+                    IconButton(onClick = onEdit, modifier = Modifier.size(24.dp)) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(13.dp), tint = MaterialTheme.colorScheme.outline)
                     }
-                    IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete", modifier = Modifier.size(16.dp), tint = Color(0xFFDC2626))
+                    IconButton(onClick = onDelete, modifier = Modifier.size(24.dp)) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete", modifier = Modifier.size(13.dp), tint = Color(0xFFDC2626))
                     }
                 }
             }
 
             // Notes if any
             if (cheque.notes.isNotBlank()) {
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(3.dp))
                 Text(
                     text = "Note: ${cheque.notes}",
-                    fontSize = 12.sp,
+                    fontSize = 9.5.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
@@ -1018,60 +1163,60 @@ private fun ChequeCard(
             }
 
             // Quick Status Transition Actions
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), thickness = 0.5.dp)
+            HorizontalDivider(modifier = Modifier.padding(vertical = 5.dp), thickness = 0.5.dp)
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (cheque.status.equals("Pending", ignoreCase = true) || cheque.status.equals("Due Today", ignoreCase = true)) {
                     Button(
                         onClick = { onUpdateStatus("Deposited") },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).defaultMinSize(minHeight = 26.dp, minWidth = 1.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(vertical = 4.dp)
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
                     ) {
-                        Text("Mark Deposited", fontSize = 12.sp)
+                        Text("Mark Deposited", fontSize = 9.5.sp)
                     }
                     Button(
                         onClick = { onUpdateStatus("Cleared") },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).defaultMinSize(minHeight = 26.dp, minWidth = 1.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(vertical = 4.dp)
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
                     ) {
-                        Text("Mark Cleared", fontSize = 12.sp)
+                        Text("Mark Cleared", fontSize = 9.5.sp)
                     }
                 } else if (cheque.status.equals("Deposited", ignoreCase = true)) {
                     Button(
                         onClick = { onUpdateStatus("Cleared") },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).defaultMinSize(minHeight = 26.dp, minWidth = 1.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(vertical = 4.dp)
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
                     ) {
-                        Text("Mark Cleared", fontSize = 12.sp)
+                        Text("Mark Cleared", fontSize = 9.5.sp)
                     }
                     OutlinedButton(
                         onClick = { onUpdateStatus("Bounced") },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).defaultMinSize(minHeight = 26.dp, minWidth = 1.dp),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFDC2626)),
                         border = BorderStroke(1.dp, Color(0xFFDC2626)),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(vertical = 4.dp)
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
                     ) {
-                        Text("Bounced", fontSize = 12.sp)
+                        Text("Bounced", fontSize = 9.5.sp)
                     }
                 } else if (cheque.status.equals("Bounced", ignoreCase = true) || cheque.status.equals("Cleared", ignoreCase = true)) {
                     OutlinedButton(
                         onClick = { onUpdateStatus("Pending") },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(vertical = 4.dp)
+                        modifier = Modifier.weight(1f).defaultMinSize(minHeight = 26.dp, minWidth = 1.dp),
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
                     ) {
-                        Text("Revert to Pending", fontSize = 12.sp)
+                        Text("Revert to Pending", fontSize = 9.5.sp)
                     }
                 }
             }
@@ -1097,20 +1242,21 @@ private fun PartySelectorDropdown(
     Box {
         OutlinedButton(
             onClick = { expanded = true },
-            shape = RoundedCornerShape(8.dp),
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+            modifier = Modifier.defaultMinSize(minHeight = 26.dp, minWidth = 1.dp),
+            shape = RoundedCornerShape(6.dp),
+            contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp),
             border = BorderStroke(1.dp, if (selectedPartyId != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
         ) {
-            Icon(Icons.Default.FilterList, contentDescription = null, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(4.dp))
+            Icon(Icons.Default.FilterList, contentDescription = null, modifier = Modifier.size(13.dp))
+            Spacer(Modifier.width(3.dp))
             Text(
                 text = if (selectedPartyName.isNotBlank())
                     selectedPartyName.take(12) + (if (selectedPartyName.length > 12) ".." else "")
                 else
                     "Select Party",
-                fontSize = 12.sp
+                fontSize = 9.5.sp
             )
-            Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(16.dp))
+            Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(14.dp))
         }
 
         DropdownMenu(

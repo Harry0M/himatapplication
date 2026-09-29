@@ -25,7 +25,9 @@ import { Card } from "../components/ui/Card"
 import { Button } from "../components/ui/Button"
 import { Badge } from "../components/ui/Badge"
 import { Input } from "../components/ui/Input"
+import { DateRangeFilter } from "../components/ui/DateRangeFilter"
 import { Transporter } from "../types"
+import { ALL_TIME, DateRange, effectiveOrderDate, matchesDateRange } from "../lib/domain"
 
 interface TransporterDetailViewProps {
   transporterId: number
@@ -50,15 +52,14 @@ export function TransporterDetailView({
     return transporters.find((t) => t.id === transporterId) || null
   }, [transporters, transporterId])
 
-  // Shipments handled by this transporter
+  // Shipments handled by this transporter (typed transporter text contains the master name)
   const shipments = useMemo(() => {
     if (!transporter) return []
-    const tName = (transporter.transporterName || "").toLowerCase()
+    const tName = (transporter.transporterName || "").trim().toLowerCase()
+    // An empty name would match every order
+    if (!tName) return []
     return entries
-      .filter((e) => {
-        const trans = (e.transporter || "").toLowerCase()
-        return trans.includes(tName)
-      })
+      .filter((e) => (e.transporter || "").toLowerCase().includes(tName))
       .sort((a, b) => (b.id || 0) - (a.id || 0))
   }, [entries, transporter])
 
@@ -109,11 +110,17 @@ export function TransporterDetailView({
     )
   }, [shipments])
 
-  // Filtered Shipments
+  // Shipments tab: shared date filter
+  const [shipmentsRange, setShipmentsRange] = useState<DateRange>(ALL_TIME)
+
+  // Filtered Shipments (search + date range)
   const filteredShipments = useMemo(() => {
     const q = searchQuery.toLowerCase().trim()
-    if (!q) return shipments
-    return shipments.filter((s) => {
+    const inRange = shipments.filter((s) =>
+      matchesDateRange(s.lrDate || effectiveOrderDate(s, visitMap.get(s.visitId)), shipmentsRange)
+    )
+    if (!q) return inRange
+    return inRange.filter((s) => {
       const visit = visitMap.get(s.visitId)
       const cust = visit ? customerMap.get(visit.customerId) : undefined
       const custName = (cust?.firmName || cust?.name || visit?.customerName || "").toLowerCase()
@@ -127,7 +134,7 @@ export function TransporterDetailView({
         (s.lrNo || "").toLowerCase().includes(q)
       )
     })
-  }, [shipments, searchQuery, customerMap, visitMap])
+  }, [shipments, searchQuery, customerMap, visitMap, shipmentsRange])
 
   // Filtered Customers
   const filteredCustomers = useMemo(() => {
@@ -349,7 +356,8 @@ export function TransporterDetailView({
 
       {/* TAB 1: Shipments & Orders */}
       {activeTab === "shipments" && (
-        <div>
+        <div className="space-y-3">
+          <DateRangeFilter value={shipmentsRange} onChange={setShipmentsRange} />
           {filteredShipments.length === 0 ? (
             <Card className="p-8 text-center text-zinc-500 border-dashed text-xs">
               <Truck className="h-8 w-8 mx-auto text-zinc-300 mb-2" />

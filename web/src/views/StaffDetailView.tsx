@@ -50,7 +50,10 @@ import {
   buildCustomerReportWhatsAppText,
   generateSupplierInvoiceHtml,
   buildSupplierInvoiceWhatsAppText,
+  type SupplierOrderFormOptions,
 } from "../lib/pdfReports"
+import { CustomersTable, ReferredList, Section } from "../components/related/RelatedRecords"
+import { ReferrerTypes, customersAddedBy, ordersOfStaff, referredRecords, tripsOfStaff } from "../lib/domain"
 
 interface StaffDetailViewProps {
   employeeId: number
@@ -122,7 +125,8 @@ export function StaffDetailView({
     resumeEmployee,
     deactivateEmployee,
     selectedEmployeeId,
-    setSelectedEmployeeId
+    setSelectedEmployeeId,
+    allPeople,
   } = useData()
   const { isAdmin } = useAuth()
 
@@ -141,26 +145,27 @@ export function StaffDetailView({
     return new Map(visits.map((v) => [v.id, v]))
   }, [visits])
 
-  // All visits belonging to this staff member
+  // All trips this staff member started, co-owned or joined (multi-salesman trips)
   const allStaffVisits = useMemo(() => {
     if (!employee) return []
-    const empNameLower = employee.name.trim().toLowerCase()
-    return visits.filter(
-      (v) =>
-        Number(v.employeeId) === employee.id ||
-        (v.employeeName && v.employeeName.trim().toLowerCase() === empNameLower)
-    )
+    return tripsOfStaff(visits, employee)
   }, [visits, employee])
 
-  // Set of visit IDs
-  const staffVisitIdsSet = useMemo(() => {
-    return new Set(allStaffVisits.map((v) => Number(v.id)))
-  }, [allStaffVisits])
-
-  // All purchase entries belonging to this staff member's visits
+  // Orders credited to this staff member: they are the order's salesman
+  // (orders saved before per-order salesmen existed count for the trip starter)
   const allStaffEntries = useMemo(() => {
-    return entries.filter((e) => staffVisitIdsSet.has(Number(e.visitId)))
-  }, [entries, staffVisitIdsSet])
+    if (!employee) return []
+    return ordersOfStaff(entries, visitMap as Map<number, Visit>, employee)
+  }, [entries, visitMap, employee])
+
+  // People, customers and suppliers this staff member referred
+  const referredNames = employee ? [employee.name] : []
+  const referredCustomersList = employee ? referredRecords(customers, ReferrerTypes.STAFF, Number(employee.id), referredNames) : []
+  const referredSuppliersList = employee ? referredRecords(suppliers, ReferrerTypes.STAFF, Number(employee.id), referredNames) : []
+  const referredPeopleList = employee
+    ? referredRecords(allPeople, ReferrerTypes.STAFF, Number(employee.id), referredNames, true)
+    : []
+  const customersHandled = employee ? customersAddedBy(customers, employee) : []
 
   // All-time sales volume for banners and analytics
   const allTimeSalesVolume = useMemo(() => {
@@ -387,6 +392,8 @@ export function StaffDetailView({
     title: string
     html: string
     whatsAppText: string
+    /** Order forms: rebuilds the document for the chosen options */
+    buildHtml?: (options: SupplierOrderFormOptions) => string
   }>({
     open: false,
     title: "",
@@ -431,9 +438,10 @@ export function StaffDetailView({
     const whatsAppText = buildSupplierInvoiceWhatsAppText(invoiceData)
     setReportModal({
       open: true,
-      title: `Supplier Voucher: #${entry.orderNo} • ${supplier.name}`,
+      title: `Order Form: #${entry.orderNo} • ${supplier.brand || supplier.name}`,
       html,
       whatsAppText,
+      buildHtml: (options) => generateSupplierInvoiceHtml({ ...invoiceData, options }),
     })
   }
 
@@ -1156,19 +1164,40 @@ export function StaffDetailView({
       {/* 4. TABS NAVIGATION */}
       <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-3">
         <Tabs
+          className="flex-wrap"
           value={activeTab}
           onValueChange={setActiveTab}
           options={[
             { value: "orders", label: "Orders Booked", count: filteredEntries.length },
             { value: "visits", label: "Market Trips", count: filteredVisits.length },
-            { value: "payments", label: "Pending Payments", count: pendingPaymentsList.length },
             { value: "deliveries", label: "Dispatch & Logistics", count: periodMetrics.pendingDeliveries },
+            { value: "customers", label: "Customers", count: customersHandled.length },
+            {
+              value: "referred",
+              label: "Referred",
+              count: referredCustomersList.length + referredSuppliersList.length + referredPeopleList.length,
+            },
+            { value: "payments", label: "Payments (optional)", count: pendingPaymentsList.length },
             { value: "bio", label: "Staff Profile & Territory" }
           ]}
         />
       </div>
 
       {/* 5. TAB CONTENT PANELS */}
+
+      {/* Customers this staff member handles / added */}
+      {activeTab === "customers" && (
+        <Section title="Customers handled" count={customersHandled.length}>
+          <CustomersTable customers={customersHandled} visits={visits} entries={entries} emptyText="No customers are assigned to this staff member." />
+        </Section>
+      )}
+
+      {/* Everybody this staff member referred */}
+      {activeTab === "referred" && (
+        <Section title={`Referred by ${employee.name}`}>
+          <ReferredList customers={referredCustomersList} suppliers={referredSuppliersList} people={referredPeopleList} />
+        </Section>
+      )}
 
       {/* TAB 1: ALL ORDERS BOOKED */}
       {activeTab === "orders" && (
@@ -2139,6 +2168,7 @@ export function StaffDetailView({
         title={reportModal.title}
         htmlContent={reportModal.html}
         whatsAppText={reportModal.whatsAppText}
+        buildHtml={reportModal.buildHtml}
       />
     </div>
   )

@@ -70,8 +70,8 @@ object RecordValidator {
         }
 
         // 4. Default Case Size
-        if (supplier.defaultCaseSize <= 0) {
-            errors.add("Default case size must be greater than 0 pieces (carton/pack size).")
+        if (supplier.defaultCaseSize < 0) {
+            errors.add("Default case size cannot be negative.")
         } else if (supplier.defaultCaseSize > 1000) {
             errors.add("Default case size cannot exceed 1000 pieces.")
         }

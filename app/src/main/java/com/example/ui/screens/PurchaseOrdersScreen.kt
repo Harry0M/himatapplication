@@ -83,6 +83,7 @@ import coil.compose.AsyncImage
 import com.example.data.local.entity.PurchaseEntryEntity
 import com.example.data.local.entity.VisitEntity
 import com.example.ui.components.CompactSearchBar
+import com.example.ui.components.OrderRow
 import com.example.ui.components.StatusBadge
 import com.example.ui.components.SupplierTypeBadge
 import com.example.ui.dialogs.CustomDateRangePickerDialog
@@ -105,15 +106,19 @@ import kotlin.math.ceil
 @Composable
 fun PurchaseOrdersScreen(
     viewModel: HimatViewModel,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)? = null,
     onOpenOrder: (PurchaseEntryEntity) -> Unit = {},
     onOpenVisit: (VisitEntity) -> Unit = {}
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    val entries by viewModel.allEntries.collectAsStateWithLifecycle()
-    val visits by viewModel.allVisits.collectAsStateWithLifecycle()
+    // Role scoped: staff see orders of their trips, sub agents orders of their customers
+    val entries by viewModel.visibleEntries.collectAsStateWithLifecycle()
+    val visits by viewModel.visibleVisits.collectAsStateWithLifecycle()
+    val isAgentUser by viewModel.isAgentUser.collectAsStateWithLifecycle()
+    val initialStatus by viewModel.ordersStatusFilter.collectAsStateWithLifecycle()
+    var entryToUpdate by remember { mutableStateOf<PurchaseEntryEntity?>(null) }
     val suppliers by viewModel.allSuppliers.collectAsStateWithLifecycle()
 
     val visitsMap = remember(visits) { visits.associateBy { it.id } }
@@ -126,7 +131,8 @@ fun PurchaseOrdersScreen(
     var customDateLabel by remember { mutableStateOf("") }
     var showCustomDatePickerDialog by remember { mutableStateOf(false) }
     var selectedSupplierName by remember { mutableStateOf<String?>(null) }
-    var selectedStatus by remember { mutableStateOf("All") } // "All", "Pending", "Delivered"
+    // "All", "Not delivered", "Pending", "Packed", "Dispatched", "Delivered"
+    var selectedStatus by remember(initialStatus) { mutableStateOf(initialStatus) }
     var isSupplierDropdownExpanded by remember { mutableStateOf(false) }
 
     var currentPage by remember { mutableIntStateOf(1) }
@@ -183,7 +189,9 @@ fun PurchaseOrdersScreen(
             }
 
             // Status Filter
-            if (selectedStatus != "All" && !entry.deliveryStatus.equals(selectedStatus, ignoreCase = true)) {
+            if (selectedStatus == "Not delivered") {
+                if (entry.deliveryStatus.equals("Delivered", ignoreCase = true)) return@filter false
+            } else if (selectedStatus != "All" && !entry.deliveryStatus.equals(selectedStatus, ignoreCase = true)) {
                 return@filter false
             }
 
@@ -221,7 +229,6 @@ fun PurchaseOrdersScreen(
     val totalAmount = remember(filteredEntries) { filteredEntries.sumOf { it.grandTotalWithGst } }
     val totalGst = remember(filteredEntries) { filteredEntries.sumOf { it.gstAmount } }
 
-    val safeBottomPadding = rememberDialogBottomPadding(extraPadding = 8.dp, fallbackNavHeight = 48.dp)
 
     if (showCustomDatePickerDialog) {
         CustomDateRangePickerDialog(
@@ -240,7 +247,7 @@ fun PurchaseOrdersScreen(
     }
 
     Scaffold(
-        containerColor = Color(0xFFF6F8FB),
+        containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
             // Pagination Bar at Bottom
             Surface(
@@ -251,7 +258,8 @@ fun PurchaseOrdersScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = safeBottomPadding),
+                        .navigationBarsPadding()
+                        .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -271,7 +279,7 @@ fun PurchaseOrdersScreen(
                         text = "Page $safePage of $totalPages ($totalRecords total)",
                         fontSize = 11.5.sp,
                         fontWeight = FontWeight.Bold,
-                        color = TextPrimary
+                        color = MaterialTheme.colorScheme.onSurface
                     )
 
                     OutlinedButton(
@@ -293,7 +301,7 @@ fun PurchaseOrdersScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .background(Color(0xFFF6F8FB))
+                .background(MaterialTheme.colorScheme.background)
         ) {
             // Flat, borderless, clean header matching VisitsScreen & DeliveriesScreen
             Row(
@@ -302,45 +310,47 @@ fun PurchaseOrdersScreen(
                     .padding(horizontal = 14.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Surface(
-                    shape = CircleShape,
-                    color = Color.White,
-                    shadowElevation = 0.dp,
-                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                    modifier = Modifier.size(38.dp)
-                ) {
-                    IconButton(onClick = onBack, modifier = Modifier.size(38.dp)) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = NavyPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
+                if (onBack != null) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        shadowElevation = 0.dp,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        IconButton(onClick = onBack, modifier = Modifier.size(40.dp)) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
-                }
 
-                Spacer(modifier = Modifier.width(10.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
+                }
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Purchase Orders",
+                        text = "Orders",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = NavyPrimary,
+                        color = MaterialTheme.colorScheme.onSurface,
                         letterSpacing = (-0.2).sp
                     )
                     Text(
                         text = "$totalRecords orders • $totalPieces pcs of all time",
                         fontSize = 11.5.sp,
-                        color = TextSecondary
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
                 // Search Toggle Button (matching VisitsScreen)
                 Surface(
                     shape = CircleShape,
-                    color = if (isSearchVisible || searchQuery.isNotBlank()) NavyPrimary else Color.White,
-                    border = BorderStroke(1.dp, if (isSearchVisible || searchQuery.isNotBlank()) NavyPrimary else Color(0xFFE2E8F0)),
+                    color = if (isSearchVisible || searchQuery.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = BorderStroke(1.dp, if (isSearchVisible || searchQuery.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
@@ -523,13 +533,15 @@ fun PurchaseOrdersScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val allCount = entries.count { !it.isDeleted }
-                    val pendingCount = entries.count { !it.isDeleted && it.deliveryStatus.equals("Pending", true) }
-                    val deliveredCount = entries.count { !it.isDeleted && it.deliveryStatus.equals("Delivered", true) }
+                    val live = entries.filter { !it.isDeleted }
+                    fun countOf(s: String) = live.count { it.deliveryStatus.equals(s, true) }
                     val statuses = listOf(
-                        "All" to allCount,
-                        "Pending" to pendingCount,
-                        "Delivered" to deliveredCount
+                        "All" to live.size,
+                        "Not delivered" to live.count { !it.deliveryStatus.equals("Delivered", true) },
+                        "Pending" to countOf("Pending"),
+                        "Packed" to countOf("Packed"),
+                        "Dispatched" to countOf("Dispatched"),
+                        "Delivered" to countOf("Delivered")
                     )
 
                     statuses.forEach { (status, count) ->
@@ -551,7 +563,7 @@ fun PurchaseOrdersScreen(
                             Text(
                                 text = "$status ($count)",
                                 color = if (isSelected) Color.White else TextPrimary,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontWeight = FontWeight.SemiBold,
                                 fontSize = 12.sp,
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                             )
@@ -579,7 +591,7 @@ fun PurchaseOrdersScreen(
                                 Text(
                                     text = selectedSupplierName ?: "All Suppliers",
                                     color = if (isSupplierSelected) Color.White else TextPrimary,
-                                    fontWeight = if (isSupplierSelected) FontWeight.Bold else FontWeight.Medium,
+                                    fontWeight = FontWeight.SemiBold,
                                     fontSize = 12.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
@@ -662,7 +674,7 @@ fun PurchaseOrdersScreen(
                             Text(
                                 text = range,
                                 color = if (isSelected) Color.White else TextPrimary,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontWeight = FontWeight.SemiBold,
                                 fontSize = 12.sp,
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                             )
@@ -696,7 +708,7 @@ fun PurchaseOrdersScreen(
                             Text(
                                 text = if (isCustomSelected && customDateLabel.isNotBlank()) customDateLabel else "Custom 📅",
                                 color = if (isCustomSelected) Color.White else TextPrimary,
-                                fontWeight = if (isCustomSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontWeight = FontWeight.SemiBold,
                                 fontSize = 12.sp
                             )
                             if (isCustomSelected) {
@@ -759,167 +771,49 @@ fun PurchaseOrdersScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    contentPadding = PaddingValues(bottom = 12.dp)
                 ) {
                     items(pagedEntries, key = { it.id }) { entry ->
                         val visit = visitsMap[entry.visitId]
-                        val formattedDate = remember(entry.createdAt) {
-                            if (entry.createdAt > 0L) {
-                                SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault()).format(Date(entry.createdAt))
-                            } else {
-                                entry.expectedDeliveryDate.ifBlank { "Date not recorded" }
-                            }
-                        }
-
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onOpenOrder(entry) },
-                            shape = RoundedCornerShape(14.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                // Top Row: Order #, Supplier Mill & Status
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.weight(1f, fill = false)
-                                    ) {
-                                        Surface(
-                                            color = Color(0xFFC2410C).copy(alpha = 0.1f),
-                                            shape = RoundedCornerShape(4.dp)
-                                        ) {
-                                            Text(
-                                                text = entry.orderNo.ifBlank { "PO-${entry.id}" },
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 10.5.sp,
-                                                color = Color(0xFFC2410C),
-                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                                            )
-                                        }
-
-                                        Text(
-                                            text = entry.supplierName,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.5.sp,
-                                            color = TextPrimary,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-
-                                        if (entry.supplierType.isNotBlank()) {
-                                            SupplierTypeBadge(entry.supplierType)
-                                        }
-                                    }
-
-                                    StatusBadge(status = entry.deliveryStatus)
-                                }
-
-                                if (visit != null) {
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = "Trip: ${visit.customerName} (${visit.visitCode})",
-                                        fontSize = 11.sp,
-                                        color = TextSecondary,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(5.dp))
-
-                                // Commercial / Goods Breakdown
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(Color(0xFFF8FAFC), shape = RoundedCornerShape(6.dp))
-                                        .padding(horizontal = 8.dp, vertical = 5.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column {
-                                        Text(
-                                            text = "Item: ${entry.itemCode.ifBlank { "Standard Apparel" }}",
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = 11.5.sp,
-                                            color = TextPrimary
-                                        )
-                                        Text(
-                                            text = "${entry.pieces} pcs • ${entry.caseCount} cases (${entry.loosePieces} loose)",
-                                            fontSize = 10.5.sp,
-                                            color = TextSecondary
-                                        )
-                                    }
-
-                                    Column(horizontalAlignment = Alignment.End) {
-                                        Text(
-                                            text = PdfGenerator.formatInr(entry.grandTotalWithGst),
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp,
-                                            color = Color(0xFF047857)
-                                        )
-                                        Text(
-                                            text = "@ ₹${entry.rate}/pc + GST",
-                                            fontSize = 10.sp,
-                                            color = TextSecondary
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(4.dp))
-
-                                // Footer: Date & Invoice Photo Attachment
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = formattedDate,
-                                        fontSize = 9.5.sp,
-                                        color = TextSecondary.copy(alpha = 0.8f)
-                                    )
-
-                                    // Invoice / Order Photo Button
-                                    val invoiceUri = entry.supplierInvoiceUri ?: entry.orderFormPhotoUri
+                        val invoiceUri = entry.supplierInvoiceUri ?: entry.orderFormPhotoUri
+                        OrderRow(
+                            entry = entry,
+                            customerName = visit?.customerName.orEmpty(),
+                            onClick = { onOpenOrder(entry) },
+                            trailing = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
                                     if (!invoiceUri.isNullOrBlank()) {
-                                        Row(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(4.dp))
-                                                .background(Color(0xFF2563EB).copy(alpha = 0.1f))
-                                                .clickable {
-                                                    fullscreenImageUrl = invoiceUri
-                                                    fullscreenImageTitle = "Invoice for ${entry.orderNo} (${entry.supplierName})"
-                                                }
-                                                .padding(horizontal = 5.dp, vertical = 2.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                        IconButton(
+                                            onClick = {
+                                                fullscreenImageUrl = invoiceUri
+                                                fullscreenImageTitle = "Invoice for ${entry.orderNo} (${entry.supplierName})"
+                                            },
+                                            modifier = Modifier.size(40.dp)
                                         ) {
                                             Icon(
-                                                Icons.Default.Image,
-                                                contentDescription = "View Invoice",
+                                                imageVector = Icons.Default.Image,
+                                                contentDescription = "View invoice for order ${entry.orderNo}",
                                                 tint = Color(0xFF2563EB),
-                                                modifier = Modifier.size(12.dp)
+                                                modifier = Modifier.size(18.dp)
                                             )
-                                            Text(
-                                                text = "View Invoice",
-                                                fontSize = 9.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF2563EB)
+                                        }
+                                    }
+                                    if (!isAgentUser) {
+                                        IconButton(
+                                            onClick = { entryToUpdate = entry },
+                                            modifier = Modifier.size(40.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.LocalShipping,
+                                                contentDescription = "Update delivery status for order ${entry.orderNo}",
+                                                tint = NavyPrimary,
+                                                modifier = Modifier.size(18.dp)
                                             )
                                         }
                                     }
                                 }
                             }
-                        }
+                        )
                     }
                 }
             }
@@ -932,6 +826,17 @@ fun PurchaseOrdersScreen(
             imageUrl = url,
             title = fullscreenImageTitle,
             onDismiss = { fullscreenImageUrl = null }
+        )
+    }
+
+    entryToUpdate?.let { entry ->
+        UpdateDeliveryStatusDialog(
+            entry = entry,
+            onDismiss = { entryToUpdate = null },
+            onSave = { newStatus, transporter ->
+                viewModel.updateDeliveryStatus(entry, newStatus, transporter)
+                entryToUpdate = null
+            }
         )
     }
 }

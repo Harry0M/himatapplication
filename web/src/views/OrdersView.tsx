@@ -12,6 +12,7 @@ import {
   Download,
 } from "lucide-react"
 import { useData } from "../context/DataContext"
+import { useAuth } from "../context/AuthContext"
 import { formatInr, formatDate, cn } from "../lib/utils"
 import { Card } from "../components/ui/Card"
 import { Button } from "../components/ui/Button"
@@ -19,14 +20,22 @@ import { Badge } from "../components/ui/Badge"
 import { Tabs } from "../components/ui/Tabs"
 import { Input } from "../components/ui/Input"
 import { Dialog } from "../components/ui/Dialog"
+import { DateRangeFilter } from "../components/ui/DateRangeFilter"
 import { PurchaseEntry, Supplier } from "../types"
 import { ReportViewerModal } from "../components/ui/ReportViewerModal"
 import {
   generateSupplierInvoiceHtml,
   buildSupplierInvoiceWhatsAppText,
+  type SupplierOrderFormOptions,
 } from "../lib/pdfReports"
+import { ALL_TIME, DateRange, effectiveOrderDate, isDelivered as isOrderDelivered, matchesDateRange, toNumericId } from "../lib/domain"
 
-export function OrdersView() {
+interface OrdersViewProps {
+  /** "all" | "pending_delivery" | "delivered" */
+  initialStatus?: string
+}
+
+export function OrdersView({ initialStatus = "all" }: OrdersViewProps = {}) {
   const {
     entries,
     visits,
@@ -34,35 +43,52 @@ export function OrdersView() {
     suppliers,
     employees,
     brands,
+    transporters,
     selectedEmployeeId,
     setSelectedEmployeeId,
-    updatePayment,
     updateDelivery,
   } = useData()
+  const { role } = useAuth()
+  const readOnly = role === "agent"
 
   const [search, setSearch] = useState<string>("")
   const [showSearch, setShowSearch] = useState<boolean>(false)
-  const [statusFilter, setStatusFilter] = useState<string>("all")
-
-  // Inline Payment dialog state
-  const [paymentEntry, setPaymentEntry] = useState<PurchaseEntry | null>(null)
-  const [paymentAmount, setPaymentAmount] = useState<string>("")
-  const [paymentMode, setPaymentMode] = useState<string>("Cash")
-  const [paymentStatus, setPaymentStatus] = useState<string>("Paid")
-  const [paymentRemarks, setPaymentRemarks] = useState<string>("")
-
-  // Inline Delivery dialog state
-  const [deliveryEntry, setDeliveryEntry] = useState<PurchaseEntry | null>(null)
-  const [deliveryStatus, setDeliveryStatus] = useState<string>("Dispatched")
-  const [transporter, setTransporter] = useState<string>("")
-  const [lrNo, setLrNo] = useState<string>("")
+  // Delivery decides whether an order is done; payment is an optional second filter
+  const [statusFilter, setStatusFilter] = useState<string>(initialStatus)
+  const [paymentFilter, setPaymentFilter] = useState<string>("any")
 
   // Customer filter
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("all")
 
-  // Date range filter
-  const [dateFrom, setDateFrom] = useState<string>("")
-  const [dateTo, setDateTo] = useState<string>("")
+  // Date range filter (presets + custom)
+  const [dateRange, setDateRange] = useState<DateRange>(ALL_TIME)
+
+  // Delivery update dialog
+  const [deliveryEntry, setDeliveryEntry] = useState<PurchaseEntry | null>(null)
+  const [deliveryStatus, setDeliveryStatus] = useState<string>("Dispatched")
+  const [deliveryTransporter, setDeliveryTransporter] = useState<string>("")
+  const [deliveryLrNo, setDeliveryLrNo] = useState<string>("")
+  const [deliveryLrDate, setDeliveryLrDate] = useState<string>("")
+  const [savingDelivery, setSavingDelivery] = useState<boolean>(false)
+
+  const openDeliveryDialog = (entry: PurchaseEntry) => {
+    setDeliveryEntry(entry)
+    setDeliveryStatus(entry.deliveryStatus || "Dispatched")
+    setDeliveryTransporter(entry.transporter || "")
+    setDeliveryLrNo(entry.lrNo || "")
+    setDeliveryLrDate(entry.lrDate || "")
+  }
+
+  const saveDelivery = async () => {
+    if (!deliveryEntry) return
+    setSavingDelivery(true)
+    try {
+      await updateDelivery(deliveryEntry.id, deliveryStatus, deliveryTransporter.trim(), deliveryLrNo.trim(), deliveryLrDate)
+      setDeliveryEntry(null)
+    } finally {
+      setSavingDelivery(false)
+    }
+  }
 
   // Report modal state
   const [reportModal, setReportModal] = useState<{
@@ -70,6 +96,8 @@ export function OrdersView() {
     title: string
     html: string
     whatsAppText: string
+    /** Order forms: rebuilds the document for the chosen options */
+    buildHtml?: (options: SupplierOrderFormOptions) => string
   }>({
     open: false,
     title: "",
@@ -88,38 +116,86 @@ export function OrdersView() {
     return employees.find((e) => e.id === selectedEmployeeId) || null
   }, [selectedEmployeeId, employees])
 
+  // Brand lookup map: supplierId → brand name
+  const brandMap = React.useMemo(() => {
+    const map = new Map<number, string>()
+    if (brands) {
+      brands.forEach((b: any) => {
+        if (b.id && b.name) map.set(b.id, b.name)
+      })
+    }
+    return map
+  }, [brands])
+
+  // Supplier → brand name helper
+  const getDisplayName = (entry: PurchaseEntry) => {
+    const supplier = suppliers.find((s) => s.id === entry.supplierId)
+    const brandId = supplier?.brandId || (supplier as any)?.brand_id
+    if (brandId && brandMap.has(brandId)) return brandMap.get(brandId)!
+    const brandName = (supplier as any)?.brandName || (supplier as any)?.brand_name
+    if (brandName) return brandName
+    return entry.supplierName || "—"
+  }
+
+  /** The salesman of an order: its own salesman, else the trip starter (orders saved before per-order salesmen). */
+  const salesmanOf = (e: PurchaseEntry) => {
+    const visit = visitMap.get(e.visitId)
+    return {
+      id: toNumericId(e.salesmanId) || toNumericId(visit?.employeeId),
+      name: (e.salesmanName || "").trim() || visit?.employeeName || "",
+    }
+  }
+
+  const paymentMatches = (e: PurchaseEntry) => {
+    const pStatus = (e.paymentStatus || "").toLowerCase()
+    if (paymentFilter === "paid") return pStatus === "paid" || pStatus === "received"
+    if (paymentFilter === "partial") return pStatus === "partial"
+    if (paymentFilter === "unpaid") return pStatus !== "paid" && pStatus !== "received" && pStatus !== "partial"
+    return true
+  }
+
   const q = search.trim().toLowerCase()
-  const filteredEntries = entries.filter((e) => {
+  // Everything except the delivery status tab, so the tab counts follow the other filters
+  const baseFiltered = entries.filter((e) => {
     const visit = visitMap.get(e.visitId)
     const custName = visit?.customerName || ""
-    const agentName = visit?.employeeName || ""
+    const salesman = salesmanOf(e)
 
-    // 1. Employee filter
+    // 1. Salesman filter (the order's own salesman)
     if (activeEmployee) {
-      const matchEmpId = visit && Number(visit.employeeId) === activeEmployee.id
-      const matchEmpName =
-        agentName.trim().toLowerCase() === activeEmployee.name.trim().toLowerCase()
-      if (!matchEmpId && !matchEmpName) return false
+      const matchId = salesman.id > 0 && salesman.id === Number(activeEmployee.id)
+      const matchName = salesman.name.toLowerCase() === activeEmployee.name.trim().toLowerCase()
+      if (!matchId && !matchName) return false
     }
 
-    // 2. Search filter
-    const matchesSearch =
+    // 2. Customer filter
+    if (selectedCustomerId !== "all") {
+      const custId = visit?.customerId
+      if (String(custId) !== selectedCustomerId) return false
+    }
+
+    // 3. Date range filter: the order date, else the trip date
+    if (!matchesDateRange(effectiveOrderDate(e, visit), dateRange)) return false
+
+    // 4. Payment filter (optional)
+    if (!paymentMatches(e)) return false
+
+    // 5. Search filter
+    return (
       !q ||
       e.orderNo?.toLowerCase().includes(q) ||
       e.itemCode?.toLowerCase().includes(q) ||
       e.supplierName?.toLowerCase().includes(q) ||
       custName.toLowerCase().includes(q) ||
-      agentName.toLowerCase().includes(q)
+      salesman.name.toLowerCase().includes(q) ||
+      (e.lrNo || "").toLowerCase().includes(q) ||
+      (e.transporter || "").toLowerCase().includes(q)
+    )
+  })
 
-    if (!matchesSearch) return false
-
-    // 3. Status filter
-    const pStatus = (e.paymentStatus || "").toLowerCase()
-    if (statusFilter === "paid") return pStatus === "paid" || pStatus === "received"
-    if (statusFilter === "partial") return pStatus === "partial"
-    if (statusFilter === "unpaid") return pStatus !== "paid" && pStatus !== "received" && pStatus !== "partial"
-    if (statusFilter === "pending_delivery") return e.deliveryStatus?.toLowerCase() !== "delivered"
-
+  const filteredEntries = baseFiltered.filter((e) => {
+    if (statusFilter === "pending_delivery") return !isOrderDelivered(e)
+    if (statusFilter === "delivered") return isOrderDelivered(e)
     return true
   })
 
@@ -143,60 +219,35 @@ export function OrdersView() {
   const totalDueFiltered = Math.max(0, totalBilledFiltered - totalPaidFiltered)
   const totalPiecesFiltered = filteredEntries.reduce((sum, e) => sum + (Number(e.pieces) || 0), 0)
 
-  const handleOpenPayment = (entry: PurchaseEntry) => {
-    const total =
-      Number(entry.grandTotalWithGst) ||
-      (Number(entry.totalAmount) + Number(entry.gstAmount)) ||
-      0
-    const currentPaid = Number(entry.paidAmount) || 0
-    const due = Math.max(0, total - currentPaid)
-
-    setPaymentEntry(entry)
-    setPaymentAmount(due > 0 ? due.toString() : total.toString())
-    setPaymentMode(entry.paymentMode || "Cash")
-    setPaymentStatus(due === 0 ? "Paid" : "Partial")
-    setPaymentRemarks(entry.paymentRemarks || "")
-  }
-
-  const handleSavePayment = async () => {
-    if (!paymentEntry) return
-    const amountVal = Number(paymentAmount) || 0
-    const total =
-      Number(paymentEntry.grandTotalWithGst) ||
-      (Number(paymentEntry.totalAmount) + Number(paymentEntry.gstAmount)) ||
-      0
-    
-    // Auto-adjust status if amount matches total
-    let finalStatus = paymentStatus
-    if (amountVal >= total) {
-      finalStatus = "Paid"
-    } else if (amountVal > 0 && amountVal < total) {
-      finalStatus = "Partial"
-    } else if (amountVal === 0) {
-      finalStatus = "Unpaid"
-    }
-
-    await updatePayment(
-      paymentEntry.id,
-      finalStatus,
-      paymentMode,
-      amountVal,
-      paymentRemarks
-    )
-    setPaymentEntry(null)
-  }
-
-  const handleOpenDelivery = (entry: PurchaseEntry) => {
-    setDeliveryEntry(entry)
-    setDeliveryStatus(entry.deliveryStatus || "Dispatched")
-    setTransporter(entry.transporter || "")
-    setLrNo(entry.lrNo || "")
-  }
-
-  const handleSaveDelivery = async () => {
-    if (!deliveryEntry) return
-    await updateDelivery(deliveryEntry.id, deliveryStatus, transporter, lrNo)
-    setDeliveryEntry(null)
+  // Bulk download all filtered invoices — opens each in a new print window
+  const handleBulkDownload = () => {
+    if (filteredEntries.length === 0) return
+    filteredEntries.forEach((entry, idx) => {
+      const visit = visitMap.get(entry.visitId) || {
+        id: entry.visitId,
+        visitCode: `VIS-${entry.visitId}`,
+        customerId: 0,
+        customerName: "Buyer",
+        date: entry.createdAt ? new Date(entry.createdAt).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+        employeeId: 1,
+        employeeName: "Agent",
+        status: "Completed",
+      }
+      const customer = customers.find((c) => c.id === visit.customerId || c.name === visit.customerName)
+      const supplier: Supplier = suppliers.find(
+        (s) => s.id === entry.supplierId || s.name.toLowerCase() === entry.supplierName?.toLowerCase()
+      ) || { id: entry.supplierId || 1, name: entry.supplierName, type: entry.supplierType || "Wholesaler", phone: "—", marketArea: "Wholesale Market" }
+      const salesman = employees.find((e) => e.id === visit.employeeId || e.name === visit.employeeName)
+      const html = generateSupplierInvoiceHtml({ supplier, visit, customer, salesman, entries: [entry] })
+      setTimeout(() => {
+        const win = window.open("", `invoice_${idx}`, "width=800,height=600")
+        if (win) {
+          win.document.write(html)
+          win.document.close()
+          setTimeout(() => win.print(), 500)
+        }
+      }, idx * 800)
+    })
   }
 
   // Generate & preview wholesaler invoice for this order
@@ -238,9 +289,10 @@ export function OrdersView() {
 
     setReportModal({
       open: true,
-      title: `Supplier Voucher: #${entry.orderNo} • ${supplier.name}`,
+      title: `Order Form: #${entry.orderNo} • ${supplier.brand || supplier.name}`,
       html,
       whatsAppText,
+      buildHtml: (options) => generateSupplierInvoiceHtml({ ...invoiceData, options }),
     })
   }
 
@@ -250,10 +302,10 @@ export function OrdersView() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 flex items-center gap-2">
-            <span>Orders & Purchase Invoices</span>
+            <span>Orders & Delivery</span>
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Full purchase ledger with item codes, packing breakdown, live payment tracking, and PDF invoices.
+            Every order from every trip. Update delivery here; payment tracking is optional.
           </p>
         </div>
 
@@ -266,17 +318,16 @@ export function OrdersView() {
                 const val = e.target.value
                 setSelectedEmployeeId(val === "all" ? "all" : Number(val))
               }}
-              aria-label="Filter by Sales Agent"
+              aria-label="Filter by salesman"
               className="h-8 rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-zinc-900 shadow-sm"
             >
-              <option value="all">👥 All Sales Agents</option>
+              <option value="all">👥 All Salesmen</option>
               {employees.map((emp) => (
                 <option key={emp.id} value={emp.id}>
-                  👤 {emp.name} ({emp.role})
+                  👤 {emp.name}
                 </option>
               ))}
             </select>
-
             {selectedEmployeeId !== "all" && (
               <Button
                 variant="ghost"
@@ -290,6 +341,63 @@ export function OrdersView() {
               </Button>
             )}
           </div>
+
+          {/* Customer Filter Dropdown */}
+          <div className="flex items-center gap-1.5">
+            <select
+              value={selectedCustomerId}
+              onChange={(e) => setSelectedCustomerId(e.target.value)}
+              aria-label="Filter by Customer"
+              className="h-8 rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-zinc-900 shadow-sm"
+            >
+              <option value="all">🏪 All Customers</option>
+              {customers.map((c) => (
+                <option key={c.id} value={String(c.id)}>
+                  {c.firmName || c.name}
+                </option>
+              ))}
+            </select>
+            {selectedCustomerId !== "all" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                shape="pill"
+                onClick={() => setSelectedCustomerId("all")}
+                className="h-8 px-2 text-xs text-red-600 hover:bg-red-50"
+                title="Clear customer filter"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
+
+          {/* Payment filter (optional) */}
+          <select
+            value={paymentFilter}
+            onChange={(e) => setPaymentFilter(e.target.value)}
+            aria-label="Filter by payment"
+            className="h-8 rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-zinc-900 shadow-sm"
+          >
+            <option value="any">💳 Any payment</option>
+            <option value="unpaid">Unpaid</option>
+            <option value="partial">Partial</option>
+            <option value="paid">Paid</option>
+          </select>
+
+          {/* Bulk Download Button */}
+          <Button
+            shape="pill"
+            variant="outline"
+            size="sm"
+            onClick={handleBulkDownload}
+            disabled={filteredEntries.length === 0}
+            className="h-8 px-3 text-xs"
+            title={`Download invoices for ${filteredEntries.length} filtered orders`}
+          >
+            <Download className="h-3.5 w-3.5 mr-1" />
+            Download ({filteredEntries.length})
+          </Button>
+
 
           {/* Search Toggle */}
           <Button
@@ -306,42 +414,29 @@ export function OrdersView() {
             <span>Search</span>
           </Button>
 
-          {/* Status Tabs */}
+          {/* Delivery status: the only status that decides whether an order is done */}
           <Tabs
             value={statusFilter}
             onValueChange={setStatusFilter}
             options={[
-              { value: "all", label: "All Orders", count: entries.length },
-              {
-                value: "unpaid",
-                label: "Unpaid",
-                count: entries.filter((e) => {
-                  const s = (e.paymentStatus || "").toLowerCase()
-                  return s !== "paid" && s !== "received" && s !== "partial"
-                }).length,
-              },
-              {
-                value: "partial",
-                label: "Partial",
-                count: entries.filter((e) => (e.paymentStatus || "").toLowerCase() === "partial").length,
-              },
-              {
-                value: "paid",
-                label: "Paid",
-                count: entries.filter((e) => {
-                  const s = (e.paymentStatus || "").toLowerCase()
-                  return s === "paid" || s === "received"
-                }).length,
-              },
+              { value: "all", label: "All Orders", count: baseFiltered.length },
               {
                 value: "pending_delivery",
-                label: "In Transit",
-                count: entries.filter((e) => e.deliveryStatus?.toLowerCase() !== "delivered").length,
+                label: "Not Delivered",
+                count: baseFiltered.filter((e) => !isOrderDelivered(e)).length,
+              },
+              {
+                value: "delivered",
+                label: "Delivered",
+                count: baseFiltered.filter((e) => isOrderDelivered(e)).length,
               },
             ]}
           />
         </div>
       </div>
+
+      {/* Date filter: presets + custom range */}
+      <DateRangeFilter value={dateRange} onChange={setDateRange} />
 
       {/* Financial Overview Cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -455,7 +550,7 @@ export function OrdersView() {
                 <th className="py-3.5 pl-6 pr-3">Order / Code</th>
                 <th className="px-3 py-3.5">Supplier / Mill</th>
                 <th className="px-3 py-3.5">Buyer</th>
-                <th className="px-3 py-3.5">Assigned Agent</th>
+                <th className="px-3 py-3.5">Salesman</th>
                 <th className="px-3 py-3.5">Packing</th>
                 <th className="px-3 py-3.5">Bill Amount</th>
                 <th className="px-3 py-3.5 min-w-[150px]">Payment Status & Dues</th>
@@ -485,7 +580,7 @@ export function OrdersView() {
                   const isDelivered = entry.deliveryStatus?.toLowerCase() === "delivered"
                   const visit = visitMap.get(entry.visitId)
                   const customerName = visit?.customerName || "Customer"
-                  const agentName = visit?.employeeName || "Agent"
+                  const agentName = salesmanOf(entry).name || "—"
                   const pct = billTotal > 0 ? Math.min(100, Math.round((paidAmount / billTotal) * 100)) : (isPaid ? 100 : 0)
 
                   return (
@@ -503,9 +598,14 @@ export function OrdersView() {
                         </p>
                       </td>
 
-                      {/* Supplier */}
+                      {/* Supplier / Brand */}
                       <td className="px-3 py-4 font-medium text-zinc-800 dark:text-zinc-200">
-                        {entry.supplierName}
+                        {getDisplayName(entry)}
+                        {entry.supplierName && getDisplayName(entry) !== entry.supplierName && (
+                          <span className="block text-[10px] text-muted-foreground">
+                            {entry.supplierName}
+                          </span>
+                        )}
                         {entry.supplierType && (
                           <span className="block text-[10px] text-muted-foreground">
                             {entry.supplierType}
@@ -612,11 +712,26 @@ export function OrdersView() {
                             🚛 {entry.transporter}
                           </p>
                         )}
+                        {entry.lrNo && (
+                          <p className="text-[10px] text-muted-foreground truncate max-w-[110px]">LR: {entry.lrNo}</p>
+                        )}
                       </td>
 
                       {/* Actions */}
                       <td className="py-4 pl-3 pr-6 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          {!readOnly && (
+                            <Button
+                              variant={isDelivered ? "outline" : "default"}
+                              size="sm"
+                              shape="pill"
+                              onClick={() => openDeliveryDialog(entry)}
+                              className="h-7 text-[11px] px-2.5 font-medium"
+                              title="Update delivery status, transporter and LR"
+                            >
+                              Delivery
+                            </Button>
+                          )}
                           {/* Invoice PDF button */}
                           <Button
                             variant="outline"
@@ -629,28 +744,6 @@ export function OrdersView() {
                             <FileText className="h-3 w-3 mr-1" />
                             Invoice
                           </Button>
-
-                          {/* Record Payment */}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            shape="pill"
-                            onClick={() => handleOpenPayment(entry)}
-                            className="h-7 text-[11px] px-2 font-medium"
-                          >
-                            Payment
-                          </Button>
-
-                          {/* Update Delivery */}
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            shape="pill"
-                            onClick={() => handleOpenDelivery(entry)}
-                            className="h-7 text-[11px] px-2 font-medium"
-                          >
-                            Delivery
-                          </Button>
                         </div>
                       </td>
                     </tr>
@@ -662,160 +755,6 @@ export function OrdersView() {
         </div>
       </Card>
 
-      {/* Record Payment Dialog */}
-      <Dialog
-        open={!!paymentEntry}
-        onOpenChange={(open) => !open && setPaymentEntry(null)}
-        title="Record Bill Payment"
-        description={`Order #${paymentEntry?.orderNo} • ${paymentEntry?.supplierName} • Total Bill: ₹${formatInr(
-          (Number(paymentEntry?.totalAmount) || 0) + (Number(paymentEntry?.gstAmount) || 0)
-        )}`}
-      >
-        <div className="space-y-4 pt-2">
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">Payment Status</label>
-            <div className="mt-1.5 flex gap-2">
-              {["Paid", "Partial", "Unpaid"].map((status) => (
-                <Button
-                  key={status}
-                  size="sm"
-                  shape="pill"
-                  variant={paymentStatus === status ? "default" : "outline"}
-                  onClick={() => setPaymentStatus(status)}
-                  className="flex-1 text-xs"
-                >
-                  {status}
-                </Button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-medium text-muted-foreground">Amount Paid (₹)</label>
-              {paymentEntry && (
-                <span className="text-[11px] text-muted-foreground">
-                  Total Bill: ₹{formatInr(
-                    (Number(paymentEntry.totalAmount) || 0) + (Number(paymentEntry.gstAmount) || 0)
-                  )}
-                </span>
-              )}
-            </div>
-            <Input
-              type="number"
-              value={paymentAmount}
-              onChange={(e) => setPaymentAmount(e.target.value)}
-              className="mt-1.5 font-bold"
-              placeholder="Enter amount paid"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">Payment Mode</label>
-            <div className="mt-1.5 flex gap-2">
-              {["Cash", "UPI", "Bank / Cheque"].map((mode) => (
-                <Button
-                  key={mode}
-                  size="sm"
-                  shape="pill"
-                  variant={paymentMode === mode ? "default" : "outline"}
-                  onClick={() => setPaymentMode(mode)}
-                  className="flex-1 text-xs"
-                >
-                  {mode}
-                </Button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">Reference / Remarks</label>
-            <Input
-              value={paymentRemarks}
-              onChange={(e) => setPaymentRemarks(e.target.value)}
-              placeholder="e.g. Cheque #, UTR #, or partial note"
-              className="mt-1.5"
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button
-              variant="outline"
-              shape="pill"
-              size="sm"
-              onClick={() => setPaymentEntry(null)}
-            >
-              Cancel
-            </Button>
-            <Button shape="pill" size="sm" onClick={handleSavePayment}>
-              Save Payment
-            </Button>
-          </div>
-        </div>
-      </Dialog>
-
-      {/* Update Delivery Dialog */}
-      <Dialog
-        open={!!deliveryEntry}
-        onOpenChange={(open) => !open && setDeliveryEntry(null)}
-        title="Update Dispatch & Delivery"
-        description={`Order #${deliveryEntry?.orderNo} • ${deliveryEntry?.itemCode}`}
-      >
-        <div className="space-y-4 pt-2">
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">Delivery Status</label>
-            <div className="mt-1.5 flex gap-2">
-              {["Pending", "Packed", "Dispatched", "Delivered"].map((status) => (
-                <Button
-                  key={status}
-                  size="sm"
-                  shape="pill"
-                  variant={deliveryStatus === status ? "default" : "outline"}
-                  onClick={() => setDeliveryStatus(status)}
-                  className="flex-1 text-xs"
-                >
-                  {status}
-                </Button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">Transporter Name</label>
-            <Input
-              value={transporter}
-              onChange={(e) => setTransporter(e.target.value)}
-              placeholder="e.g. V-Trans, ARC, Safexpress"
-              className="mt-1.5"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">LR / Bilty Number</label>
-            <Input
-              value={lrNo}
-              onChange={(e) => setLrNo(e.target.value)}
-              placeholder="e.g. LR-99882"
-              className="mt-1.5"
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button
-              variant="outline"
-              shape="pill"
-              size="sm"
-              onClick={() => setDeliveryEntry(null)}
-            >
-              Cancel
-            </Button>
-            <Button shape="pill" size="sm" onClick={handleSaveDelivery}>
-              Update Delivery
-            </Button>
-          </div>
-        </div>
-      </Dialog>
-
       {/* Wholesaler / Supplier Invoice Report Viewer Modal */}
       <ReportViewerModal
         open={reportModal.open}
@@ -823,7 +762,90 @@ export function OrdersView() {
         title={reportModal.title}
         htmlContent={reportModal.html}
         whatsAppText={reportModal.whatsAppText}
+        buildHtml={reportModal.buildHtml}
       />
+
+      {/* Delivery update (same fields as the Android app) */}
+      <Dialog
+        open={!!deliveryEntry}
+        onOpenChange={(open) => !open && setDeliveryEntry(null)}
+        title="Update Delivery"
+        description={deliveryEntry ? `Order #${deliveryEntry.orderNo} • ${deliveryEntry.itemCode} • ${deliveryEntry.supplierName}` : undefined}
+      >
+        <div className="space-y-4 pt-1">
+          <div>
+            <p className="text-xs font-medium text-muted-foreground">Status</p>
+            <div className="mt-1.5 grid grid-cols-2 gap-2 sm:grid-cols-4" role="group" aria-label="Delivery status">
+              {["Pending", "Packed", "Dispatched", "Delivered"].map((status) => (
+                <Button
+                  key={status}
+                  type="button"
+                  size="sm"
+                  shape="pill"
+                  variant={deliveryStatus === status ? "default" : "outline"}
+                  onClick={() => setDeliveryStatus(status)}
+                  aria-pressed={deliveryStatus === status}
+                  className="text-xs"
+                >
+                  {status}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label htmlFor="orders-delivery-transporter" className="text-xs font-medium text-muted-foreground">
+              Transporter
+            </label>
+            <Input
+              id="orders-delivery-transporter"
+              list="orders-transporter-options"
+              value={deliveryTransporter}
+              onChange={(e) => setDeliveryTransporter(e.target.value)}
+              placeholder="Pick from the Transporter master or type"
+              className="mt-1.5"
+            />
+            <datalist id="orders-transporter-options">
+              {transporters.map((t) => (
+                <option key={t.id} value={t.transporterName} />
+              ))}
+            </datalist>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label htmlFor="orders-delivery-lr" className="text-xs font-medium text-muted-foreground">
+                LR / Bilty No.
+              </label>
+              <Input
+                id="orders-delivery-lr"
+                value={deliveryLrNo}
+                onChange={(e) => setDeliveryLrNo(e.target.value)}
+                placeholder="e.g. LR-55441"
+                className="mt-1.5"
+              />
+            </div>
+            <div>
+              <label htmlFor="orders-delivery-lr-date" className="text-xs font-medium text-muted-foreground">
+                LR Date
+              </label>
+              <Input
+                id="orders-delivery-lr-date"
+                type="date"
+                value={deliveryLrDate}
+                onChange={(e) => setDeliveryLrDate(e.target.value)}
+                className="mt-1.5"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" shape="pill" size="sm" onClick={() => setDeliveryEntry(null)}>
+              Cancel
+            </Button>
+            <Button shape="pill" size="sm" onClick={saveDelivery} disabled={savingDelivery}>
+              {savingDelivery ? "Saving..." : "Save Delivery"}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   )
 }

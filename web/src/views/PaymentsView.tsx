@@ -32,6 +32,7 @@ import {
   generateCustomerStatementHtml,
   buildCustomerStatementWhatsAppText,
   CustomerStatementData,
+  type SupplierOrderFormOptions,
 } from "../lib/pdfReports"
 
 type DatePreset = "all" | "today" | "this_week" | "this_month" | "this_year" | "custom"
@@ -61,6 +62,8 @@ export function PaymentsView() {
     title: string
     html: string
     whatsAppText: string
+    /** Order forms: rebuilds the document for the chosen options */
+    buildHtml?: (options: SupplierOrderFormOptions) => string
   }>({
     open: false,
     title: "",
@@ -300,9 +303,10 @@ export function PaymentsView() {
 
     setReportModal({
       open: true,
-      title: `Invoice Voucher: #${entry.orderNo} • ${supplier.name}`,
+      title: `Order Form: #${entry.orderNo} • ${supplier.brand || supplier.name}`,
       html,
       whatsAppText,
+      buildHtml: (options) => generateSupplierInvoiceHtml({ ...invoiceData, options }),
     })
   }
 
@@ -876,6 +880,7 @@ export function PaymentsView() {
         title={reportModal.title}
         htmlContent={reportModal.html}
         whatsAppText={reportModal.whatsAppText}
+        buildHtml={reportModal.buildHtml}
       />
     </div>
   )

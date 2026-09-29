@@ -30,6 +30,10 @@ import {
   Store,
   Layers,
   Sparkles,
+  Trash2,
+  Landmark,
+  Plus,
+  Check,
 } from "lucide-react"
 import { useData } from "../context/DataContext"
 import { formatInr, formatDate, cn } from "../lib/utils"
@@ -40,18 +44,32 @@ import { Dialog } from "../components/ui/Dialog"
 import { ImageLightboxModal } from "../components/ui/ImageLightboxModal"
 import { Input } from "../components/ui/Input"
 import { Tabs } from "../components/ui/Tabs"
-import { Customer, Visit, PurchaseEntry } from "../types"
+import { Customer, Visit, PurchaseEntry, CustomerSecurityCheque } from "../types"
 import { ReportViewerModal } from "../components/ui/ReportViewerModal"
+import { EnvelopePrintModal } from "../components/ui/EnvelopePrintModal"
+import { createCustomerEnvelopeData } from "../lib/envelopePrint"
 import {
   generateCustomerDayReportHtml,
   buildCustomerReportWhatsAppText,
 } from "../lib/pdfReports"
 import { exportCustomerToTallyXml } from "../lib/tallyExport"
+import { DateRangeFilter } from "../components/ui/DateRangeFilter"
+import { ActivitySummary, ReferredList, Section, TripsTable } from "../components/related/RelatedRecords"
+import {
+  ALL_TIME,
+  DateRange,
+  ReferrerTypes,
+  filterOrdersByDate,
+  filterTripsByDate,
+  referredRecords,
+  toNumericId,
+} from "../lib/domain"
 
 interface CustomerDetailViewProps {
   customerId: number
   onBack: () => void
   onEdit?: (customer: Customer) => void
+  onDelete?: (customer: Customer) => void
   onNavigate?: (tab: string) => void
 }
 
@@ -61,9 +79,24 @@ export function CustomerDetailView({
   customerId,
   onBack,
   onEdit,
+  onDelete,
   onNavigate,
 }: CustomerDetailViewProps) {
-  const { customers, visits, entries, suppliers, transporters, employees, packGroups } = useData()
+  const {
+    customers,
+    visits,
+    entries,
+    suppliers,
+    transporters,
+    employees,
+    packGroups,
+    chequesPdc,
+    saveCustomerSecurityCheque,
+    deleteCustomerSecurityCheque,
+    updateChequePdcStatus,
+    subAgents,
+    allPeople,
+  } = useData()
 
   const [activeTab, setActiveTab] = useState<string>("orders")
   const [searchQuery, setSearchQuery] = useState<string>("")
@@ -93,24 +126,161 @@ export function CustomerDetailView({
     whatsAppText: "",
   })
 
+  // 24cm x 10.5cm Envelope Print Modal State
+  const [isEnvelopeModalOpen, setIsEnvelopeModalOpen] = useState<boolean>(false)
+
+  // Security Cheque Modal State
+  const [isSecChequeModalOpen, setIsSecChequeModalOpen] = useState(false)
+  const [editingSecCheque, setEditingSecCheque] = useState<CustomerSecurityCheque | null>(null)
+  const [formSecChequeNo, setFormSecChequeNo] = useState("")
+  const [formSecBankName, setFormSecBankName] = useState("")
+  const [formSecAmount, setFormSecAmount] = useState("")
+  const [formSecDate, setFormSecDate] = useState("")
+  const [formSecAccountNo, setFormSecAccountNo] = useState("")
+  const [formSecBranch, setFormSecBranch] = useState("")
+  const [formSecNotes, setFormSecNotes] = useState("")
+  const [formSecStatus, setFormSecStatus] = useState("Pending")
+  const [isSavingSecCheque, setIsSavingSecCheque] = useState(false)
+  const [deleteSecChequeConfirmId, setDeleteSecChequeConfirmId] = useState<number | string | null>(null)
+
+  const todayStr = useMemo(() => new Date().toISOString().split("T")[0], [])
+
   // Find target customer
   const customer = useMemo(() => {
     return customers.find((c) => c.id === customerId) || null
   }, [customers, customerId])
+
+  // Customer Security Cheques (Merged from customer.securityCheques & chequesPdc)
+  const customerSecurityCheques = useMemo(() => {
+    if (!customer) return []
+    const fromCust: CustomerSecurityCheque[] = customer.securityCheques ? [...customer.securityCheques] : []
+    const fromPdc = chequesPdc.filter(
+      (c) =>
+        c.partyType === "Customer" &&
+        Number(c.partyId) === customer.id &&
+        (c.isSecurityCheque || (c.notes && c.notes.toLowerCase().includes("security")))
+    )
+
+    fromPdc.forEach((p) => {
+      const matchIdx = fromCust.findIndex(
+        (c) => Number(c.pdcChequeId || c.id) === p.id || c.chequeNo === p.chequeNo
+      )
+      const mergedItem: CustomerSecurityCheque = {
+        id: p.id,
+        pdcChequeId: p.id,
+        chequeNo: p.chequeNo,
+        bankName: p.bankName,
+        amount: p.amount,
+        chequeDate: p.chequeDate,
+        accountNumber: p.accountNumber || (matchIdx >= 0 ? fromCust[matchIdx].accountNumber : ""),
+        branchName: p.branchName || (matchIdx >= 0 ? fromCust[matchIdx].branchName : ""),
+        notes: p.notes?.replace("[Security Cheque]", "").trim() || (matchIdx >= 0 ? fromCust[matchIdx].notes : ""),
+        status: p.status,
+        createdAt: p.createdAt || (matchIdx >= 0 ? fromCust[matchIdx].createdAt : Date.now()),
+      }
+      if (matchIdx >= 0) {
+        fromCust[matchIdx] = mergedItem
+      } else {
+        fromCust.push(mergedItem)
+      }
+    })
+
+    return fromCust.sort((a, b) => (a.chequeDate || "").localeCompare(b.chequeDate || ""))
+  }, [customer, chequesPdc])
+
+  const totalSecurityAmount = useMemo(() => {
+    return customerSecurityCheques.reduce((sum, c) => sum + Number(c.amount || 0), 0)
+  }, [customerSecurityCheques])
+
+  const dueTodaySecurityCount = useMemo(() => {
+    return customerSecurityCheques.filter(
+      (c) => c.chequeDate === todayStr && (c.status === "Pending" || c.status === "Due Today")
+    ).length
+  }, [customerSecurityCheques, todayStr])
+
+  const handleOpenAddSecCheque = () => {
+    setEditingSecCheque(null)
+    setFormSecChequeNo("")
+    setFormSecBankName("")
+    setFormSecAmount("")
+    setFormSecDate(todayStr)
+    setFormSecAccountNo("")
+    setFormSecBranch("")
+    setFormSecNotes("")
+    setFormSecStatus("Pending")
+    setIsSecChequeModalOpen(true)
+  }
+
+  const handleOpenEditSecCheque = (sc: CustomerSecurityCheque) => {
+    setEditingSecCheque(sc)
+    setFormSecChequeNo(sc.chequeNo)
+    setFormSecBankName(sc.bankName)
+    setFormSecAmount(String(sc.amount || ""))
+    setFormSecDate(sc.chequeDate || todayStr)
+    setFormSecAccountNo(sc.accountNumber || "")
+    setFormSecBranch(sc.branchName || "")
+    setFormSecNotes(sc.notes || "")
+    setFormSecStatus((sc.status as string) || "Pending")
+    setIsSecChequeModalOpen(true)
+  }
+
+  const handleSaveSecCheque = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!formSecChequeNo.trim() || !formSecBankName.trim() || !formSecAmount || !formSecDate.trim() || !customer) {
+      alert("Please fill in Cheque Number, Bank Name, Amount and Date.")
+      return
+    }
+    setIsSavingSecCheque(true)
+    try {
+      await saveCustomerSecurityCheque(customer.id, {
+        id: editingSecCheque?.id,
+        pdcChequeId: editingSecCheque?.pdcChequeId,
+        chequeNo: formSecChequeNo.trim(),
+        bankName: formSecBankName.trim(),
+        amount: Number(formSecAmount),
+        chequeDate: formSecDate.trim(),
+        accountNumber: formSecAccountNo.trim(),
+        branchName: formSecBranch.trim(),
+        notes: formSecNotes.trim(),
+        status: formSecStatus,
+        createdAt: editingSecCheque?.createdAt || Date.now(),
+      })
+      setIsSecChequeModalOpen(false)
+    } catch (err) {
+      console.error("Error saving security cheque:", err)
+      alert("Failed to save security cheque.")
+    } finally {
+      setIsSavingSecCheque(false)
+    }
+  }
+
+  const handleDeleteSecCheque = async (chequeId: number | string) => {
+    if (!customer) return
+    try {
+      await deleteCustomerSecurityCheque(customer.id, chequeId)
+      setDeleteSecChequeConfirmId(null)
+    } catch (err) {
+      console.error("Error deleting security cheque:", err)
+      alert("Failed to delete security cheque.")
+    }
+  }
 
   // Map of all visits belonging to this customer
   const customerVisits = useMemo(() => {
     if (!customer) return []
     const custNameLower = customer.name.trim().toLowerCase()
     const custFirmLower = (customer.firmName || "").trim().toLowerCase()
-    return visits.filter(
-      (v) =>
-        Number(v.customerId) === customer.id ||
-        (v.customerName &&
-          (v.customerName.trim().toLowerCase() === custNameLower ||
-            (custFirmLower && v.customerName.trim().toLowerCase() === custFirmLower)))
-    )
-  }, [visits, customer])
+    const knownIds = new Set(customers.map((c) => Number(c.id)))
+    return visits.filter((v) => {
+      const vid = Number(v.customerId)
+      if (vid === Number(customer.id)) return true
+      // Linked to another existing customer: not ours (two customers may share a name)
+      if (vid > 0 && knownIds.has(vid)) return false
+      // Trip saved without / with a stale customer id: match the exact shop or owner name
+      const n = (v.customerName || "").trim().toLowerCase()
+      return Boolean(n) && (n === custNameLower || (Boolean(custFirmLower) && n === custFirmLower))
+    })
+  }, [visits, customer, customers])
 
   const visitMap = useMemo(() => {
     return new Map<number, Visit>(customerVisits.map((v) => [Number(v.id), v]))
@@ -124,6 +294,29 @@ export function CustomerDetailView({
   const allCustomerEntries = useMemo(() => {
     return entries.filter((e) => visitIdsSet.has(Number(e.visitId)))
   }, [entries, visitIdsSet])
+
+  // Sub Agent who brought this customer
+  const linkedSubAgent = useMemo(() => {
+    const id = toNumericId(customer?.subAgentId)
+    return id > 0 ? subAgents.find((a) => Number(a.id) === id) : undefined
+  }, [customer, subAgents])
+
+  // Trips tab: shared date filter (presets + custom range)
+  const [relatedRange, setRelatedRange] = useState<DateRange>(ALL_TIME)
+  const rangedTrips = useMemo(() => filterTripsByDate(customerVisits, relatedRange), [customerVisits, relatedRange])
+  const rangedOrders = useMemo(
+    () => filterOrdersByDate(allCustomerEntries, visitMap, relatedRange),
+    [allCustomerEntries, visitMap, relatedRange]
+  )
+
+  // Customers, suppliers and people who were referred by this customer
+  const referrerNames = customer ? [customer.firmName, customer.name] : []
+  const referredCustomers = customer
+    ? referredRecords(customers, ReferrerTypes.CUSTOMER, Number(customer.id), referrerNames, true)
+    : []
+  const referredSuppliers = customer ? referredRecords(suppliers, ReferrerTypes.CUSTOMER, Number(customer.id), referrerNames) : []
+  const referredPeople = customer ? referredRecords(allPeople, ReferrerTypes.CUSTOMER, Number(customer.id), referrerNames) : []
+  const referredCount = referredCustomers.length + referredSuppliers.length + referredPeople.length
 
   // Supplier Map for rapid lookup
   const supplierMap = useMemo(() => {
@@ -367,6 +560,23 @@ export function CustomerDetailView({
             </Button>
           )}
 
+          {onDelete && (
+            <Button
+              onClick={() => {
+                if (window.confirm(`Are you sure you want to permanently delete customer "${customer.firmName || customer.name}"? This action cannot be undone.`)) {
+                  onDelete(customer)
+                  onBack()
+                }
+              }}
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 text-xs shadow-sm border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900/60 dark:text-red-400 dark:hover:bg-red-950/40"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>Delete Customer</span>
+            </Button>
+          )}
+
           <Button
             onClick={handleExportTally}
             variant="outline"
@@ -386,6 +596,17 @@ export function CustomerDetailView({
           >
             <Printer className="h-3.5 w-3.5" />
             <span>PDF Statement</span>
+          </Button>
+
+          <Button
+            onClick={() => setIsEnvelopeModalOpen(true)}
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 text-xs shadow-sm border-blue-200 hover:bg-blue-50/50 text-blue-700 dark:border-blue-900 dark:text-blue-400"
+            title="Print 24cm x 10.5cm Postal Envelope"
+          >
+            <Mail className="h-3.5 w-3.5" />
+            <span>Print Envelope</span>
           </Button>
         </div>
       </div>
@@ -519,14 +740,36 @@ export function CustomerDetailView({
 
       {/* Main Tabbed Navigation */}
       <Tabs
+        className="flex-wrap"
         options={[
           { value: "orders", label: `Orders History (${allCustomerEntries.length})` },
+          { value: "trips", label: `Trips (${customerVisits.length})` },
+          { value: "referred", label: `Referred (${referredCount})` },
           { value: "profile", label: "Firm & Contact Profile" },
-          { value: "kyc", label: `KYC & Cloud Photos (${kycDocs.filter((d) => d.uri).length}/6)` },
+          { value: "security", label: `Security Cheques (${customerSecurityCheques.length})` },
+          { value: "kyc", label: `KYC & Cloud Photos (${kycDocs.filter((d) => d.uri).length}/${kycDocs.length})` },
         ]}
         value={activeTab}
-        onValueChange={(val) => setActiveTab(val as "orders" | "profile" | "kyc")}
+        onValueChange={(val) => setActiveTab(val)}
       />
+
+      {/* TRIPS of this customer, with the shared date filter */}
+      {activeTab === "trips" && (
+        <div className="space-y-3">
+          <DateRangeFilter value={relatedRange} onChange={setRelatedRange} />
+          <ActivitySummary trips={rangedTrips} orders={rangedOrders} />
+          <Section title="Trips" count={rangedTrips.length}>
+            <TripsTable trips={rangedTrips} entries={allCustomerEntries} employees={employees} />
+          </Section>
+        </div>
+      )}
+
+      {/* Everybody this customer referred to us */}
+      {activeTab === "referred" && (
+        <Section title={`Referred by ${customer.firmName || customer.name}`} count={referredCount}>
+          <ReferredList customers={referredCustomers} suppliers={referredSuppliers} people={referredPeople} />
+        </Section>
+      )}
 
       {/* TAB 1: ORDERS & PURCHASES HISTORY */}
       {activeTab === "orders" && (
@@ -831,6 +1074,14 @@ export function CustomerDetailView({
                   <span className="text-muted-foreground block text-[11px]">Community / Religion</span>
                   <span className="font-medium text-zinc-800 dark:text-zinc-200">{customer.religion || "—"}</span>
                 </div>
+                <div>
+                  <span className="text-muted-foreground block text-[11px]">Market Area / Locality</span>
+                  <span className="font-medium text-zinc-800 dark:text-zinc-200">{customer.marketArea || "—"}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[11px]">Working Markets</span>
+                  <span className="font-semibold text-blue-700 dark:text-blue-400">{customer.workingMarkets || "—"}</span>
+                </div>
               </div>
 
               {/* Garment Categories Dealt With */}
@@ -858,15 +1109,22 @@ export function CustomerDetailView({
               </div>
 
               <div className="grid grid-cols-2 gap-4 text-xs">
-                <div className="col-span-2">
+                <div>
                   <span className="text-muted-foreground block text-[11px]">Preferred Transporter</span>
                   <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                     {customer.preferredTransporterName || "Standard Transport"}
                   </span>
-                  {customer.transportPreference && (
-                    <p className="text-[11px] text-zinc-500 italic mt-0.5">"{customer.transportPreference}"</p>
-                  )}
                 </div>
+                {customer.transportPreference && (
+                  <div>
+                    <span className="text-muted-foreground block text-[11px] flex items-center gap-1">
+                      🚉 Booking / Delivery Station
+                    </span>
+                    <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                      {customer.transportPreference}
+                    </span>
+                  </div>
+                )}
                 <div>
                   <span className="text-muted-foreground block text-[11px]">Handling Agent / Staff</span>
                   <span className="font-semibold text-zinc-800 dark:text-zinc-200">
@@ -878,6 +1136,15 @@ export function CustomerDetailView({
                   <span className="font-semibold text-zinc-800 dark:text-zinc-200">
                     {customer.referredBy || "Direct Inquiry"}
                   </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[11px]">Sub Agent</span>
+                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                    {linkedSubAgent?.name || customer.subAgentName || "—"}
+                  </span>
+                  {linkedSubAgent?.phone && (
+                    <span className="block text-[11px] text-zinc-500">{linkedSubAgent.phone}</span>
+                  )}
                 </div>
                 <div>
                   <span className="text-muted-foreground block text-[11px]">Credit Term Period</span>
@@ -904,6 +1171,44 @@ export function CustomerDetailView({
                 </div>
               )}
             </Card>
+
+            {/* Bank Account & Financial Settlement Card */}
+            {(customer.bankName || customer.accountNumber || customer.ifscCode || customer.cancelChequePhotoUri) && (
+              <Card className="p-5 border border-zinc-200/80 dark:border-zinc-800 shadow-xs bg-white dark:bg-zinc-950 space-y-4 col-span-1 lg:col-span-2">
+                <div className="flex items-center justify-between pb-2 border-b border-zinc-100 dark:border-zinc-800">
+                  <div className="flex items-center gap-2">
+                    <CreditCard className="h-4 w-4 text-emerald-600" />
+                    <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-50">Bank Account & Financial Settlement</h3>
+                  </div>
+                  {customer.cancelChequePhotoUri && (
+                    <Button
+                      onClick={() => setLightbox({ open: true, url: customer.cancelChequePhotoUri!, title: "Cancelled Cheque Photo" })}
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1 border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400"
+                    >
+                      <ZoomIn className="h-3 w-3" />
+                      <span>View Cheque Photo</span>
+                    </Button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                  <div>
+                    <span className="text-muted-foreground block text-[11px]">Bank Name</span>
+                    <span className="font-bold text-zinc-900 dark:text-zinc-100">{customer.bankName || "—"}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block text-[11px]">Account Number</span>
+                    <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{customer.accountNumber || "—"}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block text-[11px]">IFSC Code</span>
+                    <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{customer.ifscCode || "—"}</span>
+                  </div>
+                </div>
+              </Card>
+            )}
           </div>
 
           {/* Contacts Info (Up to 5) */}
@@ -1011,7 +1316,221 @@ export function CustomerDetailView({
         </div>
       )}
 
-      {/* TAB 3: KYC DOCUMENTS & CLOUD STORAGE MEDIA */}
+      {/* TAB 3: SECURITY CHEQUES REGISTER & PDC INTEGRATION (TEXT DATA) */}
+      {activeTab === "security" && (
+        <div className="space-y-4">
+          <Card className="p-4 border border-zinc-200/80 dark:border-zinc-800 shadow-xs bg-white dark:bg-zinc-950">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-50 flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4 text-amber-600" />
+                  <span>Security Cheques & Guarantee Register (Text Records)</span>
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Financial security cheques given by customer. When a cheque's date arrives, it automatically enters the Post-Dated Cheque (PDC) collection register.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-200 text-xs font-bold">
+                  {customerSecurityCheques.length} Cheque{customerSecurityCheques.length !== 1 ? "s" : ""} Attached
+                </Badge>
+                {totalSecurityAmount > 0 && (
+                  <Badge variant="outline" className="bg-emerald-50 text-emerald-800 border-emerald-200 text-xs font-bold">
+                    Total: ₹{formatInr(totalSecurityAmount)}
+                  </Badge>
+                )}
+                {dueTodaySecurityCount > 0 && (
+                  <Badge className="bg-red-600 text-white text-xs font-bold animate-pulse">
+                    {dueTodaySecurityCount} Due Today in PDC
+                  </Badge>
+                )}
+                <Button
+                  size="sm"
+                  onClick={handleOpenAddSecCheque}
+                  className="gap-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs shadow-xs"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add Cheque
+                </Button>
+              </div>
+            </div>
+          </Card>
+
+          {customerSecurityCheques.length === 0 ? (
+            <Card className="p-12 text-center border-dashed border-zinc-300 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/30">
+              <Landmark className="h-12 w-12 text-zinc-300 dark:text-zinc-700 mx-auto mb-3" />
+              <h3 className="text-sm font-bold text-zinc-800 dark:text-zinc-200">No Security Cheques on Record</h3>
+              <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
+                No security cheques have been registered for {customer.firmName || customer.name}. Click below to add a cheque with cheque number, bank, amount, and due date.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleOpenAddSecCheque}
+                className="mt-4 gap-1.5 text-xs text-amber-700 border-amber-300 hover:bg-amber-50 dark:text-amber-300"
+              >
+                <Plus className="h-3.5 w-3.5" /> + Add First Security Cheque
+              </Button>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {customerSecurityCheques.map((cheque) => {
+                const isDueToday = cheque.chequeDate === todayStr && (cheque.status === "Pending" || cheque.status === "Due Today")
+                const isUpcoming = cheque.chequeDate > todayStr && cheque.status === "Pending"
+                const isOverdue = cheque.chequeDate < todayStr && cheque.status === "Pending"
+
+                // Relative days calculation
+                let daysLabel = ""
+                if (cheque.chequeDate) {
+                  const cTime = new Date(cheque.chequeDate).getTime()
+                  const tTime = new Date(todayStr).getTime()
+                  const diffDays = Math.round((cTime - tTime) / (1000 * 60 * 60 * 24))
+                  if (diffDays === 0) daysLabel = "Due Today"
+                  else if (diffDays > 0) daysLabel = `In ${diffDays} day${diffDays > 1 ? "s" : ""}`
+                  else daysLabel = `${Math.abs(diffDays)} day${Math.abs(diffDays) > 1 ? "s" : ""} ago`
+                }
+
+                return (
+                  <Card
+                    key={cheque.id}
+                    className={cn(
+                      "p-4 border transition-all rounded-xl relative overflow-hidden bg-white dark:bg-zinc-950 flex flex-col justify-between",
+                      isDueToday
+                        ? "border-red-400 ring-1 ring-red-400 bg-red-50/20"
+                        : "border-zinc-200/80 dark:border-zinc-800 hover:shadow-md"
+                    )}
+                  >
+                    <div>
+                      {/* Top Bar */}
+                      <div className="flex items-center justify-between pb-2.5 border-b border-zinc-100 dark:border-zinc-800/80">
+                        <div className="flex items-center gap-1.5 font-mono font-bold text-xs text-zinc-900 dark:text-zinc-100">
+                          <span className="text-muted-foreground">CHQ #</span>
+                          <span className="text-indigo-600 dark:text-indigo-400 text-sm tracking-wider">
+                            {cheque.chequeNo}
+                          </span>
+                        </div>
+
+                        {/* Status Badge */}
+                        {cheque.status === "Cleared" ? (
+                          <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 text-[10px] font-bold">
+                            Cleared ✓
+                          </Badge>
+                        ) : cheque.status === "Deposited" ? (
+                          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 text-[10px] font-bold">
+                            Deposited
+                          </Badge>
+                        ) : cheque.status === "Bounced" ? (
+                          <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-300 text-[10px] font-bold">
+                            Bounced ⚠️
+                          </Badge>
+                        ) : isDueToday ? (
+                          <Badge className="bg-red-600 text-white text-[10px] font-bold animate-pulse">
+                            Due Today in PDC
+                          </Badge>
+                        ) : isUpcoming ? (
+                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px] font-medium">
+                            PDC ({daysLabel})
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 text-[10px] font-medium">
+                            Overdue ({daysLabel})
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* Main Body */}
+                      <div className="py-3 space-y-2">
+                        <div>
+                          <span className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">Amount</span>
+                          <p className="text-xl font-black text-emerald-600 dark:text-emerald-400">
+                            ₹{formatInr(cheque.amount)}
+                          </p>
+                        </div>
+
+                        <div className="space-y-1.5 text-xs text-zinc-700 dark:text-zinc-300 pt-1">
+                          <div className="flex items-center gap-2">
+                            <Landmark className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <span className="font-semibold truncate">{cheque.bankName || "Unknown Bank"}</span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <span>
+                              Maturity Date: <strong className={cn(isDueToday ? "text-red-600" : "")}>{cheque.chequeDate ? formatDate(cheque.chequeDate) : "Not Set"}</strong>
+                            </span>
+                          </div>
+
+                          {cheque.accountNumber && (
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                              <CreditCard className="h-3.5 w-3.5 shrink-0" />
+                              <span className="font-mono text-[11px] truncate">A/C: {cheque.accountNumber}</span>
+                            </div>
+                          )}
+
+                          {cheque.notes && (
+                            <div className="flex items-start gap-2 text-[11px] text-zinc-500 bg-zinc-50 dark:bg-zinc-900 p-1.5 rounded mt-1 border border-zinc-100 dark:border-zinc-800">
+                              <FileText className="h-3.5 w-3.5 text-zinc-400 shrink-0 mt-0.5" />
+                              <span className="italic line-clamp-2">{cheque.notes}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Footer Actions */}
+                    <div className="pt-2.5 mt-2 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between gap-1 text-xs">
+                      {/* Status Quick Dropdown */}
+                      <div className="flex items-center gap-1">
+                        <select
+                          value={cheque.status || "Pending"}
+                          onChange={(e) => updateChequePdcStatus(Number(cheque.pdcChequeId || cheque.id), e.target.value)}
+                          className="h-7 text-[11px] font-semibold border border-zinc-200 dark:border-zinc-800 rounded bg-zinc-50 dark:bg-zinc-900 px-1.5 text-zinc-700 dark:text-zinc-300 focus:outline-none"
+                        >
+                          <option value="Pending">Pending (PDC)</option>
+                          <option value="Deposited">Deposited</option>
+                          <option value="Cleared">Cleared</option>
+                          <option value="Bounced">Bounced</option>
+                        </select>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        {onNavigate && (
+                          <button
+                            type="button"
+                            onClick={() => onNavigate("cheques")}
+                            className="p-1.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 hover:text-indigo-600 transition-colors"
+                            title="View in Cheques / PDC Register"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditSecCheque(cheque)}
+                          className="p-1.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+                          title="Edit Cheque"
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteSecChequeConfirmId(cheque.pdcChequeId || cheque.id)}
+                          className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-950/40 text-red-500 hover:text-red-700 transition-colors"
+                          title="Delete Cheque"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 4: KYC DOCUMENTS & CLOUD STORAGE MEDIA */}
       {activeTab === "kyc" && (
         <div className="space-y-4">
           <Card className="p-4 border border-zinc-200/80 dark:border-zinc-800 shadow-xs bg-white dark:bg-zinc-950">
@@ -1130,6 +1649,163 @@ export function CustomerDetailView({
         htmlContent={reportModal.html}
         whatsAppText={reportModal.whatsAppText}
       />
+
+      {/* 24cm x 10.5cm Envelope Print Modal */}
+      <EnvelopePrintModal
+        open={isEnvelopeModalOpen}
+        onOpenChange={setIsEnvelopeModalOpen}
+        initialRecipient={customer ? createCustomerEnvelopeData(customer) : null}
+        defaultType="Customer"
+      />
+
+      {/* Add / Edit Security Cheque Modal */}
+      <Dialog
+        open={isSecChequeModalOpen}
+        onOpenChange={setIsSecChequeModalOpen}
+        title={editingSecCheque ? "Edit Security Cheque" : "Add Security Cheque"}
+        description={`Record security cheque for ${customer.firmName || customer.name}. Automatically tracked in PDC register.`}
+      >
+        <form onSubmit={handleSaveSecCheque} className="space-y-4 pt-2">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                Cheque Number (CH N) <span className="text-red-500">*</span>
+              </label>
+              <Input
+                value={formSecChequeNo}
+                onChange={(e) => setFormSecChequeNo(e.target.value)}
+                placeholder="e.g. 049182"
+                required
+                className="font-mono font-bold"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                Bank Name <span className="text-red-500">*</span>
+              </label>
+              <Input
+                value={formSecBankName}
+                onChange={(e) => setFormSecBankName(e.target.value)}
+                placeholder="e.g. HDFC Bank, SBI"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                Cheque Amount (₹) <span className="text-red-500">*</span>
+              </label>
+              <Input
+                type="number"
+                value={formSecAmount}
+                onChange={(e) => setFormSecAmount(e.target.value)}
+                placeholder="e.g. 50000"
+                required
+                className="font-bold text-emerald-600"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                Cheque Date (Maturity / PDC) <span className="text-red-500">*</span>
+              </label>
+              <Input
+                type="date"
+                value={formSecDate}
+                onChange={(e) => setFormSecDate(e.target.value)}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                Bank Account No. (Optional)
+              </label>
+              <Input
+                value={formSecAccountNo}
+                onChange={(e) => setFormSecAccountNo(e.target.value)}
+                placeholder="Account number"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                Status
+              </label>
+              <select
+                value={formSecStatus}
+                onChange={(e) => setFormSecStatus(e.target.value)}
+                className="w-full text-sm border border-zinc-200 dark:border-zinc-800 rounded-lg px-3 py-2 bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200 focus:outline-none"
+              >
+                <option value="Pending">Pending (PDC)</option>
+                <option value="Deposited">Deposited in Bank</option>
+                <option value="Cleared">Cleared</option>
+                <option value="Bounced">Bounced</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+              Purpose / Security Notes (Optional)
+            </label>
+            <Input
+              value={formSecNotes}
+              onChange={(e) => setFormSecNotes(e.target.value)}
+              placeholder="e.g. Guarantee against credit purchase, 30-day payment term"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsSecChequeModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={isSavingSecCheque}
+              className="bg-amber-600 hover:bg-amber-700 text-white gap-1.5"
+            >
+              <Check className="h-3.5 w-3.5" />
+              {isSavingSecCheque ? "Saving..." : editingSecCheque ? "Update Cheque" : "Save Security Cheque"}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
+
+      {/* Delete Security Cheque Confirmation Modal */}
+      {deleteSecChequeConfirmId !== null && (
+        <Dialog
+          open={true}
+          onOpenChange={() => setDeleteSecChequeConfirmId(null)}
+          title="Delete Security Cheque?"
+          description="Are you sure you want to remove this security cheque? It will also be removed from the PDC register."
+        >
+          <div className="flex items-center justify-end gap-2 pt-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteSecChequeConfirmId(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => handleDeleteSecCheque(deleteSecChequeConfirmId)}
+            >
+              Confirm Delete
+            </Button>
+          </div>
+        </Dialog>
+      )}
     </div>
   )
 }

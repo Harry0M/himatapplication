@@ -21,6 +21,7 @@ import { Input } from "../components/ui/Input"
 import { FileUpload } from "../components/ui/FileUpload"
 import { ImageLightboxModal } from "../components/ui/ImageLightboxModal"
 import { Brand } from "../types"
+import { newId } from "../lib/domain"
 import { GARMENT_CATEGORIES } from "../lib/constants"
 import { getMasterDraft, saveMasterDraft, clearMasterDraft } from "../lib/masterDrafts"
 import { BrandDetailView } from "./BrandDetailView"
@@ -112,7 +113,9 @@ export function BrandsView() {
     const selectedSupplier = suppliers.find((s) => s.id === Number(manufacturerId))
 
     const brandPayload: Brand = {
-      id: editingBrand?.id || Date.now(),
+      // Keep fields this form does not show
+      ...(editingBrand || {}),
+      id: editingBrand?.id || newId(),
       brandName: brandName.trim(),
       manufacturerId: manufacturerId ? Number(manufacturerId) : null,
       manufacturerName: selectedSupplier?.firmName || selectedSupplier?.name || "",

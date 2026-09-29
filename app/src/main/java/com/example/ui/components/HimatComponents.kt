@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -23,7 +24,13 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Inventory
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
@@ -52,7 +59,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import com.example.R
+import com.example.ui.theme.GoldAccent
+import com.example.util.SyncStatus
 import com.example.ui.theme.NavyPrimary
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
@@ -131,7 +144,17 @@ fun HimatTopBar(
     onOpenProfile: () -> Unit = {},
     onSwitchRole: () -> Unit = {},
     onOpenShareInvite: () -> Unit = {},
-    modifier: Modifier = Modifier
+    /** Opens the one inbox holding both customer and supplier registration requests. */
+    onOpenRequests: (() -> Unit)? = null,
+    /** Pending customer + supplier requests; shown as a red count on the Requests button. */
+    requestsCount: Int = 0,
+    /** Live sync state. Null hides the indicator entirely. */
+    syncStatus: SyncStatus? = null,
+    /** Opens the "what can I do / is my work saved" sheet. Used by both the sync chip and the i button. */
+    onOpenSyncInfo: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    // Sharing now lives once, in More > Share registration link
+    showShare: Boolean = true
 ) {
     val handleProfileClick = {
         onOpenProfile()
@@ -139,7 +162,7 @@ fun HimatTopBar(
     }
 
     Surface(
-        color = Color(0xFFF6F8FB),
+        color = MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.onSurface,
         modifier = modifier.fillMaxWidth(),
         shadowElevation = 0.dp
@@ -152,14 +175,54 @@ fun HimatTopBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Clean Brand Name without colored background blocks or clutter
-            Text(
-                text = "Himat Textile",
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.ExtraBold,
-                fontSize = 20.sp,
-                letterSpacing = (-0.3).sp
-            )
+            // Clean Brand Name with Company Logo. Weighted so the name shortens instead of
+            // pushing the action buttons off a narrow screen.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f, fill = false)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color.White,
+                    shadowElevation = 1.dp,
+                    border = androidx.compose.foundation.BorderStroke(0.8.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.padding(3.dp)
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.himat_logo),
+                            contentDescription = "Himat Textile Logo",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(10.dp))
+
+                Column {
+                    Text(
+                        text = "Himat Textile",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 18.sp,
+                        letterSpacing = (-0.3).sp,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "YOUR BUSINESS GUIDE",
+                        color = GoldAccent,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 8.5.sp,
+                        letterSpacing = 0.8.sp,
+                        maxLines = 1
+                    )
+                }
+            }
 
             // Right Actions: Share registration link & Profile
             Row(
@@ -167,10 +230,10 @@ fun HimatTopBar(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 // Modern Share Registration Link Pill Button
-                Surface(
+                if (showShare) Surface(
                     shape = CircleShape,
-                    color = Color.White,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                     modifier = Modifier
                         .clip(CircleShape)
                         .clickable { onOpenShareInvite() }
@@ -195,18 +258,152 @@ fun HimatTopBar(
                     }
                 }
 
+                // Sync state, so nobody has to guess whether their work reached the office
+                if (syncStatus != null) {
+                    val (syncIcon, syncTint) = when (syncStatus) {
+                        is SyncStatus.Offline -> Icons.Default.CloudOff to Color(0xFFB45309)
+                        is SyncStatus.Pending -> Icons.Default.CloudUpload to Color(0xFFB45309)
+                        is SyncStatus.Uploading -> Icons.Default.CloudUpload to MaterialTheme.colorScheme.primary
+                        SyncStatus.Syncing -> Icons.Default.Sync to MaterialTheme.colorScheme.primary
+                        SyncStatus.Synced -> Icons.Default.CloudDone to Color(0xFF16A34A)
+                    }
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (syncStatus.needsAttention) {
+                                Color(0xFFB45309).copy(alpha = 0.5f)
+                            } else {
+                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            }
+                        ),
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable(
+                                role = androidx.compose.ui.semantics.Role.Button,
+                                onClickLabel = "Sync status: ${syncStatus.label}",
+                                onClick = onOpenSyncInfo ?: {}
+                            )
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .heightIn(min = 34.dp)
+                                .padding(horizontal = 9.dp, vertical = 7.dp)
+                        ) {
+                            Icon(
+                                imageVector = syncIcon,
+                                contentDescription = null,
+                                tint = syncTint,
+                                modifier = Modifier.size(17.dp)
+                            )
+                            // Only worth the width when the user should act on it
+                            if (syncStatus.needsAttention) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = syncStatus.label,
+                                    color = Color(0xFFB45309),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Requests inbox: customer + supplier registrations in one place, with the count on it
+                if (onOpenRequests != null) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable(
+                                role = androidx.compose.ui.semantics.Role.Button,
+                                onClickLabel = if (requestsCount > 0) {
+                                    "Registration requests, $requestsCount waiting"
+                                } else "Registration requests",
+                                onClick = onOpenRequests
+                            )
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .heightIn(min = 34.dp)
+                                .padding(horizontal = 11.dp, vertical = 7.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Inbox,
+                                contentDescription = null,
+                                tint = if (requestsCount > 0) Color(0xFFDC2626) else MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = "Requests",
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            if (requestsCount > 0) {
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Surface(shape = CircleShape, color = Color(0xFFDC2626)) {
+                                    Text(
+                                        text = if (requestsCount > 99) "99+" else "$requestsCount",
+                                        color = Color.White,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // "i": what am I allowed to do, and is my work saved
+                if (onOpenSyncInfo != null) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .clickable(
+                                role = androidx.compose.ui.semantics.Role.Button,
+                                onClickLabel = "My access and sync status",
+                                onClick = onOpenSyncInfo
+                            )
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Outlined.Info,
+                                contentDescription = "My access and sync status",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
+                    }
+                }
+
                 // Modern Profile Option - opens profile dialog containing all switch options
                 Surface(
                     shape = CircleShape,
-                    color = Color.White,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                     modifier = Modifier
                         .clip(CircleShape)
                         .clickable { handleProfileClick() }
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                        modifier = Modifier
+                            .heightIn(min = 34.dp)
+                            .padding(horizontal = if (onOpenRequests != null) 9.dp else 12.dp, vertical = 7.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.AccountCircle,
@@ -214,13 +411,16 @@ fun HimatTopBar(
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Profile",
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                        // With the Requests button beside it the label is dropped so both fit
+                        if (onOpenRequests == null) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Profile",
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
             }

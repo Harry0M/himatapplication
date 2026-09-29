@@ -15,14 +15,22 @@ import com.example.data.local.entity.SupplierEntity
 import com.example.data.local.entity.TransactionEntity
 import com.example.data.local.entity.TransporterEntity
 import com.example.data.local.entity.VisitEntity
+import com.example.util.DeletionRequest
+import com.example.util.WorkNotification
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.MutableData
+import com.google.firebase.database.Query
+import com.google.firebase.database.Transaction
 import com.google.firebase.database.ValueEventListener
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.Collections
+import kotlin.coroutines.resume
 
 class FirebaseRtdbService(
     private val databaseUrl: String = "https://himatsms-default-rtdb.firebaseio.com"
@@ -41,6 +49,73 @@ class FirebaseRtdbService(
         get() = db.reference
 
     val pendingDeletionKeys: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    private val activeListeners = Collections.synchronizedList(mutableListOf<Pair<Query, ValueEventListener>>())
+
+    fun removeAllListeners() {
+        synchronized(activeListeners) {
+            for ((query, listener) in activeListeners) {
+                try {
+                    query.removeEventListener(listener)
+                } catch (e: Exception) {
+                    // Ignore
+                }
+            }
+            activeListeners.clear()
+        }
+    }
+
+    private fun registerListener(query: Query, listener: ValueEventListener): ValueEventListener {
+        query.addValueEventListener(listener)
+        synchronized(activeListeners) {
+            activeListeners.add(Pair(query, listener))
+        }
+        return listener
+    }
+
+    /**
+     * Write one record as a merge: every Android field plus [extra] (the web copies of the same data).
+     * setValue replaced the whole record and wiped fields only the web admin keeps (security cheques,
+     * contact designations, ...). Uses Firebase's own mapper, so key names are exactly what setValue wrote.
+     */
+    private fun DatabaseReference.mergeRecord(value: Any, extra: Map<String, Any?> = emptyMap()) {
+        val map = WebFieldBridge.toMap(value)
+        if (map.isEmpty()) {
+            setValue(value)
+            return
+        }
+        map.putAll(extra)
+        updateChildren(map)
+    }
+
+    /**
+     * Same merge, but waits for the server to accept it and says whether it did.
+     *
+     * Writes used to be fired and forgotten: a rejected or failed write left the record only on the
+     * phone while the app happily showed it as saved. Callers that must not lose data use this and
+     * keep the row marked as pending until it returns true.
+     *
+     * Note the timeout is generous — Firebase queues writes while offline, and the task only
+     * completes once the server has actually acknowledged it.
+     */
+    private suspend fun DatabaseReference.mergeRecordConfirmed(
+        value: Any,
+        extra: Map<String, Any?> = emptyMap(),
+        timeoutMs: Long = 20000L
+    ): Boolean {
+        val map = WebFieldBridge.toMap(value)
+        map.putAll(extra)
+        return withTimeoutOrNull(timeoutMs) {
+            suspendCancellableCoroutine<Boolean> { cont ->
+                val task = if (map.isEmpty()) setValue(value) else updateChildren(map)
+                task.addOnSuccessListener { if (cont.isActive) cont.resumeWith(Result.success(true)) }
+                    .addOnFailureListener { e ->
+                        android.util.Log.w("FirebaseRtdbService", "write to $this rejected: ${e.message}")
+                        if (cont.isActive) cont.resumeWith(Result.success(false))
+                    }
+            }
+        } ?: false
+    }
 
     fun listenToDeletionRequests(onUpdate: ((Set<String>) -> Unit)? = null): ValueEventListener {
         val listener = object : ValueEventListener {
@@ -62,10 +137,11 @@ class FirebaseRtdbService(
                 pendingDeletionKeys.addAll(set)
                 onUpdate?.invoke(set)
             }
-            override fun onCancelled(error: DatabaseError) {}
+            override fun onCancelled(error: DatabaseError) {
+                android.util.Log.w("FirebaseRtdbService", "deletion_requests onCancelled: ${error.message} (code ${error.code})")
+            }
         }
-        rootRef.child("deletion_requests").addValueEventListener(listener)
-        return listener
+        return registerListener(rootRef.child("deletion_requests"), listener)
     }
 
     suspend fun fetchDeletionRequestsKeys(): Set<String> = suspendCancellableCoroutine { cont ->
@@ -92,6 +168,190 @@ class FirebaseRtdbService(
                 if (cont.isActive) cont.resumeWith(Result.success(emptySet()))
             }
         })
+    }
+
+    // -------------------------------------------------------------------------
+    // Work notifications: "a new trip started", "a new order came in"
+    // -------------------------------------------------------------------------
+
+    /**
+     * Announce something the rest of the team should know about. Fire-and-forget on purpose: a
+     * missed announcement must never hold up or fail the actual save.
+     */
+    suspend fun postNotification(note: WorkNotification) = withContext(Dispatchers.IO) {
+        try {
+            rootRef.child("notifications").child(note.id).setValue(note)
+        } catch (_: Exception) {
+        }
+    }
+
+    /** Live announcements, newest 50 only, so an old database does not replay months of history. */
+    fun listenToNotifications(onUpdate: (List<WorkNotification>) -> Unit): ValueEventListener {
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val list = mutableListOf<WorkNotification>()
+                for (child in snapshot.children) {
+                    try {
+                        val note = child.getValue(WorkNotification::class.java) ?: continue
+                        list.add(if (note.id.isBlank()) note.copy(id = child.key.orEmpty()) else note)
+                    } catch (_: Exception) {
+                    }
+                }
+                onUpdate(list.sortedByDescending { it.createdAt })
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                android.util.Log.w("FirebaseRtdbService", "notifications onCancelled: ${error.message} (code ${error.code})")
+            }
+        }
+        return registerListener(rootRef.child("notifications").orderByChild("createdAt").limitToLast(50), listener)
+    }
+
+    // -------------------------------------------------------------------------
+    // Deletion requests: the admin console
+    //
+    // Staff cannot delete anything outright. Their delete marks the record `isDeleted` and files a
+    // request here. An admin then either approves it (the record is really removed) or rejects it
+    // (the record comes back exactly as it was).
+    // -------------------------------------------------------------------------
+
+    /** Every pending request, newest first, with enough detail to decide on it. */
+    fun listenToDeletionRequestList(onUpdate: (List<DeletionRequest>) -> Unit): ValueEventListener {
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val list = mutableListOf<DeletionRequest>()
+                for (child in snapshot.children) {
+                    val status = child.child("status").getValue(String::class.java).orEmpty()
+                    if (status.equals("CONFIRMED", true) || status.equals("REJECTED", true)) continue
+                    val collection = child.child("collection").getValue(String::class.java).orEmpty()
+                    val itemId = child.child("itemId").getValue(Long::class.java) ?: 0L
+                    if (collection.isBlank() || itemId <= 0L) continue
+                    list.add(
+                        DeletionRequest(
+                            key = child.key.orEmpty().ifBlank { "${collection}_$itemId" },
+                            collection = collection,
+                            itemId = itemId,
+                            itemSummary = child.child("itemSummary").getValue(String::class.java).orEmpty(),
+                            deletedBy = child.child("deletedBy").getValue(String::class.java).orEmpty(),
+                            deletedByEmail = child.child("deletedByEmail").getValue(String::class.java).orEmpty(),
+                            deletedByRole = child.child("deletedByRole").getValue(String::class.java).orEmpty(),
+                            deletedAt = child.child("deletedAt").getValue(Long::class.java) ?: 0L,
+                            deletionReason = child.child("deletionReason").getValue(String::class.java).orEmpty()
+                        )
+                    )
+                }
+                onUpdate(list.sortedByDescending { it.deletedAt })
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                android.util.Log.w("FirebaseRtdbService", "deletion_requests list onCancelled: ${error.message}")
+            }
+        }
+        return registerListener(rootRef.child("deletion_requests"), listener)
+    }
+
+    /**
+     * Admin approved: really remove the record, and for a trip its orders and pack groups too.
+     * Returns false when the write was refused, so the caller can say so instead of pretending.
+     */
+    suspend fun approveDeletionRequest(
+        request: DeletionRequest,
+        linkedEntryIds: List<Long> = emptyList(),
+        linkedPackGroupIds: List<Long> = emptyList()
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val node = request.collection
+            rootRef.child(node).child(request.itemId.toString()).removeValue()
+            if (node == "suppliers") {
+                rootRef.child("manufacturers").child(request.itemId.toString()).removeValue()
+            }
+            if (node == "visits") {
+                linkedEntryIds.forEach { id ->
+                    rootRef.child("purchase_entries").child(id.toString()).removeValue()
+                    rootRef.child("deletion_requests").child("purchase_entries_$id").removeValue()
+                }
+                linkedPackGroupIds.forEach { id ->
+                    rootRef.child("pack_groups").child(id.toString()).removeValue()
+                    rootRef.child("deletion_requests").child("pack_groups_$id").removeValue()
+                }
+            }
+            rootRef.child("deletion_requests").child(request.key).removeValue()
+            rootRef.child("deletion_requests").child("${node}_${request.itemId}").removeValue()
+            true
+        } catch (e: Exception) {
+            android.util.Log.w("FirebaseRtdbService", "approveDeletionRequest ${request.key} failed: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Admin rejected: put the record back and drop the request.
+     *
+     * Brands, transporters and markets also carry the web's own `deleted` / `isActive` / `active`
+     * copies of the same flag, and the web lists filter on those too — clearing only `isDeleted`
+     * used to leave a "restored" record still invisible, so all of them are reset here.
+     */
+    suspend fun rejectDeletionRequest(
+        request: DeletionRequest,
+        linkedEntryIds: List<Long> = emptyList()
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val node = request.collection
+            rootRef.child(node).child(request.itemId.toString()).updateChildren(restoreFields(node))
+            if (node == "suppliers") {
+                rootRef.child("manufacturers").child(request.itemId.toString())
+                    .updateChildren(restoreFields(node))
+            }
+            if (node == "visits") {
+                linkedEntryIds.forEach { id ->
+                    rootRef.child("purchase_entries").child(id.toString())
+                        .updateChildren(restoreFields("purchase_entries"))
+                    rootRef.child("deletion_requests").child("purchase_entries_$id").removeValue()
+                }
+            }
+            rootRef.child("deletion_requests").child(request.key).removeValue()
+            rootRef.child("deletion_requests").child("${node}_${request.itemId}").removeValue()
+            true
+        } catch (e: Exception) {
+            android.util.Log.w("FirebaseRtdbService", "rejectDeletionRequest ${request.key} failed: ${e.message}")
+            false
+        }
+    }
+
+    /** The exact set of fields that has to be cleared to make a record live again. */
+    private fun restoreFields(collection: String): Map<String, Any?> {
+        val base = mutableMapOf<String, Any?>(
+            "isDeleted" to false,
+            "deletedAt" to null,
+            "deletedBy" to null,
+            "deletedByEmail" to null,
+            "deletedByRole" to null,
+            "deletionStatus" to null,
+            "deletionReason" to null
+        )
+        if (collection == "brands" || collection == "transporters" || collection == "markets") {
+            base["deleted"] = false
+            base["isActive"] = true
+            base["active"] = true
+        }
+        return base
+    }
+
+    /**
+     * Whether we are actually talking to the office right now, from the database's own
+     * `.info/connected` flag. This is the real state, not a guess based on the last save.
+     */
+    fun listenToConnection(onChange: (Boolean) -> Unit): ValueEventListener {
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                onChange(snapshot.getValue(Boolean::class.java) == true)
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                onChange(false)
+            }
+        }
+        return registerListener(db.getReference(".info/connected"), listener)
     }
 
     fun sanitizeEmail(email: String): String {
@@ -147,17 +407,101 @@ class FirebaseRtdbService(
                 onUpdate(emails)
             }
 
-            override fun onCancelled(error: DatabaseError) {}
+            override fun onCancelled(error: DatabaseError) {
+                android.util.Log.w("FirebaseRtdbService", "super_admins onCancelled: ${error.message} (code ${error.code})")
+            }
         }
-        rootRef.child("super_admins").addValueEventListener(listener)
-        return listener
+        return registerListener(rootRef.child("super_admins"), listener)
     }
 
-    suspend fun syncVisit(visit: VisitEntity) = withContext(Dispatchers.IO) {
+    /** Returns true only when the office copy of this trip is confirmed saved. */
+    suspend fun syncVisit(visit: VisitEntity): Boolean = withContext(Dispatchers.IO) {
         try {
-            rootRef.child("visits").child(visit.id.toString()).setValue(visit)
+            rootRef.child("visits").child(visit.id.toString()).mergeRecordConfirmed(visit)
         } catch (e: Exception) {
-            // Cloud sync fails gracefully when offline
+            android.util.Log.w("FirebaseRtdbService", "syncVisit ${visit.id} failed: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Update only the given fields of a trip. Used for status / close so that a stale local
+     * copy never overwrites salesmen who joined from another phone.
+     */
+    suspend fun updateVisitFields(visitId: Long, fields: Map<String, Any?>) = withContext(Dispatchers.IO) {
+        try {
+            rootRef.child("visits").child(visitId.toString()).updateChildren(fields)
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * Atomically add a salesman to a trip (memberIds / memberNames). Safe when several
+     * salesmen join the same trip at the same moment. Returns false when offline / denied.
+     */
+    suspend fun joinVisit(visitId: Long, employeeId: Long, employeeName: String): Boolean = withContext(Dispatchers.IO) {
+        val ref = rootRef.child("visits").child(visitId.toString())
+        withTimeoutOrNull(6000L) {
+            suspendCancellableCoroutine<Boolean> { cont ->
+                ref.runTransaction(object : Transaction.Handler {
+                    override fun doTransaction(currentData: MutableData): Transaction.Result {
+                        if (currentData.value == null) {
+                            // Local cache miss: the server re-runs this handler with the real value
+                            return Transaction.success(currentData)
+                        }
+                        val starterId = currentData.child("employeeId").getValue(Long::class.java) ?: 0L
+                        val starterName = currentData.child("employeeName").getValue(String::class.java).orEmpty()
+                        val coId = currentData.child("secondaryEmployeeId").getValue(Long::class.java) ?: 0L
+                        val coName = currentData.child("secondaryEmployeeName").getValue(String::class.java).orEmpty()
+                        val rawIds = currentData.child("memberIds").getValue(String::class.java).orEmpty()
+                        val rawNames = currentData.child("memberNames").getValue(String::class.java).orEmpty()
+
+                        val members = LinkedHashMap<Long, String>()
+                        if (starterId > 0L) members[starterId] = starterName
+                        if (coId > 0L && !members.containsKey(coId)) members[coId] = coName
+                        val ids = com.example.util.TripMembers.parseIds(rawIds)
+                        val names = com.example.util.TripMembers.parseNames(rawNames)
+                        ids.forEachIndexed { i, id -> if (!members.containsKey(id)) members[id] = names.getOrNull(i).orEmpty() }
+                        if (!members.containsKey(employeeId)) members[employeeId] = employeeName.trim()
+
+                        currentData.child("memberIds").value = members.keys.joinToString(",")
+                        currentData.child("memberNames").value = members.values.joinToString(", ") { it.replace(",", " ") }
+                        return Transaction.success(currentData)
+                    }
+
+                    override fun onComplete(error: DatabaseError?, committed: Boolean, currentData: DataSnapshot?) {
+                        if (error != null) {
+                            android.util.Log.w("FirebaseRtdbService", "joinVisit failed: ${error.message}")
+                        }
+                        if (cont.isActive) cont.resume(error == null && committed)
+                    }
+                })
+            }
+        } ?: false
+    }
+
+    /**
+     * Allocate the next purchase order sequence (HT-<n>) from a shared counter so two phones
+     * adding orders at the same moment never get the same number. Returns null when the
+     * counter is unreachable (offline or rules not deployed) - caller falls back to local max + 1.
+     */
+    suspend fun allocateOrderSequence(localMax: Int): Int? = withContext(Dispatchers.IO) {
+        val ref = rootRef.child("counters").child("orderNo")
+        withTimeoutOrNull(3500L) {
+            suspendCancellableCoroutine<Int?> { cont ->
+                ref.runTransaction(object : Transaction.Handler {
+                    override fun doTransaction(currentData: MutableData): Transaction.Result {
+                        val current = (currentData.value as? Number)?.toLong() ?: 0L
+                        currentData.value = maxOf(current, localMax.toLong()) + 1L
+                        return Transaction.success(currentData)
+                    }
+
+                    override fun onComplete(error: DatabaseError?, committed: Boolean, currentData: DataSnapshot?) {
+                        val value = (currentData?.value as? Number)?.toInt()
+                        if (cont.isActive) cont.resume(if (error == null && committed) value else null)
+                    }
+                })
+            }
         }
     }
 
@@ -170,11 +514,14 @@ class FirebaseRtdbService(
         }
     }
 
-    suspend fun syncPurchaseEntry(entry: PurchaseEntryEntity) = withContext(Dispatchers.IO) {
+    /** Returns true only when the office copy of this order is confirmed saved. */
+    suspend fun syncPurchaseEntry(entry: PurchaseEntryEntity): Boolean = withContext(Dispatchers.IO) {
         try {
-            rootRef.child("purchase_entries").child(entry.id.toString()).setValue(entry)
+            rootRef.child("purchase_entries").child(entry.id.toString())
+                .mergeRecordConfirmed(entry, WebFieldBridge.orderMirrors(entry))
         } catch (e: Exception) {
-            // Ignore
+            android.util.Log.w("FirebaseRtdbService", "syncPurchaseEntry ${entry.id} failed: ${e.message}")
+            false
         }
     }
 
@@ -189,7 +536,7 @@ class FirebaseRtdbService(
 
     suspend fun syncCustomer(customer: CustomerEntity) = withContext(Dispatchers.IO) {
         try {
-            rootRef.child("customers").child(customer.id.toString()).setValue(customer)
+            rootRef.child("customers").child(customer.id.toString()).mergeRecord(customer, WebFieldBridge.customerMirrors(customer))
         } catch (e: Exception) {
             // Ignore
         }
@@ -207,11 +554,11 @@ class FirebaseRtdbService(
     suspend fun syncSupplier(supplier: SupplierEntity) = withContext(Dispatchers.IO) {
         try {
             // Sync to general suppliers master node
-            rootRef.child("suppliers").child(supplier.id.toString()).setValue(supplier)
+            rootRef.child("suppliers").child(supplier.id.toString()).mergeRecord(supplier, WebFieldBridge.supplierMirrors(supplier))
 
             // If manufacturer, also sync directly to dedicated manufacturers node for instant visibility
             if (supplier.type.equals("Manufacturer", ignoreCase = true)) {
-                rootRef.child("manufacturers").child(supplier.id.toString()).setValue(supplier)
+                rootRef.child("manufacturers").child(supplier.id.toString()).mergeRecord(supplier, WebFieldBridge.supplierMirrors(supplier))
             } else {
                 rootRef.child("manufacturers").child(supplier.id.toString()).removeValue()
             }
@@ -232,7 +579,7 @@ class FirebaseRtdbService(
 
     suspend fun syncProduct(product: ProductEntity) = withContext(Dispatchers.IO) {
         try {
-            rootRef.child("products").child(product.id.toString()).setValue(product)
+            rootRef.child("products").child(product.id.toString()).mergeRecord(product)
         } catch (e: Exception) {
             // Ignore
         }
@@ -249,7 +596,7 @@ class FirebaseRtdbService(
 
     suspend fun syncEmployee(employee: EmployeeEntity) = withContext(Dispatchers.IO) {
         try {
-            rootRef.child("employees").child(employee.id.toString()).setValue(employee)
+            rootRef.child("employees").child(employee.id.toString()).mergeRecord(employee, WebFieldBridge.employeeMirrors(employee))
         } catch (e: Exception) {
             // Ignore
         }
@@ -300,7 +647,7 @@ class FirebaseRtdbService(
                 deletedByRole = role,
                 deletionStatus = "PENDING_CONFIRMATION"
             )
-            rootRef.child("visits").child(visit.id.toString()).setValue(updated)
+            rootRef.child("visits").child(visit.id.toString()).mergeRecord(updated)
             recordDeletionRequest(
                 collection = "visits",
                 itemId = visit.id,
@@ -322,7 +669,7 @@ class FirebaseRtdbService(
                 deletedByRole = role,
                 deletionStatus = "PENDING_CONFIRMATION"
             )
-            rootRef.child("purchase_entries").child(entry.id.toString()).setValue(updated)
+            rootRef.child("purchase_entries").child(entry.id.toString()).mergeRecord(updated, WebFieldBridge.orderMirrors(updated))
             recordDeletionRequest(
                 collection = "purchase_entries",
                 itemId = entry.id,
@@ -344,7 +691,7 @@ class FirebaseRtdbService(
                 deletedByRole = role,
                 deletionStatus = "PENDING_CONFIRMATION"
             )
-            rootRef.child("customers").child(customer.id.toString()).setValue(updated)
+            rootRef.child("customers").child(customer.id.toString()).mergeRecord(updated, WebFieldBridge.customerMirrors(updated))
             recordDeletionRequest(
                 collection = "customers",
                 itemId = customer.id,
@@ -366,9 +713,9 @@ class FirebaseRtdbService(
                 deletedByRole = role,
                 deletionStatus = "PENDING_CONFIRMATION"
             )
-            rootRef.child("suppliers").child(supplier.id.toString()).setValue(updated)
+            rootRef.child("suppliers").child(supplier.id.toString()).mergeRecord(updated, WebFieldBridge.supplierMirrors(updated))
             if (supplier.type.equals("Manufacturer", ignoreCase = true)) {
-                rootRef.child("manufacturers").child(supplier.id.toString()).setValue(updated)
+                rootRef.child("manufacturers").child(supplier.id.toString()).mergeRecord(updated, WebFieldBridge.supplierMirrors(updated))
             }
             recordDeletionRequest(
                 collection = "suppliers",
@@ -391,7 +738,7 @@ class FirebaseRtdbService(
                 deletedByRole = role,
                 deletionStatus = "PENDING_CONFIRMATION"
             )
-            rootRef.child("products").child(product.id.toString()).setValue(updated)
+            rootRef.child("products").child(product.id.toString()).mergeRecord(updated)
             recordDeletionRequest(
                 collection = "products",
                 itemId = product.id,
@@ -444,7 +791,7 @@ class FirebaseRtdbService(
                 "deletedAt" to brand.deletedAt,
                 "createdAt" to brand.createdAt
             )
-            rootRef.child("brands").child(brand.id.toString()).setValue(data)
+            rootRef.child("brands").child(brand.id.toString()).updateChildren(data)
         } catch (e: Exception) {
             // Ignore
         }
@@ -506,7 +853,7 @@ class FirebaseRtdbService(
                 "deleted" to transporter.isDeleted,
                 "createdAt" to transporter.createdAt
             )
-            rootRef.child("transporters").child(transporter.id.toString()).setValue(data)
+            rootRef.child("transporters").child(transporter.id.toString()).updateChildren(data)
         } catch (e: Exception) {
             // Ignore
         }
@@ -556,7 +903,7 @@ class FirebaseRtdbService(
                 "deleted" to market.isDeleted,
                 "createdAt" to market.createdAt
             )
-            rootRef.child("markets").child(market.id.toString()).setValue(data)
+            rootRef.child("markets").child(market.id.toString()).updateChildren(data)
         } catch (e: Exception) {
             // Ignore
         }
@@ -631,7 +978,7 @@ class FirebaseRtdbService(
 
     suspend fun syncChequePdc(cheque: ChequePdcEntity) = withContext(Dispatchers.IO) {
         try {
-            rootRef.child("cheques_pdc").child(cheque.id.toString()).setValue(cheque)
+            rootRef.child("cheques_pdc").child(cheque.id.toString()).mergeRecord(cheque)
         } catch (_: Exception) {}
     }
 
@@ -649,7 +996,7 @@ class FirebaseRtdbService(
                 deletedAt = System.currentTimeMillis(),
                 deletedBy = deletedBy
             )
-            rootRef.child("cheques_pdc").child(cheque.id.toString()).setValue(updated)
+            rootRef.child("cheques_pdc").child(cheque.id.toString()).mergeRecord(updated)
             recordDeletionRequest(
                 collection = "cheques_pdc",
                 itemId = cheque.id,
@@ -746,11 +1093,12 @@ class FirebaseRtdbService(
                     val effectivelyDeleted = rawIsDeleted || isPendingInQueue
 
                     val fixedItem = when (item) {
-                        is CustomerEntity -> item.copy(
+                        // Records created / edited on the web: fill Android fields from the web copies
+                        is CustomerEntity -> WebFieldBridge.readCustomer(item, child).copy(
                             id = if (item.id <= 0L && keyLong > 0L) keyLong else item.id,
                             isDeleted = effectivelyDeleted || item.isDeleted
                         )
-                        is SupplierEntity -> item.copy(
+                        is SupplierEntity -> WebFieldBridge.readSupplier(item, child).copy(
                             id = if (item.id <= 0L && keyLong > 0L) keyLong else item.id,
                             isDeleted = effectivelyDeleted || item.isDeleted
                         )
@@ -758,7 +1106,7 @@ class FirebaseRtdbService(
                             id = if (item.id <= 0L && keyLong > 0L) keyLong else item.id,
                             isDeleted = effectivelyDeleted || item.isDeleted
                         )
-                        is EmployeeEntity -> item.copy(
+                        is EmployeeEntity -> WebFieldBridge.readEmployee(item, child).copy(
                             id = if (item.id <= 0L && keyLong > 0L) keyLong else item.id,
                             isDeleted = effectivelyDeleted || item.isDeleted
                         )
@@ -771,7 +1119,7 @@ class FirebaseRtdbService(
                                 ?: item.packGroupId
                             val mixedPackNote = child.child("mixedPackNote").getValue(String::class.java)
                                 ?: item.mixedPackNote
-                            item.copy(
+                            WebFieldBridge.readOrder(item, child).copy(
                                 id = if (item.id <= 0L && keyLong > 0L) keyLong else item.id,
                                 packGroupId = packGroupId,
                                 mixedPackNote = mixedPackNote,
@@ -784,7 +1132,7 @@ class FirebaseRtdbService(
                             id = if (item.id <= 0L && keyLong > 0L) keyLong else item.id,
                             isDeleted = effectivelyDeleted || item.isDeleted
                         )
-                        is TransporterEntity -> item.copy(
+                        is TransporterEntity -> WebFieldBridge.readTransporter(item, child).copy(
                             id = if (item.id <= 0L && keyLong > 0L) keyLong else item.id,
                             isDeleted = effectivelyDeleted || item.isDeleted
                         )
@@ -818,7 +1166,11 @@ class FirebaseRtdbService(
                         list.add(fixedItem as T)
                     }
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                // A record the mapper cannot read (e.g. an id saved as text) would silently vanish from the
+                // app otherwise - log it so it can be fixed at the source.
+                android.util.Log.w("FirebaseRtdbService", "Skipped $collectionName/${child.key}: ${e.message}")
+            }
         }
         return list
     }
@@ -877,11 +1229,12 @@ class FirebaseRtdbService(
                         map[item.id] = item
                     }
                 }
-                // Also merge /manufacturers to ensure manufacturers entered under dedicated node are included
+                // Also merge /manufacturers to ensure manufacturers entered under dedicated node are included.
+                // suppliers/ is the master copy: a (possibly stale) manufacturers/ copy never replaces it.
                 rootRef.child("manufacturers").addListenerForSingleValueEvent(object : ValueEventListener {
                     override fun onDataChange(manSnapshot: DataSnapshot) {
                         for (item in manSnapshot.extractList<SupplierEntity>()) {
-                            if (item.id > 0L) {
+                            if (item.id > 0L && !map.containsKey(item.id)) {
                                 map[item.id] = item
                             }
                         }
@@ -1004,10 +1357,11 @@ class FirebaseRtdbService(
             override fun onDataChange(snapshot: DataSnapshot) {
                 onUpdate(snapshot.extractList<EmployeeEntity>())
             }
-            override fun onCancelled(error: DatabaseError) {}
+            override fun onCancelled(error: DatabaseError) {
+                android.util.Log.w("FirebaseRtdbService", "employees onCancelled: ${error.message} (code ${error.code})")
+            }
         }
-        rootRef.child("employees").addValueEventListener(listener)
-        return listener
+        return registerListener(rootRef.child("employees"), listener)
     }
 
     fun listenToCustomers(onUpdate: (List<CustomerEntity>) -> Unit): ValueEventListener {
@@ -1015,10 +1369,11 @@ class FirebaseRtdbService(
             override fun onDataChange(snapshot: DataSnapshot) {
                 onUpdate(snapshot.extractList<CustomerEntity>())
             }
-            override fun onCancelled(error: DatabaseError) {}
+            override fun onCancelled(error: DatabaseError) {
+                android.util.Log.w("FirebaseRtdbService", "customers onCancelled: ${error.message} (code ${error.code})")
+            }
         }
-        rootRef.child("customers").addValueEventListener(listener)
-        return listener
+        return registerListener(rootRef.child("customers"), listener)
     }
 
     fun listenToSuppliers(onUpdate: (List<SupplierEntity>) -> Unit): ValueEventListener {
@@ -1032,10 +1387,11 @@ class FirebaseRtdbService(
                 }
                 onUpdate(map.values.toList())
             }
-            override fun onCancelled(error: DatabaseError) {}
+            override fun onCancelled(error: DatabaseError) {
+                android.util.Log.w("FirebaseRtdbService", "suppliers onCancelled: ${error.message} (code ${error.code})")
+            }
         }
-        rootRef.child("suppliers").addValueEventListener(listener)
-        return listener
+        return registerListener(rootRef.child("suppliers"), listener)
     }
 
     fun listenToProducts(onUpdate: (List<ProductEntity>) -> Unit): ValueEventListener {
@@ -1043,10 +1399,11 @@ class FirebaseRtdbService(
             override fun onDataChange(snapshot: DataSnapshot) {
                 onUpdate(snapshot.extractList<ProductEntity>())
             }
-            override fun onCancelled(error: DatabaseError) {}
+            override fun onCancelled(error: DatabaseError) {
+                android.util.Log.w("FirebaseRtdbService", "products onCancelled: ${error.message} (code ${error.code})")
+            }
         }
-        rootRef.child("products").addValueEventListener(listener)
-        return listener
+        return registerListener(rootRef.child("products"), listener)
     }
 
     fun listenToVisits(onUpdate: (List<VisitEntity>) -> Unit): ValueEventListener {
@@ -1054,10 +1411,11 @@ class FirebaseRtdbService(
             override fun onDataChange(snapshot: DataSnapshot) {
                 onUpdate(snapshot.extractList<VisitEntity>())
             }
-            override fun onCancelled(error: DatabaseError) {}
+            override fun onCancelled(error: DatabaseError) {
+                android.util.Log.w("FirebaseRtdbService", "visits onCancelled: ${error.message} (code ${error.code})")
+            }
         }
-        rootRef.child("visits").addValueEventListener(listener)
-        return listener
+        return registerListener(rootRef.child("visits"), listener)
     }
 
     fun listenToPurchaseEntries(onUpdate: (List<PurchaseEntryEntity>) -> Unit): ValueEventListener {
@@ -1065,10 +1423,11 @@ class FirebaseRtdbService(
             override fun onDataChange(snapshot: DataSnapshot) {
                 onUpdate(snapshot.extractList<PurchaseEntryEntity>())
             }
-            override fun onCancelled(error: DatabaseError) {}
+            override fun onCancelled(error: DatabaseError) {
+                android.util.Log.w("FirebaseRtdbService", "purchase_entries onCancelled: ${error.message} (code ${error.code})")
+            }
         }
-        rootRef.child("purchase_entries").addValueEventListener(listener)
-        return listener
+        return registerListener(rootRef.child("purchase_entries"), listener)
     }
 
     fun listenToTransactions(onUpdate: (List<TransactionEntity>) -> Unit): ValueEventListener {
@@ -1076,10 +1435,11 @@ class FirebaseRtdbService(
             override fun onDataChange(snapshot: DataSnapshot) {
                 onUpdate(snapshot.extractList<TransactionEntity>())
             }
-            override fun onCancelled(error: DatabaseError) {}
+            override fun onCancelled(error: DatabaseError) {
+                android.util.Log.w("FirebaseRtdbService", "transactions onCancelled: ${error.message} (code ${error.code})")
+            }
         }
-        rootRef.child("transactions").addValueEventListener(listener)
-        return listener
+        return registerListener(rootRef.child("transactions"), listener)
     }
 
     fun listenToPackGroups(onUpdate: (List<PackGroupEntity>) -> Unit): ValueEventListener {
@@ -1087,10 +1447,11 @@ class FirebaseRtdbService(
             override fun onDataChange(snapshot: DataSnapshot) {
                 onUpdate(snapshot.extractList<PackGroupEntity>())
             }
-            override fun onCancelled(error: DatabaseError) {}
+            override fun onCancelled(error: DatabaseError) {
+                android.util.Log.w("FirebaseRtdbService", "pack_groups onCancelled: ${error.message} (code ${error.code})")
+            }
         }
-        rootRef.child("pack_groups").addValueEventListener(listener)
-        return listener
+        return registerListener(rootRef.child("pack_groups"), listener)
     }
 
     fun listenToBrands(onUpdate: (List<BrandEntity>) -> Unit): ValueEventListener {
@@ -1098,10 +1459,11 @@ class FirebaseRtdbService(
             override fun onDataChange(snapshot: DataSnapshot) {
                 onUpdate(snapshot.extractList<BrandEntity>())
             }
-            override fun onCancelled(error: DatabaseError) {}
+            override fun onCancelled(error: DatabaseError) {
+                android.util.Log.w("FirebaseRtdbService", "brands onCancelled: ${error.message} (code ${error.code})")
+            }
         }
-        rootRef.child("brands").addValueEventListener(listener)
-        return listener
+        return registerListener(rootRef.child("brands"), listener)
     }
 
     fun listenToTransporters(onUpdate: (List<TransporterEntity>) -> Unit): ValueEventListener {
@@ -1109,10 +1471,11 @@ class FirebaseRtdbService(
             override fun onDataChange(snapshot: DataSnapshot) {
                 onUpdate(snapshot.extractList<TransporterEntity>())
             }
-            override fun onCancelled(error: DatabaseError) {}
+            override fun onCancelled(error: DatabaseError) {
+                android.util.Log.w("FirebaseRtdbService", "transporters onCancelled: ${error.message} (code ${error.code})")
+            }
         }
-        rootRef.child("transporters").addValueEventListener(listener)
-        return listener
+        return registerListener(rootRef.child("transporters"), listener)
     }
 
     fun listenToMarkets(onUpdate: (List<MarketEntity>) -> Unit): ValueEventListener {
@@ -1120,10 +1483,11 @@ class FirebaseRtdbService(
             override fun onDataChange(snapshot: DataSnapshot) {
                 onUpdate(snapshot.extractList<MarketEntity>())
             }
-            override fun onCancelled(error: DatabaseError) {}
+            override fun onCancelled(error: DatabaseError) {
+                android.util.Log.w("FirebaseRtdbService", "markets onCancelled: ${error.message} (code ${error.code})")
+            }
         }
-        rootRef.child("markets").addValueEventListener(listener)
-        return listener
+        return registerListener(rootRef.child("markets"), listener)
     }
 
     fun listenToChequesPdc(onUpdate: (List<ChequePdcEntity>) -> Unit): ValueEventListener {
@@ -1131,10 +1495,11 @@ class FirebaseRtdbService(
             override fun onDataChange(snapshot: DataSnapshot) {
                 onUpdate(snapshot.extractList<ChequePdcEntity>())
             }
-            override fun onCancelled(error: DatabaseError) {}
+            override fun onCancelled(error: DatabaseError) {
+                android.util.Log.w("FirebaseRtdbService", "cheques_pdc onCancelled: ${error.message} (code ${error.code})")
+            }
         }
-        rootRef.child("cheques_pdc").addValueEventListener(listener)
-        return listener
+        return registerListener(rootRef.child("cheques_pdc"), listener)
     }
 
     private fun DataSnapshot.toLead(): LeadEntity? {
@@ -1199,7 +1564,12 @@ class FirebaseRtdbService(
             state = child("state").getValue(String::class.java) ?: "Gujarat",
             pincode = child("pincode").getValue(String::class.java) ?: "",
             shopMapLink = child("shopMapLink").getValue(String::class.java) ?: "",
-            garmentTypes = child("garmentTypes").getValue(String::class.java) ?: "",
+            garmentTypes = lenientText("garmentTypes"),
+            // Filled on the public form; approval copies them onto the customer
+            workingMarkets = lenientText("workingMarkets"),
+            dob = lenientText("dob"),
+            cancelChequePhotoUri = lenientText("cancelChequePhotoUri"),
+            purchaserPhotoUri = lenientText("purchaserPhotoUri"),
             gstin = child("gstin").getValue(String::class.java) ?: "",
             panNumber = child("panNumber").getValue(String::class.java) ?: "",
             preferredTransporterName = child("preferredTransporterName").getValue(String::class.java) ?: "",
@@ -1218,15 +1588,34 @@ class FirebaseRtdbService(
             createdAt = child("createdAt").getValue(Long::class.java) ?: System.currentTimeMillis(),
             approvedAt = child("approvedAt").getValue(Long::class.java),
             approvedBy = child("approvedBy").getValue(String::class.java) ?: "",
-            assignedAgentId = child("assignedAgentId").getValue(Long::class.java),
+            // Lenient: the web admin used to save these ids as text
+            assignedAgentId = lenientLong("assignedAgentId"),
             assignedAgentName = child("assignedAgentName").getValue(String::class.java) ?: "",
             creditType = child("creditType").getValue(String::class.java) ?: "Cash",
-            creditDays = child("creditDays").getValue(Int::class.java) ?: 30,
-            creditLimit = child("creditLimit").getValue(Double::class.java) ?: 0.0,
+            creditDays = lenientLong("creditDays")?.toInt() ?: 30,
+            creditLimit = (child("creditLimit").value as? Number)?.toDouble()
+                ?: child("creditLimit").value?.toString()?.toDoubleOrNull() ?: 0.0,
             religion = child("religion").getValue(String::class.java) ?: "",
-            createdCustomerId = child("createdCustomerId").getValue(Long::class.java),
-            rejectionReason = child("rejectionReason").getValue(String::class.java) ?: ""
+            createdCustomerId = lenientLong("createdCustomerId"),
+            rejectionReason = child("rejectionReason").getValue(String::class.java) ?: "",
+            subAgentId = lenientLong("subAgentId"),
+            subAgentName = child("subAgentName").getValue(String::class.java) ?: ""
         )
+    }
+
+    /** Reads a numeric child that may have been stored as a number or as numeric text. */
+    private fun DataSnapshot.lenientLong(key: String): Long? = when (val v = child(key).value) {
+        is Number -> v.toLong()
+        is String -> v.trim().toLongOrNull() ?: v.trim().toDoubleOrNull()?.toLong()
+        else -> null
+    }
+
+    /** Reads a text child that may also have been stored as a list (joined with ", ") or a number. */
+    private fun DataSnapshot.lenientText(key: String): String = when (val v = child(key).value) {
+        null -> ""
+        is List<*> -> v.filterNotNull().joinToString(", ") { it.toString().trim() }
+        is Map<*, *> -> v.values.filterNotNull().joinToString(", ") { it.toString().trim() }
+        else -> v.toString().trim()
     }
 
     fun listenToLeads(onUpdate: (List<LeadEntity>) -> Unit): ValueEventListener {
@@ -1241,10 +1630,11 @@ class FirebaseRtdbService(
                 }
                 onUpdate(list)
             }
-            override fun onCancelled(error: DatabaseError) {}
+            override fun onCancelled(error: DatabaseError) {
+                android.util.Log.w("FirebaseRtdbService", "leads onCancelled: ${error.message} (code ${error.code})")
+            }
         }
-        rootRef.child("leads").addValueEventListener(listener)
-        return listener
+        return registerListener(rootRef.child("leads"), listener)
     }
 
     suspend fun fetchLeads(): List<LeadEntity> = suspendCancellableCoroutine { cont ->
@@ -1277,10 +1667,11 @@ class FirebaseRtdbService(
                 }
                 onUpdate(list)
             }
-            override fun onCancelled(error: DatabaseError) {}
+            override fun onCancelled(error: DatabaseError) {
+                android.util.Log.w("FirebaseRtdbService", "customer_registration_requests onCancelled: ${error.message} (code ${error.code})")
+            }
         }
-        rootRef.child("customer_registration_requests").addValueEventListener(listener)
-        return listener
+        return registerListener(rootRef.child("customer_registration_requests"), listener)
     }
 
     suspend fun fetchRegistrationRequests(): List<CustomerRegistrationRequestEntity> = suspendCancellableCoroutine { cont ->
@@ -1316,14 +1707,23 @@ class FirebaseRtdbService(
             email = child("email").getValue(String::class.java) ?: "",
             address = child("address").getValue(String::class.java) ?: "",
             officeAddress = child("officeAddress").getValue(String::class.java) ?: "",
+            homeAddress = lenientText("homeAddress"),
             marketArea = child("marketArea").getValue(String::class.java) ?: "",
+            marketId = lenientLong("marketId")?.takeIf { it > 0L },
+            marketName = lenientText("marketName"),
             city = child("city").getValue(String::class.java) ?: "Ahmedabad",
             district = child("district").getValue(String::class.java) ?: "",
             state = child("state").getValue(String::class.java) ?: "Gujarat",
             pincode = child("pincode").getValue(String::class.java) ?: "",
             mapLink = child("mapLink").getValue(String::class.java) ?: "",
-            productsMade = child("productsMade").getValue(String::class.java) ?: "",
-            categories = child("categories").getValue(String::class.java) ?: "",
+            productsMade = lenientText("productsMade"),
+            categories = lenientText("categories"),
+            subCategories = lenientText("subCategories"),
+            godownPhotoUri = lenientText("godownPhotoUri"),
+            systemMrpValue = lenientText("systemMrpValue").ifBlank { child("system").child("mrp").child("value").value?.toString().orEmpty() },
+            systemMrpPercent = lenientText("systemMrpPercent").ifBlank { child("system").child("mrp").child("percentage").value?.toString().orEmpty() },
+            systemLessValue = lenientText("systemLessValue").ifBlank { child("system").child("less").child("value").value?.toString().orEmpty() },
+            systemLessPercent = lenientText("systemLessPercent").ifBlank { child("system").child("less").child("percentage").value?.toString().orEmpty() },
             priceRange = child("priceRange").getValue(String::class.java) ?: "",
             gstin = child("gstin").getValue(String::class.java) ?: "",
             panNumber = child("panNumber").getValue(String::class.java) ?: "",
@@ -1365,10 +1765,11 @@ class FirebaseRtdbService(
                 }
                 onUpdate(list)
             }
-            override fun onCancelled(error: DatabaseError) {}
+            override fun onCancelled(error: DatabaseError) {
+                android.util.Log.w("FirebaseRtdbService", "supplier_registration_requests onCancelled: ${error.message} (code ${error.code})")
+            }
         }
-        rootRef.child("supplier_registration_requests").addValueEventListener(listener)
-        return listener
+        return registerListener(rootRef.child("supplier_registration_requests"), listener)
     }
 
     suspend fun fetchSupplierRegistrationRequests(): List<SupplierRegistrationRequestEntity> = suspendCancellableCoroutine { cont ->
@@ -1394,9 +1795,13 @@ class FirebaseRtdbService(
         newSupplierId: Long,
         brand: String,
         marketName: String,
-        approvedBy: String
+        approvedBy: String,
+        systemMrpValue: String = "",
+        systemMrpPercent: String = "",
+        systemLessValue: String = "",
+        systemLessPercent: String = ""
     ) = suspendCancellableCoroutine<Unit> { cont ->
-        val updates = mapOf(
+        val updates = mutableMapOf<String, Any>(
             "status" to "APPROVED",
             "approvedAt" to System.currentTimeMillis(),
             "approvedBy" to approvedBy,
@@ -1404,6 +1809,10 @@ class FirebaseRtdbService(
             "marketArea" to marketName,
             "createdSupplierId" to newSupplierId
         )
+        if (systemMrpValue.isNotBlank()) updates["systemMrpValue"] = systemMrpValue
+        if (systemMrpPercent.isNotBlank()) updates["systemMrpPercent"] = systemMrpPercent
+        if (systemLessValue.isNotBlank()) updates["systemLessValue"] = systemLessValue
+        if (systemLessPercent.isNotBlank()) updates["systemLessPercent"] = systemLessPercent
         rootRef.child("supplier_registration_requests").child(requestId).updateChildren(updates)
             .addOnSuccessListener {
                 if (cont.isActive) cont.resumeWith(Result.success(Unit))

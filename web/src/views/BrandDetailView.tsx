@@ -24,7 +24,11 @@ import { Button } from "../components/ui/Button"
 import { Badge } from "../components/ui/Badge"
 import { Input } from "../components/ui/Input"
 import { ImageLightboxModal } from "../components/ui/ImageLightboxModal"
+import { DateRangeFilter } from "../components/ui/DateRangeFilter"
 import { Brand } from "../types"
+import { ALL_TIME, DateRange, effectiveOrderDate, filterTripsByDate, matchesDateRange } from "../lib/domain"
+import { computeBrandLinks } from "../lib/brandLinks"
+import { ActivitySummary, CustomersTable, Section, TripsTable } from "../components/related/RelatedRecords"
 
 interface BrandDetailViewProps {
   brandId: number
@@ -41,7 +45,7 @@ export function BrandDetailView({
 }: BrandDetailViewProps) {
   const { brands, suppliers, products, entries, customers, visits } = useData()
 
-  const [activeTab, setActiveTab] = useState<"products" | "orders" | "manufacturer">("products")
+  const [activeTab, setActiveTab] = useState<"suppliers" | "products" | "orders" | "trips" | "customers">("suppliers")
   const [searchQuery, setSearchQuery] = useState<string>("")
   const [lightbox, setLightbox] = useState<{ open: boolean; url: string; title: string }>({
     open: false,
@@ -54,58 +58,18 @@ export function BrandDetailView({
     return brands.find((b) => b.id === brandId) || null
   }, [brands, brandId])
 
-  // Linked Manufacturer / Supplier
-  const linkedSupplier = useMemo(() => {
-    if (!brand) return null
-    if (brand.manufacturerId) {
-      return suppliers.find((s) => s.id === brand.manufacturerId) || null
-    }
-    if (brand.manufacturerName) {
-      const mfg = brand.manufacturerName.toLowerCase()
-      return (
-        suppliers.find(
-          (s) =>
-            (s.firmName && s.firmName.toLowerCase() === mfg) ||
-            (s.name && s.name.toLowerCase() === mfg)
-        ) || null
-      )
-    }
-    return null
-  }, [brand, suppliers])
-
-  // Products under this brand
-  const brandProducts = useMemo(() => {
-    if (!brand) return []
-    const bName = brand.brandName.toLowerCase()
-    return products.filter((p) => {
-      const pName = (p.name || "").toLowerCase()
-      const pCode = (p.productCode || "").toLowerCase()
-      const pDesc = (p.description || "").toLowerCase()
-      const pSupplierId = p.supplierId ? Number(p.supplierId) : null
-      const matchesSupplier =
-        brand.manufacturerId && pSupplierId === Number(brand.manufacturerId)
-      const matchesText =
-        pName.includes(bName) || pCode.includes(bName) || pDesc.includes(bName)
-      return matchesSupplier || matchesText
-    })
-  }, [products, brand])
-
-  // Orders containing products of this brand
-  const brandOrders = useMemo(() => {
-    if (!brand) return []
-    const bName = brand.brandName.toLowerCase()
-    const productCodes = new Set(brandProducts.map((p) => p.productCode.toLowerCase()))
-
-    return entries
-      .filter((e) => {
-        const itemCode = (e.itemCode || "").toLowerCase()
-        const supplierMatches =
-          brand.manufacturerId && Number(e.supplierId) === Number(brand.manufacturerId)
-        const codeMatches = productCodes.has(itemCode) || itemCode.includes(bName)
-        return codeMatches || supplierMatches
-      })
-      .sort((a, b) => (b.id || 0) - (a.id || 0))
-  }, [entries, brand, brandProducts])
+  // Everything linked to this brand: suppliers first, then their products, orders, trips and customers.
+  // Same rules as the Android app (util/BrandLinks.kt).
+  const links = useMemo(
+    () =>
+      brand
+        ? computeBrandLinks(brand, suppliers, products, entries, visits, customers)
+        : { suppliers: [], products: [], orders: [], trips: [], customers: [] },
+    [brand, suppliers, products, entries, visits, customers]
+  )
+  const brandSuppliers = links.suppliers
+  const brandProducts = links.products
+  const brandOrders = links.orders
 
   // Visits map for orders
   const visitMap = useMemo(() => {
@@ -149,11 +113,15 @@ export function BrandDetailView({
     )
   }, [brandProducts, searchQuery])
 
-  // Filtered Orders
+  // Orders tab: shared date filter
+  const [ordersRange, setOrdersRange] = useState<DateRange>(ALL_TIME)
+
+  // Filtered Orders (search + date range)
   const filteredOrders = useMemo(() => {
     const q = searchQuery.toLowerCase().trim()
-    if (!q) return brandOrders
-    return brandOrders.filter((o) => {
+    const inRange = brandOrders.filter((o) => matchesDateRange(effectiveOrderDate(o, visitMap.get(o.visitId)), ordersRange))
+    if (!q) return inRange
+    return inRange.filter((o) => {
       const visit = visitMap.get(o.visitId)
       const custName = (visit?.customerName || customerMap.get(visit?.customerId || 0) || "").toLowerCase()
       return (
@@ -164,7 +132,35 @@ export function BrandDetailView({
         (o.paymentStatus || "").toLowerCase().includes(q)
       )
     })
-  }, [brandOrders, searchQuery, visitMap, customerMap])
+  }, [brandOrders, searchQuery, visitMap, customerMap, ordersRange])
+
+  // Trips that bought this brand, and the customers of those trips (same date filter as the orders)
+  const filteredTrips = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
+    const inRange = filterTripsByDate(links.trips, ordersRange)
+    if (!q) return inRange
+    return inRange.filter((v) =>
+      [v.customerName, v.visitCode, v.date].some((f) => (f || "").toLowerCase().includes(q))
+    )
+  }, [links.trips, ordersRange, searchQuery])
+
+  const filteredBrandCustomers = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return links.customers
+    return links.customers.filter((c) =>
+      [c.firmName, c.name, c.city, c.phone].some((f) => (f || "").toLowerCase().includes(q))
+    )
+  }, [links.customers, searchQuery])
+
+  const filteredSuppliers = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return brandSuppliers
+    return brandSuppliers.filter((s) =>
+      [s.firmName, s.name, s.brand, s.marketName, s.marketArea, s.phone, s.city].some((f) =>
+        (f || "").toLowerCase().includes(q)
+      )
+    )
+  }, [brandSuppliers, searchQuery])
 
   if (!brand) {
     return (
@@ -311,44 +307,34 @@ export function BrandDetailView({
       {/* Tabs & Search Navigation Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-zinc-200 pb-3 dark:border-zinc-800">
         <div className="flex items-center gap-1.5 overflow-x-auto">
-          <button
-            onClick={() => setActiveTab("products")}
-            className={cn(
-              "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
-              activeTab === "products"
-                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-sm"
-                : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
-            )}
-          >
-            <Package className="h-3.5 w-3.5" />
-            Products Catalog ({brandProducts.length})
-          </button>
-
-          <button
-            onClick={() => setActiveTab("orders")}
-            className={cn(
-              "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
-              activeTab === "orders"
-                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-sm"
-                : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
-            )}
-          >
-            <Receipt className="h-3.5 w-3.5" />
-            Orders & Bookings ({brandOrders.length})
-          </button>
-
-          <button
-            onClick={() => setActiveTab("manufacturer")}
-            className={cn(
-              "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
-              activeTab === "manufacturer"
-                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-sm"
-                : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
-            )}
-          >
-            <Building2 className="h-3.5 w-3.5" />
-            Linked Mill / Supplier
-          </button>
+          {(
+            [
+              { id: "suppliers", label: `Suppliers (${brandSuppliers.length})`, icon: Building2 },
+              { id: "products", label: `Products (${brandProducts.length})`, icon: Package },
+              { id: "orders", label: `Orders (${brandOrders.length})`, icon: Receipt },
+              { id: "trips", label: `Trips (${links.trips.length})`, icon: MapPin },
+              { id: "customers", label: `Customers (${links.customers.length})`, icon: Tag },
+            ] as const
+          ).map((t) => {
+            const Icon = t.icon
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setActiveTab(t.id)}
+                aria-pressed={activeTab === t.id}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap",
+                  activeTab === t.id
+                    ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-sm"
+                    : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                {t.label}
+              </button>
+            )
+          })}
         </div>
 
         {/* Live Search */}
@@ -369,6 +355,71 @@ export function BrandDetailView({
           />
         </div>
       </div>
+
+      {/* Suppliers of this brand: the link every other section follows */}
+      {activeTab === "suppliers" && (
+        <Section title="Suppliers" count={filteredSuppliers.length}>
+          {filteredSuppliers.length === 0 ? (
+            <Card className="p-8 text-center text-zinc-500 border-dashed text-xs">
+              <Building2 className="h-8 w-8 mx-auto text-zinc-300 mb-2" aria-hidden="true" />
+              No suppliers linked to this brand. Open a supplier and set its brand, or set this brand&apos;s manufacturer.
+            </Card>
+          ) : (
+            <Card className="overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="border-b border-zinc-200/80 bg-zinc-50/70 font-semibold text-muted-foreground dark:border-zinc-800 dark:bg-zinc-900/50">
+                    <tr>
+                      <th className="py-2.5 pl-4 pr-2">Supplier</th>
+                      <th className="px-2 py-2.5">Type</th>
+                      <th className="px-2 py-2.5">Market</th>
+                      <th className="px-2 py-2.5">Phone</th>
+                      <th className="px-2 py-2.5 pr-4">Orders</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                    {filteredSuppliers.map((s) => {
+                      const supOrders = brandOrders.filter((o) => Number(o.supplierId) === Number(s.id))
+                      return (
+                        <tr key={s.id}>
+                          <td className="py-2.5 pl-4 pr-2">
+                            <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+                              {s.brand || s.firmName || s.name}
+                            </span>
+                            <span className="block text-[10px] text-muted-foreground">{s.firmName || s.name}</span>
+                          </td>
+                          <td className="px-2 py-2.5">{s.type || "—"}</td>
+                          <td className="px-2 py-2.5">{s.marketName || s.marketArea || "—"}</td>
+                          <td className="px-2 py-2.5 whitespace-nowrap">{s.phone || "—"}</td>
+                          <td className="px-2 py-2.5 pr-4">{supOrders.length}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+        </Section>
+      )}
+
+      {/* Trips that bought this brand */}
+      {activeTab === "trips" && (
+        <div className="space-y-3">
+          <DateRangeFilter value={ordersRange} onChange={setOrdersRange} />
+          <ActivitySummary trips={filteredTrips} orders={filteredOrders} />
+          <Section title="Trips" count={filteredTrips.length}>
+            <TripsTable trips={filteredTrips} entries={brandOrders} />
+          </Section>
+        </div>
+      )}
+
+      {/* Customers who bought this brand */}
+      {activeTab === "customers" && (
+        <Section title="Customers" count={filteredBrandCustomers.length}>
+          <CustomersTable customers={filteredBrandCustomers} visits={links.trips} entries={brandOrders} />
+        </Section>
+      )}
 
       {/* TAB 1: Products */}
       {activeTab === "products" && (
@@ -429,7 +480,8 @@ export function BrandDetailView({
 
       {/* TAB 2: Orders */}
       {activeTab === "orders" && (
-        <div>
+        <div className="space-y-3">
+          <DateRangeFilter value={ordersRange} onChange={setOrdersRange} />
           {filteredOrders.length === 0 ? (
             <Card className="p-8 text-center text-zinc-500 border-dashed text-xs">
               <Receipt className="h-8 w-8 mx-auto text-zinc-300 mb-2" />
@@ -512,77 +564,6 @@ export function BrandDetailView({
         </div>
       )}
 
-      {/* TAB 3: Manufacturer / Linked Mill */}
-      {activeTab === "manufacturer" && (
-        <div>
-          {linkedSupplier ? (
-            <Card className="p-5 border border-zinc-200/80 dark:border-zinc-800 max-w-2xl space-y-4">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/10 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400">
-                    <Building2 className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-50">
-                      {linkedSupplier.firmName || linkedSupplier.name}
-                    </h3>
-                    <span className="text-xs text-zinc-500">
-                      {linkedSupplier.type || "Manufacturer / Textile Mill"} • {linkedSupplier.city || "Ahmedabad"}
-                    </span>
-                  </div>
-                </div>
-
-                <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-700 border-amber-500/20 font-semibold">
-                  Official Mill
-                </Badge>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs border-t border-zinc-100 pt-3 dark:border-zinc-800">
-                {linkedSupplier.contactPerson && (
-                  <div>
-                    <span className="text-zinc-400 text-[11px] block">Contact Person</span>
-                    <span className="font-medium text-zinc-800 dark:text-zinc-200">{linkedSupplier.contactPerson}</span>
-                  </div>
-                )}
-                {linkedSupplier.phone && (
-                  <div>
-                    <span className="text-zinc-400 text-[11px] block">Primary Phone</span>
-                    <span className="font-medium text-zinc-800 dark:text-zinc-200">{linkedSupplier.phone}</span>
-                  </div>
-                )}
-                {linkedSupplier.address && (
-                  <div className="sm:col-span-2">
-                    <span className="text-zinc-400 text-[11px] block">Mill / Factory Address</span>
-                    <span className="font-medium text-zinc-800 dark:text-zinc-200">{linkedSupplier.address}</span>
-                  </div>
-                )}
-                {linkedSupplier.gstin && (
-                  <div>
-                    <span className="text-zinc-400 text-[11px] block">GSTIN</span>
-                    <span className="font-mono text-zinc-800 dark:text-zinc-200">{linkedSupplier.gstin}</span>
-                  </div>
-                )}
-                {linkedSupplier.marketName && (
-                  <div>
-                    <span className="text-zinc-400 text-[11px] block">Market Cluster</span>
-                    <span className="font-medium text-zinc-800 dark:text-zinc-200">{linkedSupplier.marketName}</span>
-                  </div>
-                )}
-              </div>
-            </Card>
-          ) : (
-            <Card className="p-8 text-center text-zinc-500 border-dashed text-xs max-w-xl">
-              <Building2 className="h-8 w-8 mx-auto text-zinc-300 mb-2" />
-              <p className="font-semibold text-zinc-700 dark:text-zinc-300">No Manufacturer Link Found</p>
-              <p className="text-zinc-400 mt-1">
-                {brand.manufacturerName
-                  ? `Brand specifies manufacturer "${brand.manufacturerName}", but no matching profile is registered in Suppliers master.`
-                  : "This brand is registered as an independent label without a linked mill."}
-              </p>
-            </Card>
-          )}
-        </div>
-      )}
 
       {/* Lightbox for Brand Logo */}
       <ImageLightboxModal

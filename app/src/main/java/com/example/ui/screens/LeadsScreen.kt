@@ -252,15 +252,15 @@ fun LeadsScreen(
     }
 
     Scaffold(
-        containerColor = Color(0xFFF6F8FB),
+        containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
             FloatingActionButton(
                 onClick = {
                     editingLead = null
                     showAddEditDialog = true
                 },
-                containerColor = GoldAccent,
-                contentColor = NavyPrimary,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
                 shape = CircleShape,
                 modifier = Modifier.size(46.dp)
             ) {
@@ -272,7 +272,7 @@ fun LeadsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .background(Color(0xFFF6F8FB))
+                .background(MaterialTheme.colorScheme.background)
         ) {
             // Flat, borderless, clean header matching VisitsScreen & DeliveriesScreen
             Row(
@@ -283,16 +283,16 @@ fun LeadsScreen(
             ) {
                 Surface(
                     shape = CircleShape,
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     shadowElevation = 0.dp,
-                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                     modifier = Modifier.size(38.dp)
                 ) {
                     IconButton(onClick = onBack, modifier = Modifier.size(38.dp)) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = NavyPrimary,
+                            tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -305,21 +305,21 @@ fun LeadsScreen(
                         text = "Leads & Prospects",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = NavyPrimary,
+                        color = MaterialTheme.colorScheme.onSurface,
                         letterSpacing = (-0.2).sp
                     )
                     Text(
                         text = "${filteredLeads.size} contacts met in market",
                         fontSize = 11.5.sp,
-                        color = TextSecondary
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
                 // Search Toggle Button (matching VisitsScreen)
                 Surface(
                     shape = CircleShape,
-                    color = if (isSearchVisible || searchQuery.isNotBlank()) NavyPrimary else Color.White,
-                    border = BorderStroke(1.dp, if (isSearchVisible || searchQuery.isNotBlank()) NavyPrimary else Color(0xFFE2E8F0)),
+                    color = if (isSearchVisible || searchQuery.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = BorderStroke(1.dp, if (isSearchVisible || searchQuery.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
@@ -405,17 +405,17 @@ fun LeadsScreen(
                 Tab(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
-                    text = { Text("All (${allLeads.size})", fontSize = 11.5.sp, fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal) }
+                    text = { Text("All (${allLeads.size})", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold) }
                 )
                 Tab(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    text = { Text("Retailers ($customerLeadsCount)", fontSize = 11.5.sp, fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal) }
+                    text = { Text("Retailers ($customerLeadsCount)", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold) }
                 )
                 Tab(
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 },
-                    text = { Text("Suppliers ($supplierLeadsCount)", fontSize = 11.5.sp, fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Normal) }
+                    text = { Text("Suppliers ($supplierLeadsCount)", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold) }
                 )
             }
 
@@ -453,7 +453,7 @@ fun LeadsScreen(
                             Text(
                                 text = "$st ($count)",
                                 color = if (isSelected) Color.White else TextPrimary,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontWeight = FontWeight.SemiBold,
                                 fontSize = 12.sp,
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                             )
@@ -486,7 +486,7 @@ fun LeadsScreen(
                             Text(
                                 text = range,
                                 color = if (isSelected) Color.White else TextPrimary,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontWeight = FontWeight.SemiBold,
                                 fontSize = 12.sp,
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                             )
@@ -520,7 +520,7 @@ fun LeadsScreen(
                             Text(
                                 text = if (isCustomSelected && customDateLabel.isNotBlank()) customDateLabel else "Custom 📅",
                                 color = if (isCustomSelected) Color.White else TextPrimary,
-                                fontWeight = if (isCustomSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontWeight = FontWeight.SemiBold,
                                 fontSize = 12.sp
                             )
                             if (isCustomSelected) {
@@ -1068,18 +1068,12 @@ private fun AddEditLeadDialog(
                             selected = leadType == "customer",
                             onClick = { leadType = "customer" },
                             label = { Text("Retailer (Customer)", fontSize = 10.5.sp) },
-                            leadingIcon = if (leadType == "customer") {
-                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(13.dp)) }
-                            } else null,
                             modifier = Modifier.weight(1f)
                         )
                         FilterChip(
                             selected = leadType == "supplier",
                             onClick = { leadType = "supplier" },
                             label = { Text("Supplier Lead", fontSize = 10.5.sp) },
-                            leadingIcon = if (leadType == "supplier") {
-                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(13.dp)) }
-                            } else null,
                             modifier = Modifier.weight(1f)
                         )
                     }

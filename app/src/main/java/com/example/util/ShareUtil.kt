@@ -11,6 +11,7 @@ import com.example.data.local.entity.PurchaseEntryEntity
 import com.example.data.local.entity.SupplierEntity
 import com.example.data.local.entity.VisitEntity
 import java.io.File
+import java.util.Locale
 
 object ShareUtil {
 
@@ -83,36 +84,58 @@ object ShareUtil {
         }
     }
 
-    fun shareCustomerRegistrationLink(context: Context, phone: String? = null) {
-        val regUrl = "https://himatsms.web.app/#/register-customer"
+    /** Public customer registration page. With [subAgentId] the customer is linked to that Sub Agent. */
+    fun customerRegistrationUrl(subAgentId: Long? = null): String {
+        val base = "https://himatsms.web.app/#/register-customer"
+        return if (subAgentId != null && subAgentId > 0L) "$base?agent=$subAgentId" else base
+    }
+
+    fun shareCustomerRegistrationLink(context: Context, phone: String? = null, subAgentId: Long? = null) {
+        val regUrl = customerRegistrationUrl(subAgentId)
         val msg = """
-            *Shree Himat Trading Company — New Customer Account Registration*
-            
-            Hello! To open a new trade account with us, please visit the link below and fill in your business and contact details:
-            
-            🔗 $regUrl
-            
-            _Note: You will receive an SMS OTP verification on your mobile number upon submitting the form._
-            
-            Thank you!
-            Shree Himat Trading Company, Ahmedabad
+            HIMAT TEXTILE AHMEDABAD
+            Your Garment Guide Across India
+
+            Hello,
+
+            Thank you for choosing Himat Textile Ahmedabad.
+
+            To open your New Customer Trade Account, please complete your business and contact details using the link below:
+
+            🔗 Customer Registration:
+            $regUrl
+
+            Important: After submitting the registration form, you will receive an SMS OTP on your registered mobile number for verification.
+
+            Once your registration is completed, our team will review your details and proceed with the account-opening process.
+
+            Thank you for connecting with us.
+            Himat Textile Ahmedabad
+            Your Garment Guide Across India
         """.trimIndent()
         shareWhatsAppText(context, msg, phone)
     }
 
     fun shareSupplierRegistrationLink(context: Context, phone: String? = null) {
-        val regUrl = "https://himatsms.web.app/#supplier-register"
+        val regUrl = "https://himatsms.web.app/#/register-supplier"
         val msg = """
-            *Himat Textile — New Supplier / Fabric Mill Registration*
-            
-            Hello! To register as a fabric mill / supplier with Himat Textile, please visit the link below and fill in your mill & business details:
-            
-            🔗 $regUrl
-            
-            _Note: Details will be verified upon submission._
-            
+            HIMAT TEXTILE AHMEDABAD
+            Your Garment Guide Across India
+
+            Hello,
+
+            Thank you for connecting with Himat Textile Ahmedabad.
+
+            To register as a Supplier with us, please complete your firm and business details using the link below:
+
+            🔗 Supplier Registration:
+            $regUrl
+
+            Once your registration is submitted, our team will review your details and proceed with onboarding.
+
             Thank you!
-            Himat Textile, Ahmedabad
+            Himat Textile Ahmedabad
+            Your Garment Guide Across India
         """.trimIndent()
         shareWhatsAppText(context, msg, phone)
     }
@@ -122,43 +145,70 @@ object ShareUtil {
         customer: CustomerEntity?,
         entries: List<PurchaseEntryEntity>
     ): String {
+        val totalPieces = entries.sumOf { it.pieces }
         val totalAmount = entries.sumOf { it.totalAmount }
         val totalGst = entries.sumOf { it.gstAmount }
         val grandTotal = totalAmount + totalGst
         val totalCases = entries.sumOf { it.caseCount }
         val totalLoose = entries.sumOf { it.loosePieces }
+        val totalPaid = entries.sumOf { it.paidAmount }
+        val totalDue = kotlin.math.max(0.0, grandTotal - totalPaid)
+
+        val custBrand = (if (!customer?.firmName.isNullOrBlank()) customer?.firmName else customer?.name ?: visit.customerName).orEmpty().uppercase()
+        val primaryTransporter = entries.find { it.transporter.isNotBlank() }?.transporter
+            ?: (if (!customer?.preferredTransporterName.isNullOrBlank()) customer?.preferredTransporterName else customer?.transportPreference)
+            ?: "Direct / Self Pickup"
+        val bookingStation = if (!customer?.city.isNullOrBlank()) customer?.city!! else "Ahmedabad"
+        // Everybody who worked this trip: per-order salesmen first, then all trip members
+        val tripAgents = salesmenForReport(visit, entries).joinToString(", ").ifBlank { visit.employeeName }
 
         return buildString {
-            appendLine("📋 *HIMAT TEXTILE — YOUR BUSINESS GUIDE ACROSS INDIA*")
-            appendLine("Customer Day Report & Multi-Supplier Sourcing Summary")
-            appendLine("─────────────────────────")
-            appendLine("👤 *Customer:* ${customer?.name ?: visit.customerName}")
-            appendLine("📍 *Market:* ${customer?.city ?: "—"}")
-            appendLine("📅 *Date:* ${visit.date} | *Visit Code:* ${visit.visitCode}")
-            appendLine("🤵 *Salesman:* ${visit.employeeName}")
-            appendLine("─────────────────────────")
-            appendLine("📦 *ITEMS PURCHASED:*")
+            appendLine("📋 *HIMAT TEXTILE — YOUR GARMENT GUIDE ACROSS INDIA*")
+            appendLine("*CUSTOMER PURCHASE REPORT*")
+            appendLine("━━━━━━━━━━━━━━━━━━━━")
+            appendLine("🏢 *Buyer / Firm:* *$custBrand*")
+            val contact = customer?.name.orEmpty()
+            if (contact.isNotBlank() && !contact.equals(custBrand, ignoreCase = true)) {
+                appendLine("👤 *Proprietor / Contact:* $contact")
+            }
+            appendLine("📍 *City / Station:* $bookingStation")
+            appendLine("🚛 *Transporter:* *$primaryTransporter*")
+            appendLine("📋 *Trip Code:* ${visit.visitCode} | 📅 *Date:* ${visit.date}")
+            appendLine("👔 *Trip Agents:* $tripAgents")
+            appendLine("━━━━━━━━━━━━━━━━━━━━")
+            appendLine("📦 *PURCHASE ORDERS SUMMARY:*")
 
-            entries.groupBy { it.supplierName }.forEach { (supplier, items) ->
-                appendLine("\n🏢 *${supplier}*")
-                items.forEach { item ->
-                    appendLine(" • *${item.itemCode}* | ${item.pieces} Pcs @ ₹${item.rate.toInt()} = ₹${item.totalAmount.toInt()}")
-                    val pack = if (item.loosePieces > 0) "${item.caseCount}c + ${item.loosePieces}L" else "${item.caseCount}c"
-                    appendLine("   Packing: $pack")
-                    if (!item.mixedPackNote.isNullOrBlank()) {
-                        appendLine("   ↳ _${item.mixedPackNote}_")
-                    }
+            entries.forEachIndexed { idx, item ->
+                val sm = if (item.salesmanName.isNotBlank()) item.salesmanName else visit.employeeName
+                val date = if (item.orderDate.isNotBlank()) item.orderDate else visit.date
+                val pack = if (item.loosePieces > 0) "${item.caseCount}c + ${item.loosePieces}L" else "${item.caseCount} cs"
+                val status = item.deliveryStatus.ifBlank { "Pending" }
+                appendLine("${idx + 1}. *${item.itemCode}* — ${item.supplierName}")
+                appendLine("   Qty: ${item.pieces} Pcs ($pack) @ ₹${item.rate.toInt()} = *₹${String.format(Locale.US, "%,.2f", item.totalAmount)}*")
+                appendLine("   Status: *$status* | Salesman: $sm | Date: $date")
+                if (!item.mixedPackNote.isNullOrBlank()) {
+                    appendLine("   ↳ _Note: ${item.mixedPackNote}_")
                 }
             }
 
-            appendLine("\n─────────────────────────")
-            appendLine("📊 *TOTALS:*")
-            appendLine("Total Quantity: ${entries.sumOf { it.pieces }} Pcs ($totalCases Cases, $totalLoose Loose)")
-            appendLine("Subtotal: ₹${String.format("%,.2f", totalAmount)}")
-            appendLine("Garment GST (5%): ₹${String.format("%,.2f", totalGst)}")
-            appendLine("💰 *GRAND TOTAL: ₹${String.format("%,.2f", grandTotal)}*")
-            appendLine("─────────────────────────")
-            appendLine("_Himat Textile — Your Business Guide Across India_")
+            appendLine("━━━━━━━━━━━━━━━━━━━━")
+            appendLine("📊 *TOTALS & SETTLEMENT:*")
+            appendLine("Total Quantity: $totalPieces Pcs ($totalCases Cases ${if (totalLoose > 0) "+ $totalLoose Loose" else ""})")
+            appendLine("Subtotal: ₹${String.format(Locale.US, "%,.2f", totalAmount)}")
+            appendLine("Garment GST (5%): ₹${String.format(Locale.US, "%,.2f", totalGst)}")
+            appendLine("💰 *GRAND TOTAL: ₹${String.format(Locale.US, "%,.2f", grandTotal)}*")
+            appendLine("✅ Paid: ₹${String.format(Locale.US, "%,.2f", totalPaid)}")
+            appendLine("⚠️ Balance Due: ₹${String.format(Locale.US, "%,.2f", totalDue)}")
+            appendLine("━━━━━━━━━━━━━━━━━━━━")
+            appendLine("🏦 *BANK PAYMENT DETAILS:*")
+            appendLine("Bank: ICICI Bank (Ashram Road, Ahmedabad)")
+            appendLine("A/C Name: HIMAT TEXTILE")
+            appendLine("A/C No: 136805501447 | Type: Current")
+            appendLine("IFSC: ICIC0000189")
+            appendLine("UPI ID: eazypay.0000053310@icici")
+            appendLine("━━━━━━━━━━━━━━━━━━━━")
+            appendLine("🌐 *Website:* https://himattextile.com")
+            appendLine("_Himat Textile — Your Garment Guide Across India_")
         }
     }
 
@@ -168,38 +218,45 @@ object ShareUtil {
         customer: CustomerEntity?,
         entries: List<PurchaseEntryEntity>
     ): String {
+        val totalPieces = entries.sumOf { it.pieces }
+        val totalCases = entries.sumOf { it.caseCount }
         val totalAmount = entries.sumOf { it.totalAmount }
         val totalGst = entries.sumOf { it.gstAmount }
         val grandTotal = totalAmount + totalGst
+        val suppBrand = if (supplier.brand.isNotBlank()) supplier.brand.uppercase() else supplier.name.uppercase()
+        val custId = if (!customer?.customerId.isNullOrBlank()) customer?.customerId!! else if (customer != null && customer.id > 0) "CUST-${customer.id}" else if (visit.customerId > 0) "CUST-${visit.customerId}" else "CUST-TRADE"
+        val buyerCity = customer?.city ?: "Ahmedabad"
 
         return buildString {
-            appendLine("🏷️ *HIMAT TEXTILE — YOUR BUSINESS GUIDE ACROSS INDIA*")
-            appendLine("Supplier Purchase Order Copy")
-            appendLine("─────────────────────────")
-            appendLine("🏭 *Supplier:* ${supplier.name} (${supplier.type})")
-            appendLine("📍 *Market Area:* ${supplier.marketArea}")
-            appendLine("👤 *Customer:* ${customer?.name ?: visit.customerName}")
-            appendLine("📅 *Date:* ${visit.date} | *Agent:* ${visit.employeeName}")
-            appendLine("─────────────────────────")
-            appendLine("📋 *PURCHASE DETAILS:*")
+            appendLine("*HIMAT TEXTILE — YOUR GARMENT GUIDE ACROSS INDIA*")
+            appendLine("📝 *ORDER FORM (DRAFT BILL)*")
+            appendLine("⚠️ _All amounts are approximate • One Bill One LR_")
+            appendLine("━━━━━━━━━━━━━━━━━━━━")
+            appendLine("🏭 *Supplier Brand:* *$suppBrand*")
+            if (supplier.name.isNotBlank() && !supplier.name.equals(suppBrand, ignoreCase = true)) {
+                appendLine("🏢 *Firm:* ${supplier.name}")
+            }
+            appendLine("🆔 *Customer ID:* *$custId* ($buyerCity)")
+            appendLine("📅 *Date:* ${visit.date} | *Trip:* ${visit.visitCode}")
+            appendLine("━━━━━━━━━━━━━━━━━━━━")
+            appendLine("📋 *ORDER ITEMS:*")
 
-            entries.forEach { item ->
-                appendLine(" • *Order ${item.orderNo}*: ${item.itemCode}")
-                appendLine("   Qty: ${item.pieces} Pcs @ ₹${item.rate.toInt()} = ₹${item.totalAmount.toInt()}")
-                val packing = if (item.loosePieces > 0) "${item.caseCount} Cases + ${item.loosePieces} Loose" else "${item.caseCount} Cases"
-                appendLine("   Packing: $packing")
+            entries.forEachIndexed { idx, item ->
+                val pack = if (item.loosePieces > 0) "${item.caseCount}c + ${item.loosePieces}L" else "${item.caseCount} cases"
+                appendLine("${idx + 1}. *${item.itemCode}* — ${item.pieces} pcs ($pack)")
+                appendLine("   Approx Rate: ₹${item.rate.toInt()} | Approx Amt: ₹${String.format(Locale.US, "%,.2f", item.totalAmount)}")
                 if (!item.mixedPackNote.isNullOrBlank()) {
-                    appendLine("   ⚠️ *Packing Note:* _${item.mixedPackNote}_")
+                    appendLine("   ↳ _Note: ${item.mixedPackNote}_")
                 }
             }
 
-            appendLine("\n─────────────────────────")
-            appendLine("Total Pcs: ${entries.sumOf { it.pieces }} Pcs")
-            appendLine("Taxable Amount: ₹${String.format("%,.2f", totalAmount)}")
-            appendLine("GST (5%): ₹${String.format("%,.2f", totalGst)}")
-            appendLine("💰 *NET TOTAL: ₹${String.format("%,.2f", grandTotal)}*")
-            appendLine("─────────────────────────")
-            appendLine("_Himat Textile — Your Business Guide Across India_")
+            appendLine("━━━━━━━━━━━━━━━━━━━━")
+            appendLine("📦 *Total Qty:* $totalPieces Pcs ($totalCases Cases)")
+            appendLine("💰 *Approx Net Total:* ₹${String.format(Locale.US, "%,.2f", grandTotal)}")
+            appendLine("━━━━━━━━━━━━━━━━━━━━")
+            appendLine("📌 *Note:* One Bill One LR. All amounts are approximate estimates.")
+            appendLine("🌐 *Website:* https://himattextile.com")
+            appendLine("_Himat Textile — Your Garment Guide Across India_")
         }
     }
 }

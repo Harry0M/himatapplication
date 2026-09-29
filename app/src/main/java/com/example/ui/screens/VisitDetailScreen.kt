@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -35,8 +39,10 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SearchOff
@@ -48,6 +54,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -91,8 +98,24 @@ import com.example.ui.theme.GoldAccent
 import com.example.ui.theme.NavyPrimary
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import com.example.data.remote.FirebaseStorageService
+import com.example.ui.dialogs.FullScreenImageViewerDialog
+import kotlinx.coroutines.launch
 import com.example.ui.viewmodel.HimatViewModel
 import com.example.util.PdfGenerator
+
+import com.example.util.hasMember
+import com.example.util.isClosed
+import com.example.util.isPhoneTrip
+import com.example.util.tripMembers
+import com.example.ui.components.InfoCard
+import com.example.ui.components.SecondaryButton
+import com.example.ui.components.StatusPill
+import com.example.ui.components.TripStatusPill
+import com.example.ui.dialogs.JoinTripSheet
+import androidx.compose.material.icons.filled.GroupAdd
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -110,6 +133,36 @@ fun VisitDetailScreen(
     val suppliers by viewModel.visibleSuppliers.collectAsStateWithLifecycle()
     val customers by viewModel.visibleCustomers.collectAsStateWithLifecycle()
     val employees by viewModel.allEmployees.collectAsStateWithLifecycle()
+    val currentEmployee by viewModel.currentEmployee.collectAsStateWithLifecycle()
+    val isAdminUser by viewModel.isAdminUser.collectAsStateWithLifecycle()
+    val isAgentUser by viewModel.isAgentUser.collectAsStateWithLifecycle()
+    val closeTripPrompt by viewModel.closeTripPrompt.collectAsStateWithLifecycle()
+
+    // Several salesmen can work one trip; each can join from their own phone
+    val tripMembers = remember(visit, employees) { visit.tripMembers(employees) }
+    val isMember = visit.hasMember(currentEmployee)
+    val isClosed = visit.isClosed()
+    // Every staff member and admin can add an order to an open trip. A staff member who is not on
+    // the trip joins it first, so the order carries their name (salesman on the customer report).
+    //
+    // Note there is deliberately no `currentEmployee != null` condition: a staff login whose
+    // employee record has not loaded yet used to be locked out of the whole screen, which looked
+    // like the app refusing their work. They can still book the order; it is credited to the trip's
+    // salesman until their own record resolves.
+    val canAddOrders = !isAgentUser && !isClosed
+    val mustJoinFirst = canAddOrders && !isMember && currentEmployee != null
+    val canJoin = !isAgentUser && !isClosed && !isMember && currentEmployee != null
+    val canManageTrip = !isAgentUser
+    var showCloseTripDialog by remember { mutableStateOf(false) }
+    var showAddMemberSheet by remember { mutableStateOf(false) }
+    var showJoinPrompt by remember { mutableStateOf(false) }
+    val onAddOrder: () -> Unit = {
+        if (mustJoinFirst) {
+            showJoinPrompt = true
+        } else {
+            onOpenAddEntry()
+        }
+    }
 
     var showSupplierSheet by remember { mutableStateOf(false) }
     var showManagePackSheet by remember { mutableStateOf(false) }
@@ -139,28 +192,27 @@ fun VisitDetailScreen(
         entries.any { it.supplierId == sup.id || (it.supplierName.isNotBlank() && it.supplierName.trim().equals(sup.name.trim(), ignoreCase = true)) }
     }
 
+    var fullscreenImageUrl by remember { mutableStateOf<String?>(null) }
+    var fullscreenImageTitle by remember { mutableStateOf("") }
+
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = onOpenAddEntry,
-                containerColor = NavyPrimary,
-                contentColor = GoldAccent
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Add Stop", fontWeight = FontWeight.Bold, color = GoldAccent)
-                }
+            if (canAddOrders) {
+                ExtendedFloatingActionButton(
+                    onClick = onAddOrder,
+                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                    text = { Text("New order", fontWeight = FontWeight.Bold) },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
             }
         }
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFFF6F8FB))
+                .background(MaterialTheme.colorScheme.background)
                 .padding(paddingValues)
                 .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -181,12 +233,12 @@ fun VisitDetailScreen(
                         onClick = onBack,
                         modifier = Modifier
                             .size(38.dp)
-                            .background(Color.White, CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh, CircleShape)
                     ) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = NavyPrimary,
+                            tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -213,7 +265,7 @@ fun VisitDetailScreen(
                                 Text(
                                     text = visit.customerName.take(2).uppercase(),
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     color = NavyPrimary
                                 )
                             }
@@ -225,7 +277,7 @@ fun VisitDetailScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = visit.customerName,
-                            fontSize = 17.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = NavyPrimary,
                             maxLines = 1,
@@ -233,116 +285,113 @@ fun VisitDetailScreen(
                         )
                         Text(
                             text = "${visit.visitCode} • ${visit.date}",
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary
                         )
                     }
                     Spacer(modifier = Modifier.width(8.dp))
 
-                    // Borderless Pill Status Toggle Chip
-                    val isActive = visit.status.equals("Active", ignoreCase = true)
-                    Surface(
-                        color = if (isActive) Color(0xFFE0F2FE) else Color(0xFFDCFCE7),
-                        shape = RoundedCornerShape(20.dp),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .clickable {
-                                val next = if (isActive) "Completed" else "Active"
-                                viewModel.updateVisitStatus(visit, next)
-                            }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                if (isActive) Icons.Default.Schedule else Icons.Default.CheckCircle,
-                                contentDescription = null,
-                                tint = if (isActive) Color(0xFF0369A1) else Color(0xFF15803D),
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = if (isActive) "Active" else "Completed",
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isActive) Color(0xFF0369A1) else Color(0xFF15803D)
+                    // Status is shown here; closing happens with the "Close trip" button (with a summary)
+                    Column(horizontalAlignment = Alignment.End) {
+                        TripStatusPill(visit)
+                        if (visit.isPhoneTrip()) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            StatusPill(
+                                text = "Phone order",
+                                background = MaterialTheme.colorScheme.secondaryContainer,
+                                foreground = MaterialTheme.colorScheme.onSecondaryContainer
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.width(6.dp))
+                    if (canManageTrip) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        IconButton(
+                            onClick = { showDeleteTripDialog = true },
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(Color(0xFFFEE2E2), CircleShape)
+                        ) {
+                            Icon(
+                                Icons.Default.DeleteOutline,
+                                contentDescription = "Delete Trip",
+                                tint = Color(0xFFDC2626),
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
+                    }
+                }
+            }
 
-                    IconButton(
-                        onClick = { showDeleteTripDialog = true },
-                        modifier = Modifier
-                            .size(34.dp)
-                            .background(Color(0xFFFEE2E2), CircleShape)
-                    ) {
-                        Icon(
-                            Icons.Default.DeleteOutline,
-                            contentDescription = "Delete Trip",
-                            tint = Color(0xFFDC2626),
-                            modifier = Modifier.size(17.dp)
+            // 2. Salesmen on this trip (started, joined from their phones, or added)
+            item {
+                InfoCard(contentPadding = PaddingValues(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Salesmen on this trip (${tripMembers.size})",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = NavyPrimary
+                            )
+                            Text(
+                                text = tripMembers.joinToString(", ") { it.name }.ifBlank { visit.employeeName },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextPrimary
+                            )
+                        }
+                        if (canManageTrip && !isClosed) {
+                            TextButton(onClick = { showAddMemberSheet = true }) {
+                                Icon(Icons.Default.GroupAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Add", fontWeight = FontWeight.Bold)
+                            }
+                        } else if (canJoin) {
+                            TextButton(onClick = { viewModel.joinVisit(visit) }) {
+                                Icon(Icons.Default.GroupAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Join", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                    if (canJoin) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Join to add orders from your phone - they will be saved under your name.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
+                    }
+                    if (isClosed) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        val closedOn = visit.closedAt?.let {
+                            java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(it))
+                        }
+                        Text(
+                            text = "Closed" + (closedOn?.let { " on $it" } ?: "") + (visit.closedBy.takeIf { it.isNotBlank() }?.let { " by $it" } ?: ""),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
                         )
                     }
                 }
             }
 
-            // 2. Salesman Info Bar with Actual Photo
-            item {
-                val salesman = employees.find { it.id == visit.employeeId || it.name.equals(visit.employeeName, true) }
-                val salesmanPhoto = salesman?.photoUri?.takeIf { it.isNotBlank() }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 2.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = CircleShape,
-                            color = NavyPrimary.copy(alpha = 0.08f),
-                            border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
-                            modifier = Modifier
-                                .size(24.dp)
-                                .clip(CircleShape)
-                        ) {
-                            if (!salesmanPhoto.isNullOrBlank()) {
-                                AsyncImage(
-                                    model = salesmanPhoto,
-                                    contentDescription = visit.employeeName,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            } else {
-                                Box(contentAlignment = Alignment.Center) {
-                                    val smInitials = visit.employeeName.take(1).uppercase()
-                                    Text(
-                                        text = if (smInitials.isNotBlank()) smInitials else "S",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = NavyPrimary
-                                    )
-                                }
-                            }
-                        }
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Salesman: ${visit.employeeName}",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = TextPrimary
+            // Close / reopen the trip
+            if (canManageTrip) {
+                item {
+                    if (!isClosed) {
+                        SecondaryButton(
+                            text = "Close trip",
+                            icon = Icons.Default.CheckCircle,
+                            contentColor = Color(0xFF15803D),
+                            onClick = { showCloseTripDialog = true },
+                            modifier = Modifier.fillMaxWidth()
                         )
+                    } else if (isAdminUser) {
+                        TextButton(onClick = { viewModel.reopenVisit(visit) }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Reopen trip (admin)")
+                        }
                     }
-
-                    Text(
-                        text = "Tap status to switch",
-                        fontSize = 11.sp,
-                        color = TextSecondary
-                    )
                 }
             }
 
@@ -362,29 +411,29 @@ fun VisitDetailScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Total Pcs", fontSize = 10.5.sp, color = TextSecondary)
-                            Text("$totalPieces", fontWeight = FontWeight.Bold, fontSize = 14.5.sp, color = NavyPrimary)
+                            Text("Total Pcs", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                            Text("$totalPieces", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall, color = NavyPrimary)
                         }
                         Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color(0xFFE2E8F0)))
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Full Cases", fontSize = 10.5.sp, color = TextSecondary)
-                            Text("$totalCases", fontWeight = FontWeight.Bold, fontSize = 14.5.sp, color = Color(0xFF059669))
+                            Text("Full Cases", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                            Text("$totalCases", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall, color = Color(0xFF059669))
                         }
                         Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color(0xFFE2E8F0)))
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Loose Pcs", fontSize = 10.5.sp, color = TextSecondary)
+                            Text("Loose Pcs", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
                             val totalLoose = entries.sumOf { it.loosePieces }
                             Text(
                                 text = "$totalLoose",
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 14.5.sp,
+                                style = MaterialTheme.typography.titleSmall,
                                 color = if (totalLoose > 0) Color(0xFFD97706) else Color(0xFF15803D)
                             )
                         }
                         Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color(0xFFE2E8F0)))
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Trip Value", fontSize = 10.5.sp, color = TextSecondary)
-                            Text(PdfGenerator.formatInr(totalAmount), fontWeight = FontWeight.Bold, fontSize = 14.5.sp, color = TextPrimary)
+                            Text("Trip Value", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                            Text(PdfGenerator.formatInr(totalAmount), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall, color = TextPrimary)
                         }
                     }
                 }
@@ -415,7 +464,7 @@ fun VisitDetailScreen(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "Customer Report",
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
                             maxLines = 1
@@ -444,7 +493,7 @@ fun VisitDetailScreen(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "Supplier Bills (${visitedSuppliers.size})",
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Bold,
                             color = NavyPrimary,
                             maxLines = 1
@@ -477,19 +526,16 @@ fun VisitDetailScreen(
                     Text(
                         text = "Supplier Stops (${entries.size})",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = TextPrimary
                     )
-                    Text(
-                        text = "+ Add Stop",
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = NavyPrimary,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable { onOpenAddEntry() }
-                            .padding(horizontal = 6.dp, vertical = 4.dp)
-                    )
+                    if (canAddOrders) {
+                        TextButton(onClick = onAddOrder) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Add order", fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
 
@@ -508,22 +554,24 @@ fun VisitDetailScreen(
                                 .padding(20.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text("No items logged for this visit yet", fontWeight = FontWeight.Bold)
+                            Text("No orders in this trip yet", fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                "Log a purchase when customer buys from a shop.",
-                                fontSize = 12.sp,
+                                if (isClosed) "This trip is closed." else "Add an order when the customer buys from a supplier.",
+                                style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Button(
-                                onClick = onOpenAddEntry,
-                                colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = null, tint = GoldAccent, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Add First Stop", color = GoldAccent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            if (canAddOrders) {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Button(
+                                    onClick = onAddOrder,
+                                    colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = null, tint = GoldAccent, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Add first order", color = GoldAccent, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -542,6 +590,10 @@ fun VisitDetailScreen(
                             if (sup != null) {
                                 onOpenSupplierCopy(visit, sup)
                             }
+                        },
+                        onViewPhoto = { url, title ->
+                            fullscreenImageUrl = url
+                            fullscreenImageTitle = title
                         }
                     )
                 }
@@ -605,7 +657,7 @@ fun VisitDetailScreen(
         EditStopBottomSheet(
             entry = entry,
             onDismiss = { editingEntry = null },
-            onSave = { updatedPieces, updatedRate, updatedCaseSize, updatedCases, updatedLoose, status, transp, expDate, payStatus, payMode, paidAmt, remarks, packNote ->
+            onSave = { updatedPieces, updatedRate, updatedCaseSize, updatedCases, updatedLoose, status, transp, expDate, payStatus, payMode, paidAmt, remarks, packNote, orderPhoto, billPhoto ->
                 viewModel.updatePurchaseEntry(
                     entry = entry,
                     newPieces = updatedPieces,
@@ -621,6 +673,8 @@ fun VisitDetailScreen(
                     paidAmount = paidAmt,
                     paymentRemarks = remarks,
                     newMixedPackNote = packNote,
+                    orderFormPhotoUri = orderPhoto,
+                    supplierInvoiceUri = billPhoto,
                     onSuccess = {
                         editingEntry = null
                     }
@@ -645,7 +699,7 @@ fun VisitDetailScreen(
                         "Delete Trip / Visit?",
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFDC2626),
-                        fontSize = 16.sp
+                        style = MaterialTheme.typography.titleMedium
                     )
                 }
             },
@@ -653,7 +707,7 @@ fun VisitDetailScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         "Are you sure you want to delete this trip (${visit.visitCode} • ${visit.customerName})?",
-                        fontSize = 13.5.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = TextPrimary
                     )
                     Surface(
@@ -663,7 +717,7 @@ fun VisitDetailScreen(
                     ) {
                         Text(
                             text = "⚠ WARNING: Deleting this trip will also permanently delete all ${entries.size} deliveries/orders associated with it.",
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.SemiBold,
                             color = Color(0xFFB91C1C),
                             modifier = Modifier.padding(10.dp)
@@ -691,6 +745,117 @@ fun VisitDetailScreen(
             }
         )
     }
+
+    if (showJoinPrompt) {
+        JoinTripSheet(
+            visit = visit,
+            memberNames = tripMembers.map { it.name },
+            showAdminSkip = isAdminUser,
+            isWorking = false,
+            onJoinAndAddOrder = {
+                showJoinPrompt = false
+                viewModel.joinAndAddOrder(visit)
+            },
+            onAddWithoutJoining = {
+                showJoinPrompt = false
+                onOpenAddEntry()
+            },
+            onDismiss = { showJoinPrompt = false }
+        )
+    }
+
+    // After the last supplier of a phone order
+    val prompt = closeTripPrompt
+    if (prompt != null && prompt.tripId == visit.id) {
+        val saved = prompt.savedCount
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissCloseTripPrompt() },
+            title = { Text("Close this trip?") },
+            text = {
+                Text(
+                    when (saved) {
+                        0 -> "No orders were saved in this phone order."
+                        1 -> "1 order saved in this phone order."
+                        else -> "$saved orders saved in this phone order."
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.closeTripFromPrompt() }) {
+                    Text("Close now", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissCloseTripPrompt() }) { Text("Later") }
+            }
+        )
+    }
+
+    if (showCloseTripDialog) {
+        val pendingDelivery = entries.count { !it.deliveryStatus.equals("Delivered", ignoreCase = true) }
+        AlertDialog(
+            onDismissRequest = { showCloseTripDialog = false },
+            title = { Text("Close this trip?", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("${visit.customerName} • ${visit.visitCode}", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "${entries.size} orders • $totalPieces pcs • ₹${PdfGenerator.formatInr(totalAmount)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text("Salesmen: ${tripMembers.joinToString(", ") { it.name }}", style = MaterialTheme.typography.bodySmall)
+                    if (totalUnfixedLoose > 0) {
+                        Text(
+                            "$totalUnfixedLoose loose pieces are not packed yet.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFFB45309)
+                        )
+                    }
+                    Text(
+                        if (pendingDelivery > 0) "$pendingDelivery orders are not delivered yet. You can keep updating delivery status after closing."
+                        else "All orders are delivered.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showCloseTripDialog = false
+                        viewModel.closeVisit(visit)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF15803D))
+                ) { Text("Close trip", color = Color.White, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCloseTripDialog = false }) { Text("Cancel", color = TextSecondary) }
+            }
+        )
+    }
+
+    if (showAddMemberSheet) {
+        com.example.ui.dialogs.EmployeeSearchBottomSheet(
+            employees = employees.filter { e ->
+                tripMembers.none { it.id == e.id } && !e.isBlocked && !e.status.equals("Deactivated", true)
+            },
+            selectedEmployee = null,
+            onSelectEmployee = { emp ->
+                viewModel.addVisitMember(visit, emp)
+                showAddMemberSheet = false
+            },
+            onDismiss = { showAddMemberSheet = false }
+        )
+    }
+
+    fullscreenImageUrl?.let { url ->
+        FullScreenImageViewerDialog(
+            imageUrl = url,
+            title = fullscreenImageTitle,
+            onDismiss = { fullscreenImageUrl = null }
+        )
+    }
 }
 
 @Composable
@@ -699,7 +864,8 @@ fun PurchaseEntryItemCard(
     isPackedInGroup: Boolean = false,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
-    onViewSupplierCopy: () -> Unit
+    onViewSupplierCopy: () -> Unit,
+    onViewPhoto: ((url: String, title: String) -> Unit)? = null
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -725,7 +891,7 @@ fun PurchaseEntryItemCard(
                         Text(
                             text = entry.orderNo,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             color = NavyPrimary,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
@@ -734,7 +900,7 @@ fun PurchaseEntryItemCard(
                     Text(
                         text = entry.supplierName,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 13.5.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = TextPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -785,14 +951,14 @@ fun PurchaseEntryItemCard(
                     Text(
                         text = "Item: ${entry.itemCode}",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = TextPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = "${entry.pieces} Pcs",
-                        fontSize = 11.5.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )
                 }
@@ -801,7 +967,7 @@ fun PurchaseEntryItemCard(
                     Text(
                         text = PdfGenerator.formatInr(entry.grandTotalWithGst),
                         fontWeight = FontWeight.Bold,
-                        fontSize = 13.5.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = NavyPrimary
                     )
                     Spacer(modifier = Modifier.height(3.dp))
@@ -849,7 +1015,7 @@ fun PurchaseEntryItemCard(
                             text = "Payment: ${entry.paymentStatus}" +
                                     (if (entry.paidAmount > 0) " (₹${"%,.0f".format(entry.paidAmount)})" else "") +
                                     (if (entry.paymentMode.isNotBlank()) " • ${entry.paymentMode}" else ""),
-                            fontSize = 10.5.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
                             color = paymentTextColor
                         )
@@ -859,12 +1025,92 @@ fun PurchaseEntryItemCard(
                 Text(
                     text = "View Supplier Voucher →",
                     color = NavyPrimary,
-                    fontSize = 11.sp,
+                    style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier
                         .clickable { onViewSupplierCopy() }
                         .padding(top = 2.dp, bottom = 2.dp)
                 )
+            }
+
+            // Attached Spot Documents (Order Form Pic / Wholesaler Bill)
+            val hasOrderPhoto = !entry.orderFormPhotoUri.isNullOrBlank()
+            val hasBillPhoto = !entry.supplierInvoiceUri.isNullOrBlank()
+            if (hasOrderPhoto || hasBillPhoto) {
+                Spacer(modifier = Modifier.height(7.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (hasOrderPhoto) {
+                        Surface(
+                            color = Color(0xFFDCFCE7),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable {
+                                    onViewPhoto?.invoke(
+                                        entry.orderFormPhotoUri!!,
+                                        "Order Form - ${entry.orderNo} (${entry.supplierName})"
+                                    )
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Receipt,
+                                    contentDescription = null,
+                                    tint = Color(0xFF15803D),
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Order Form Pic",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF15803D)
+                                )
+                            }
+                        }
+                    }
+
+                    if (hasBillPhoto) {
+                        Surface(
+                            color = Color(0xFFEFF6FF),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable {
+                                    onViewPhoto?.invoke(
+                                        entry.supplierInvoiceUri!!,
+                                        "Wholesaler Bill - ${entry.orderNo} (${entry.supplierName})"
+                                    )
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Image,
+                                    contentDescription = null,
+                                    tint = Color(0xFF2563EB),
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Wholesaler Bill",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF2563EB)
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -917,14 +1163,14 @@ fun VisitedSupplierBottomSheet(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "Supplier Bills",
-                        fontSize = 15.sp,
+                        style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = NavyPrimary,
                         letterSpacing = (-0.2).sp
                     )
                     Text(
                         text = "Select a supplier to view voucher",
-                        fontSize = 11.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         color = TextSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -937,7 +1183,7 @@ fun VisitedSupplierBottomSheet(
                 ) {
                     Text(
                         text = "${visitedSuppliers.size} Stops",
-                        fontSize = 10.5.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         color = NavyPrimary,
                         modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
@@ -951,7 +1197,7 @@ fun VisitedSupplierBottomSheet(
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                placeholder = { Text("Search", fontSize = 12.5.sp, color = TextSecondary) },
+                placeholder = { Text("Search", style = MaterialTheme.typography.bodySmall, color = TextSecondary) },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Search,
@@ -1007,7 +1253,7 @@ fun VisitedSupplierBottomSheet(
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = "No supplier stops logged yet",
-                            fontSize = 12.5.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Medium,
                             color = TextSecondary
                         )
@@ -1030,7 +1276,7 @@ fun VisitedSupplierBottomSheet(
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = "No suppliers match \"$searchQuery\"",
-                            fontSize = 12.5.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Medium,
                             color = TextSecondary
                         )
@@ -1074,7 +1320,7 @@ fun VisitedSupplierBottomSheet(
                                         Text(
                                             text = sup.name.take(2).uppercase(),
                                             fontWeight = FontWeight.Bold,
-                                            fontSize = 11.5.sp,
+                                            style = MaterialTheme.typography.bodySmall,
                                             color = NavyPrimary
                                         )
                                     }
@@ -1090,7 +1336,7 @@ fun VisitedSupplierBottomSheet(
                                         Text(
                                             text = sup.name,
                                             fontWeight = FontWeight.SemiBold,
-                                            fontSize = 13.sp,
+                                            style = MaterialTheme.typography.bodyMedium,
                                             color = TextPrimary,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
@@ -1108,7 +1354,7 @@ fun VisitedSupplierBottomSheet(
                                         if (sup.marketArea.isNotBlank()) {
                                             Text(
                                                 text = sup.marketArea,
-                                                fontSize = 11.sp,
+                                                style = MaterialTheme.typography.labelSmall,
                                                 color = TextSecondary,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis,
@@ -1116,13 +1362,13 @@ fun VisitedSupplierBottomSheet(
                                             )
                                             Text(
                                                 text = "•",
-                                                fontSize = 8.sp,
+                                                style = MaterialTheme.typography.labelSmall,
                                                 color = Color.LightGray
                                             )
                                         }
                                         Text(
                                             text = "$orderCount ord • $totalPieces pcs",
-                                            fontSize = 11.sp,
+                                            style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.Medium,
                                             color = NavyPrimary,
                                             maxLines = 1
@@ -1130,12 +1376,12 @@ fun VisitedSupplierBottomSheet(
                                         if (totalAmount > 0) {
                                             Text(
                                                 text = "•",
-                                                fontSize = 8.sp,
+                                                style = MaterialTheme.typography.labelSmall,
                                                 color = Color.LightGray
                                             )
                                             Text(
                                                 text = "₹${"%,.0f".format(totalAmount)}",
-                                                fontSize = 11.sp,
+                                                style = MaterialTheme.typography.labelSmall,
                                                 fontWeight = FontWeight.SemiBold,
                                                 color = Color(0xFF2E7D32),
                                                 maxLines = 1
@@ -1214,19 +1460,19 @@ fun LoosePacksFixedBanner(
                     Text(
                         text = "Loose Packs Fixed",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = Color(0xFF15803D)
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = "$totalPackedCases mixed case${if (totalPackedCases > 1) "s" else ""} ($totalPackedPieces pcs)",
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             color = Color(0xFF166534)
                         )
                         if (remainingLoose > 0) {
                             Text(
                                 text = " • $remainingLoose loose left",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color(0xFFD97706)
                             )
@@ -1316,13 +1562,13 @@ fun ManagePackGroupsBottomSheet(
                 Column {
                     Text(
                         text = "Mixed Pack Groups",
-                        fontSize = 17.sp,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = NavyPrimary
                     )
                     Text(
                         text = "Manage combined loose packs for this visit",
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )
                 }
@@ -1332,7 +1578,7 @@ fun ManagePackGroupsBottomSheet(
                 ) {
                     Text(
                         text = "${packGroups.size} Groups",
-                        fontSize = 11.5.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF15803D),
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -1372,7 +1618,7 @@ fun ManagePackGroupsBottomSheet(
                                         Text(
                                             text = group.packGroupCode,
                                             fontWeight = FontWeight.Bold,
-                                            fontSize = 11.5.sp,
+                                            style = MaterialTheme.typography.bodySmall,
                                             color = NavyPrimary,
                                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                         )
@@ -1381,12 +1627,12 @@ fun ManagePackGroupsBottomSheet(
                                     Text(
                                         text = "${group.resultingCases} Mixed Case${if (group.resultingCases > 1) "s" else ""}",
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp,
+                                        style = MaterialTheme.typography.bodyMedium,
                                         color = Color(0xFF15803D)
                                     )
                                     Text(
                                         text = " (${group.combinedPieces} pcs)",
-                                        fontSize = 12.sp,
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = TextSecondary
                                     )
                                 }
@@ -1410,7 +1656,7 @@ fun ManagePackGroupsBottomSheet(
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = "Unpack",
-                                        fontSize = 11.sp,
+                                        style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = Color(0xFFDC2626)
                                     )
@@ -1421,7 +1667,7 @@ fun ManagePackGroupsBottomSheet(
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
                                     text = group.note,
-                                    fontSize = 11.sp,
+                                    style = MaterialTheme.typography.labelSmall,
                                     color = TextSecondary
                                 )
                             }
@@ -1430,7 +1676,7 @@ fun ManagePackGroupsBottomSheet(
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
                                     text = "Included Stops:",
-                                    fontSize = 11.sp,
+                                    style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.SemiBold,
                                     color = TextPrimary
                                 )
@@ -1445,7 +1691,7 @@ fun ManagePackGroupsBottomSheet(
                                     ) {
                                         Text(
                                             text = "• ${item.supplierName} (${item.itemCode})",
-                                            fontSize = 11.sp,
+                                            style = MaterialTheme.typography.labelSmall,
                                             color = TextSecondary,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
@@ -1453,7 +1699,7 @@ fun ManagePackGroupsBottomSheet(
                                         )
                                         Text(
                                             text = "${item.loosePieces} pcs loose",
-                                            fontSize = 11.sp,
+                                            style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.Medium,
                                             color = NavyPrimary
                                         )
@@ -1484,7 +1730,7 @@ fun ManagePackGroupsBottomSheet(
                         text = "Combine Remaining Loose Pieces",
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
-                        fontSize = 13.sp
+                        style = MaterialTheme.typography.bodyMedium
                     )
                 }
             }
@@ -1510,9 +1756,15 @@ fun EditStopBottomSheet(
         paymentMode: String,
         paidAmount: Double,
         paymentRemarks: String,
-        mixedPackNote: String?
+        mixedPackNote: String?,
+        orderFormPhotoUri: String?,
+        supplierInvoiceUri: String?
     ) -> Unit
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val storageService = remember { FirebaseStorageService() }
+
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var piecesText by remember(entry) { mutableStateOf(entry.pieces.toString()) }
@@ -1530,6 +1782,49 @@ fun EditStopBottomSheet(
         mutableStateOf(if (entry.paidAmount > 0) entry.paidAmount.toString() else "")
     }
     var paymentRemarks by remember(entry) { mutableStateOf(entry.paymentRemarks) }
+
+    var orderFormPhotoUri by remember(entry) { mutableStateOf(entry.orderFormPhotoUri) }
+    var isUploadingOrderForm by remember { mutableStateOf(false) }
+
+    var supplierInvoiceUri by remember(entry) { mutableStateOf(entry.supplierInvoiceUri) }
+    var isUploadingInvoice by remember { mutableStateOf(false) }
+
+    var previewImageUrl by remember { mutableStateOf<String?>(null) }
+    var previewImageTitle by remember { mutableStateOf("") }
+
+    val orderFormLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) {
+            isUploadingOrderForm = true
+            coroutineScope.launch {
+                val result = storageService.uploadFile(context, uri, folder = "purchase_orders/order_forms", prefix = "order_form")
+                isUploadingOrderForm = false
+                result.onSuccess { downloadUrl ->
+                    orderFormPhotoUri = downloadUrl
+                    Toast.makeText(context, "Order Form uploaded to Cloud!", Toast.LENGTH_SHORT).show()
+                }.onFailure { err ->
+                    orderFormPhotoUri = uri.toString()
+                    Toast.makeText(context, "Saved locally (offline)", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    val invoiceLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) {
+            isUploadingInvoice = true
+            coroutineScope.launch {
+                val result = storageService.uploadFile(context, uri, folder = "purchase_orders/invoices", prefix = "bill")
+                isUploadingInvoice = false
+                result.onSuccess { downloadUrl ->
+                    supplierInvoiceUri = downloadUrl
+                    Toast.makeText(context, "Wholesaler Bill uploaded to Cloud!", Toast.LENGTH_SHORT).show()
+                }.onFailure { err ->
+                    supplierInvoiceUri = uri.toString()
+                    Toast.makeText(context, "Saved locally (offline)", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
 
     // Live calculations
     val pieces = piecesText.toIntOrNull() ?: 0
@@ -1568,13 +1863,13 @@ fun EditStopBottomSheet(
                 Column {
                     Text(
                         text = "Edit Stop: ${entry.orderNo}",
-                        fontSize = 17.sp,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = NavyPrimary
                     )
                     Text(
                         text = "${entry.supplierName} • Item: ${entry.itemCode}",
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )
                 }
@@ -1586,7 +1881,7 @@ fun EditStopBottomSheet(
             Spacer(modifier = Modifier.height(14.dp))
 
             // Section 1: Quantity & Pricing
-            Text("Quantity & Price", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = NavyPrimary)
+            Text("Quantity & Price", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = NavyPrimary)
             Spacer(modifier = Modifier.height(8.dp))
 
             Row(
@@ -1657,28 +1952,14 @@ fun EditStopBottomSheet(
                         unfocusedBorderColor = Color(0xFFE2E8F0)
                     )
                 )
-                OutlinedTextField(
-                    value = caseSizeText,
-                    onValueChange = { caseSizeText = it },
-                    label = { Text("Case Size") },
-                    placeholder = { Text("24") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = NavyPrimary,
-                        unfocusedBorderColor = Color(0xFFE2E8F0)
-                    )
-                )
             }
 
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedTextField(
                 value = packingRemarks,
                 onValueChange = { packingRemarks = it },
-                label = { Text("Packing Remarks / Note (Optional)", fontSize = 11.5.sp) },
-                placeholder = { Text("e.g. Packed with Order HT-1002 / Wholesaler X", fontSize = 12.sp) },
+                label = { Text("Packing Remarks / Note (Optional)", style = MaterialTheme.typography.bodySmall) },
+                placeholder = { Text("e.g. Packed with Order HT-1002 / Wholesaler X", style = MaterialTheme.typography.bodySmall) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 shape = RoundedCornerShape(10.dp),
@@ -1705,26 +1986,26 @@ fun EditStopBottomSheet(
                         Column {
                             Text(
                                 text = "Total + 5% GST",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelSmall,
                                 color = TextSecondary
                             )
                             Text(
                                 text = PdfGenerator.formatInr(grandTotal),
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 13.5.sp,
+                                style = MaterialTheme.typography.bodyMedium,
                                 color = NavyPrimary
                             )
                         }
                         Column(horizontalAlignment = Alignment.End) {
                             Text(
                                 text = "Packaging",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelSmall,
                                 color = TextSecondary
                             )
                             Text(
                                 text = "$caseCount Cases + $loosePieces Loose",
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
+                                style = MaterialTheme.typography.bodyMedium,
                                 color = if (loosePieces > 0) Color(0xFFD97706) else Color(0xFF15803D)
                             )
                         }
@@ -1733,7 +2014,7 @@ fun EditStopBottomSheet(
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "↳ Note: $packingRemarks",
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             color = TextSecondary
                         )
                     }
@@ -1743,10 +2024,10 @@ fun EditStopBottomSheet(
             Spacer(modifier = Modifier.height(16.dp))
 
             // Section 2: Delivery & Logistics
-            Text("Delivery & Logistics", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = NavyPrimary)
+            Text("Delivery & Logistics", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = NavyPrimary)
             Spacer(modifier = Modifier.height(8.dp))
 
-            Text("Delivery Status", fontSize = 11.5.sp, color = TextSecondary)
+            Text("Delivery Status", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
             Spacer(modifier = Modifier.height(6.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1768,8 +2049,8 @@ fun EditStopBottomSheet(
                         ) {
                             Text(
                                 text = status,
-                                fontSize = 11.5.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
                                 color = if (isSelected) Color.White else TextPrimary
                             )
                         }
@@ -1806,10 +2087,10 @@ fun EditStopBottomSheet(
             Spacer(modifier = Modifier.height(16.dp))
 
             // Section 3: Payment Tracking
-            Text("Payment Tracking", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = NavyPrimary)
+            Text("Payment Tracking", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = NavyPrimary)
             Spacer(modifier = Modifier.height(8.dp))
 
-            Text("Payment Status", fontSize = 11.5.sp, color = TextSecondary)
+            Text("Payment Status", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
             Spacer(modifier = Modifier.height(6.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1853,8 +2134,8 @@ fun EditStopBottomSheet(
                                     "Partial" -> "◑ Partial"
                                     else -> "⏳ Pending"
                                 },
-                                fontSize = 11.5.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
                                 color = if (isSelected) statusColor else TextSecondary
                             )
                         }
@@ -1864,7 +2145,7 @@ fun EditStopBottomSheet(
 
             if (paymentStatus != "Pending") {
                 Spacer(modifier = Modifier.height(10.dp))
-                Text("Payment Mode", fontSize = 11.5.sp, color = TextSecondary)
+                Text("Payment Mode", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1890,8 +2171,8 @@ fun EditStopBottomSheet(
                                         "Online" -> "📱 Online"
                                         else -> "🏦 Cheque"
                                     },
-                                    fontSize = 11.5.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold,
                                     color = if (isSelected) Color.White else TextPrimary
                                 )
                             }
@@ -1933,6 +2214,42 @@ fun EditStopBottomSheet(
                 }
             }
 
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Spot Proofs & Attachments
+            Text("Spot Proofs & Attachments", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = NavyPrimary)
+            Spacer(modifier = Modifier.height(8.dp))
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                StopDocumentAttachmentCard(
+                    title = "Order Form Pic",
+                    subtitle = "Upload order form / slip",
+                    uriString = orderFormPhotoUri,
+                    isUploading = isUploadingOrderForm,
+                    onPickImage = { orderFormLauncher.launch("image/*") },
+                    onViewImage = {
+                        previewImageUrl = orderFormPhotoUri
+                        previewImageTitle = "Order Form Preview"
+                    },
+                    onRemoveImage = { orderFormPhotoUri = null }
+                )
+
+                StopDocumentAttachmentCard(
+                    title = "Wholesaler Bill",
+                    subtitle = "Upload wholesaler invoice / bill",
+                    uriString = supplierInvoiceUri,
+                    isUploading = isUploadingInvoice,
+                    onPickImage = { invoiceLauncher.launch("image/*") },
+                    onViewImage = {
+                        previewImageUrl = supplierInvoiceUri
+                        previewImageTitle = "Wholesaler Bill Preview"
+                    },
+                    onRemoveImage = { supplierInvoiceUri = null }
+                )
+            }
+
             Spacer(modifier = Modifier.height(20.dp))
 
             // Save / Cancel Buttons
@@ -1964,7 +2281,9 @@ fun EditStopBottomSheet(
                             paymentMode,
                             parsedPaidAmount,
                             paymentRemarks,
-                            packingRemarks.trim().ifEmpty { null }
+                            packingRemarks.trim().ifEmpty { null },
+                            orderFormPhotoUri,
+                            supplierInvoiceUri
                         )
                     },
                     enabled = isValid,
@@ -1983,6 +2302,14 @@ fun EditStopBottomSheet(
                 }
             }
         }
+    }
+
+    previewImageUrl?.let { url ->
+        FullScreenImageViewerDialog(
+            imageUrl = url,
+            title = previewImageTitle,
+            onDismiss = { previewImageUrl = null }
+        )
     }
 }
 

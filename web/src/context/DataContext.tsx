@@ -1,7 +1,20 @@
 import React, { createContext, useContext, useEffect, useState } from "react"
-import { ref, onValue, set, remove, update, get } from "firebase/database"
+import { ref, onValue, set, remove, update, get, runTransaction } from "firebase/database"
 import { rtdb } from "../lib/firebase"
 import { useAuth } from "./AuthContext"
+import { AHMEDABAD_TEXTILE_MARKETS } from "../lib/constants"
+import {
+  customersOfSubAgent,
+  dbPaymentStatus,
+  displayCode,
+  hasMember,
+  isAgentRole,
+  newId,
+  toNumericId,
+  tripsOfCustomers,
+  webPaymentStatus,
+  withMember,
+} from "../lib/domain"
 import {
   Visit,
   PurchaseEntry,
@@ -18,7 +31,8 @@ import {
   CustomerRegistrationRequest,
   SupplierRegistrationRequest,
   Lead,
-  ChequePdc
+  ChequePdc,
+  CustomerSecurityCheque
 } from "../types"
 
 // Helper to robustly extract arrays from Firebase snapshots (handles sparse arrays and keyed objects)
@@ -97,7 +111,8 @@ function sanitizePayload<T>(obj: T): T {
   if (typeof obj === "object") {
     const clean: Record<string, any> = {}
     for (const [key, value] of Object.entries(obj)) {
-      if (value !== undefined) {
+      // _rtdbKey is added by parseRtdbList for the UI only; never write it back
+      if (value !== undefined && key !== "_rtdbKey") {
         clean[key] = sanitizePayload(value)
       }
     }
@@ -105,6 +120,89 @@ function sanitizePayload<T>(obj: T): T {
   }
   return obj
 }
+
+/** Highest HT-<n> order sequence known to this browser (never below 2600). Mirrors Android. */
+function localMaxOrderSequence(entries: PurchaseEntry[], transactions: Transaction[]): number {
+  let max = 2600
+  const consider = (orderNo?: string) => {
+    const m = /^HT-(\d+)$/i.exec((orderNo || "").trim())
+    if (m) max = Math.max(max, Number(m[1]))
+  }
+  entries.forEach((e) => consider(e.orderNo))
+  transactions.forEach((t) => consider((t as any).orderNo))
+  return max
+}
+
+/** Resolves to undefined when the promise takes longer than `ms` (offline / rules not deployed). */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | undefined> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(undefined), ms)
+    promise.then(
+      (v) => {
+        clearTimeout(timer)
+        resolve(v)
+      },
+      () => {
+        clearTimeout(timer)
+        resolve(undefined)
+      }
+    )
+  })
+}
+
+// -----------------------------------------------------------------------------
+// Android bridge. The Android app keeps contacts / outlets / factories as JSON strings and the
+// supplier rate system as flat fields. Writing both formats keeps a record the same on both sides.
+// -----------------------------------------------------------------------------
+const CONTACT_KEYS = ["name", "phone", "designation", "email"]
+const LOCATION_KEYS = ["name", "address", "city", "pincode", "mapLink", "phone"]
+
+/** Array of objects -> Android JSON string; undefined when the web has no such list (leave Android's). */
+function toAndroidJson(list: unknown, keys: string[]): string | undefined {
+  if (!Array.isArray(list)) return undefined
+  const rows = list
+    .map((item: any) => {
+      const row: Record<string, string> = {}
+      keys.forEach((k) => {
+        const v = item?.[k]
+        if (v !== undefined && v !== null && String(v).trim() !== "") row[k] = String(v).trim()
+      })
+      return row
+    })
+    .filter((row) => Object.keys(row).length > 0)
+  return JSON.stringify(rows)
+}
+
+function androidCustomerFields(c: Customer): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  const contactsJson = toAndroidJson(c.contacts, CONTACT_KEYS)
+  if (contactsJson !== undefined) out.contactsJson = contactsJson
+  const outletsJson = toAndroidJson(c.outlets, LOCATION_KEYS)
+  if (outletsJson !== undefined) out.outletsJson = outletsJson
+  if (!c.shopMapLink && c.mapLink) out.shopMapLink = c.mapLink
+  return out
+}
+
+function androidSupplierFields(s: Supplier): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  const factoriesJson = toAndroidJson(s.factories, LOCATION_KEYS)
+  if (factoriesJson !== undefined) out.factoriesJson = factoriesJson
+  const outletsJson = toAndroidJson(s.outlets, LOCATION_KEYS)
+  if (outletsJson !== undefined) out.outletsJson = outletsJson
+  const text = (v: unknown) => (v === undefined || v === null ? "" : String(v))
+  if (s.system) {
+    out.systemMrpValue = text(s.systemMrpValue) || text(s.system.mrp?.value)
+    out.systemMrpPercent = text(s.systemMrpPercent) || text(s.system.mrp?.percentage)
+    out.systemLessValue = text(s.systemLessValue) || text(s.system.less?.value)
+    out.systemLessPercent = text(s.systemLessPercent) || text(s.system.less?.percentage)
+  }
+  return out
+}
+
+const normalizeMarketName = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, "")
+
+/** Market names from the old hard-coded list that should exist as Market master records. */
+export const STANDARD_MARKET_NAMES = AHMEDABAD_TEXTILE_MARKETS.filter((m) => !/^other/i.test(m))
 
 export interface EmployeeStats {
   employee: Employee
@@ -133,7 +231,14 @@ interface DataContextType {
   markets: Market[]
   packGroups: PackGroup[]
   transactions: Transaction[]
+  /** Staff + admins (Sub Agents excluded). Use for salesman pickers, staff lists and stats. */
   employees: Employee[]
+  /** Sub Agents (employees node, role "Agent"), including deactivated ones */
+  subAgents: Employee[]
+  /** Everybody in the employees node (staff, admins and sub agents) */
+  allPeople: Employee[]
+  /** Open trips started by somebody else that the signed-in staff member can join */
+  joinableVisits: Visit[]
   loading: boolean
 
   // Soft Deletions for Admin Approval
@@ -173,6 +278,16 @@ interface DataContextType {
   ) => Promise<void>
   saveVisit: (visit: Visit) => Promise<void>
   deleteVisit: (id: number) => Promise<void>
+  /** Signed-in staff member joins a trip started by someone else (atomic, safe with phones joining at once) */
+  joinVisit: (visitId: number) => Promise<boolean>
+  /** Add any staff member to a trip (atomic) */
+  addVisitMember: (visitId: number, member: { id: number; name: string }) => Promise<boolean>
+  closeVisit: (visitId: number) => Promise<void>
+  reopenVisit: (visitId: number) => Promise<void>
+  /** Next shared order number, e.g. "HT-2715" (same counter as the Android app) */
+  nextOrderNo: () => Promise<string>
+  /** Adds the standard Ahmedabad markets that are missing from the Market master. Returns how many were added. */
+  seedStandardMarkets: () => Promise<number>
   saveCustomer: (customer: Customer) => Promise<void>
   deleteCustomer: (id: number) => Promise<void>
   saveSupplier: (supplier: Supplier) => Promise<void>
@@ -216,6 +331,9 @@ interface DataContextType {
       creditLimit?: number
       religion?: string
       fallbackRequest?: CustomerRegistrationRequest
+      /** Sub Agent who brought the customer (defaults to the one on the request link) */
+      subAgentId?: number | null
+      subAgentName?: string
     }
   ) => Promise<number>
   rejectRegistrationRequest: (requestId: string, reason?: string, fallbackPhone?: string) => Promise<void>
@@ -233,6 +351,17 @@ interface DataContextType {
       brand?: string
       marketName?: string
       fallbackRequest?: SupplierRegistrationRequest
+      system?: {
+        mrp?: { value?: string; percentage?: string | number }
+        less?: { value?: string; percentage?: string | number }
+      }
+      systemMrpValue?: string
+      systemMrpPercent?: string | number
+      systemLessValue?: string
+      systemLessPercent?: string | number
+      createMarketMaster?: boolean
+      newMarketName?: string
+      newMarketCity?: string
     }
   ) => Promise<number>
   rejectSupplierRegistrationRequest: (requestId: string, reason?: string, fallbackPhone?: string) => Promise<void>
@@ -252,12 +381,18 @@ interface DataContextType {
   saveChequePdc: (cheque: Partial<ChequePdc> & { chequeNo: string; bankName: string; amount: number; chequeDate: string; partyType: "Customer" | "Supplier"; partyName: string }) => Promise<number>
   updateChequePdcStatus: (id: number, status: string, clearedDate?: string) => Promise<void>
   deleteChequePdc: (id: number) => Promise<void>
+  saveCustomerSecurityCheque: (customerId: number, cheque: Partial<CustomerSecurityCheque> & { chequeNo: string; bankName: string; amount: number; chequeDate: string }) => Promise<number | string>
+  deleteCustomerSecurityCheque: (customerId: number, chequeId: number | string) => Promise<void>
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined)
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user } = useAuth()
+  const { user, role, employee: currentEmployee, isAdmin } = useAuth()
+  // Only people with a role (Admin / Staff / Sub Agent) download business data.
+  // Phone-OTP sessions from the public registration forms and unknown Google accounts get nothing.
+  const hasAccess = Boolean(user && role)
+  const isAgentUser = role === "agent"
   const [rawVisits, setRawVisits] = useState<Visit[]>([])
   const [rawEntries, setRawEntries] = useState<PurchaseEntry[]>([])
   const [rawCustomers, setRawCustomers] = useState<Customer[]>([])
@@ -281,14 +416,31 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Real-time synchronization
   useEffect(() => {
-    if (!user) {
+    if (!hasAccess) {
+      // Signed out / access removed: drop everything that was downloaded
+      setRawVisits([])
+      setRawEntries([])
+      setRawCustomers([])
+      setRawSuppliers([])
+      setRawEmployees([])
+      setRawProducts([])
+      setRawBrands([])
+      setRawTransporters([])
+      setRawMarkets([])
+      setPackGroups([])
+      setTransactions([])
+      setRawRegistrationRequests([])
+      setRawSupplierRegistrationRequests([])
+      setRawLeads([])
+      setRawChequesPdc([])
+      setRawDeletionRequests([])
       setLoading(false)
       return
     }
 
     setLoading(true)
     let activeListeners = 0
-    const totalListeners = 15
+    const totalListeners = 16
 
     const checkLoading = () => {
       activeListeners++
@@ -321,7 +473,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       entriesRef,
       (snapshot) => {
         if (snapshot.exists()) {
-          setRawEntries(parseRtdbList<PurchaseEntry>(snapshot.val()))
+          // Android writes Pending / Received, older web builds Unpaid / Paid: show one set of words
+          setRawEntries(
+            parseRtdbList<PurchaseEntry>(snapshot.val()).map((e) => ({
+              ...e,
+              paymentStatus: webPaymentStatus(e.paymentStatus),
+              rate: e.rate ?? e.pricePerPiece,
+              pricePerPiece: e.pricePerPiece ?? e.rate ?? 0,
+              gstPercent: e.gstPercent ?? e.gstRate ?? 0,
+            }))
+          )
         } else {
           setRawEntries([])
         }
@@ -603,14 +764,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       unsubDelRequests()
       unsubCheques()
     }
-  }, [user])
+  }, [hasAccess, user?.uid])
 
-  // Active filtered datasets (excluding soft-deleted)
-  const visits = React.useMemo(() => {
-    return rawVisits.filter((v) => !v.isDeleted)
-  }, [rawVisits])
+  // Active filtered datasets (excluding soft-deleted), before role scoping.
+  // Trips show the customer's BRAND (shop / firm) name instead of the owner name, like the Android app.
+  const activeVisits = React.useMemo(() => {
+    const byId = new Map<number, Customer>()
+    rawCustomers.forEach((c) => {
+      if (c && !c.isDeleted) byId.set(Number(c.id), c)
+    })
+    return rawVisits
+      .filter((v) => !v.isDeleted)
+      .map((v) => {
+        const c = byId.get(Number(v.customerId))
+        const brand = ((c?.firmName || "").trim() || (c?.name || "").trim())
+        return brand && brand !== v.customerName ? { ...v, customerName: brand } : v
+      })
+  }, [rawVisits, rawCustomers])
 
-  const entries = React.useMemo(() => {
+  const activeEntries = React.useMemo(() => {
     return rawEntries.filter((e) => !e.isDeleted)
   }, [rawEntries])
 
@@ -649,8 +821,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }))
   }, [rawMarkets])
 
-  // Synthesize employees: combine explicit employees from RTDB with any agent found in visits
-  const employees = React.useMemo(() => {
+  // Synthesize people: combine explicit employees from RTDB with any salesman found in visits
+  const allPeople = React.useMemo(() => {
     const map = new Map<number, Employee>()
 
     // Add explicit employees from RTDB (including Active, Suspended, Deactivated)
@@ -666,16 +838,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     })
 
-    // Synthesize any employee referenced in visits who might not be in /employees node
-    visits.forEach((v) => {
+    // Synthesize any salesman referenced in visits who might not be in /employees node
+    activeVisits.forEach((v) => {
       const empId = Number(v.employeeId)
       if (empId > 0 && !map.has(empId)) {
         map.set(empId, {
           id: empId,
           employeeId: `EMP-0${empId}`,
-          name: v.employeeName || `Agent #${empId}`,
+          name: v.employeeName || `Salesman #${empId}`,
           role: "Salesman",
-          phone: "+91 98000 00000",
+          phone: "",
           status: "Active",
           isBlocked: false,
         })
@@ -683,10 +855,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     })
 
     return Array.from(map.values())
-  }, [rawEmployees, visits])
+  }, [rawEmployees, activeVisits])
+
+  /** Staff + admins only (Sub Agents excluded) */
+  const employees = React.useMemo(() => allPeople.filter((e) => !isAgentRole(e.role)), [allPeople])
+
+  /** Sub Agents: people who bring customers to us (role "Agent") */
+  const subAgents = React.useMemo(
+    () =>
+      allPeople
+        .filter((e) => isAgentRole(e.role))
+        .sort((a, b) => (a.name || "").localeCompare(b.name || "")),
+    [allPeople]
+  )
 
   // Synthesize customers: ensure any customer referenced in visits is never missing
-  const customers = React.useMemo(() => {
+  const allCustomers = React.useMemo(() => {
     const map = new Map<number, Customer>()
     rawCustomers.forEach((c) => {
       if (c && c.id && !c.isDeleted) {
@@ -701,7 +885,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     })
 
-    visits.forEach((v) => {
+    activeVisits.forEach((v) => {
       if (v.customerId && !map.has(Number(v.customerId))) {
         map.set(Number(v.customerId), {
           id: Number(v.customerId),
@@ -710,13 +894,50 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           firmName: v.customerName || `Customer #${v.customerId}`,
           city: "Ahmedabad",
           state: "Gujarat",
-          phone: "+91 98765 00000",
+          phone: "",
         })
       }
     })
 
     return Array.from(map.values())
-  }, [rawCustomers, visits])
+  }, [rawCustomers, activeVisits])
+
+  // ---------------------------------------------------------------------------
+  // Role scoping (same rules as the Android app)
+  //   Admin: everything
+  //   Staff: trips they started or joined (+ the orders of those trips); all masters
+  //   Sub Agent: only customers linked to them, those customers' trips and orders
+  // NOTE: this is a UI filter. The database rules still let any signed-in user read everything.
+  // ---------------------------------------------------------------------------
+  const customers = React.useMemo(() => {
+    if (isAgentUser) {
+      return currentEmployee ? customersOfSubAgent(allCustomers, currentEmployee) : []
+    }
+    return allCustomers
+  }, [allCustomers, isAgentUser, currentEmployee])
+
+  const visits = React.useMemo(() => {
+    if (isAdmin) return activeVisits
+    if (isAgentUser) {
+      return tripsOfCustomers(activeVisits, new Set(customers.map((c) => Number(c.id))))
+    }
+    if (!currentEmployee) return activeVisits
+    return activeVisits.filter((v) => hasMember(v, currentEmployee))
+  }, [activeVisits, isAdmin, isAgentUser, customers, currentEmployee])
+
+  const entries = React.useMemo(() => {
+    if (isAdmin) return activeEntries
+    const allowed = new Set(visits.map((v) => Number(v.id)))
+    return activeEntries.filter((e) => allowed.has(Number(e.visitId)))
+  }, [activeEntries, visits, isAdmin])
+
+  const joinableVisits = React.useMemo(() => {
+    if (!currentEmployee || isAgentUser) return []
+    return activeVisits.filter((v) => {
+      const s = (v.status || "").toLowerCase()
+      return s !== "completed" && s !== "closed" && s !== "cancelled" && !hasMember(v, currentEmployee)
+    })
+  }, [activeVisits, currentEmployee, isAgentUser])
 
   // Customer registration requests (User Requests)
   const registrationRequests = React.useMemo(() => {
@@ -787,7 +1008,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     })
 
-    entries.forEach((e) => {
+    activeEntries.forEach((e) => {
       if (e.supplierId && !map.has(Number(e.supplierId))) {
         map.set(Number(e.supplierId), {
           id: Number(e.supplierId),
@@ -796,13 +1017,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           type: e.supplierType || "Manufacturer",
           marketArea: "Textile Market",
           city: "Surat",
-          phone: "+91 98765 11111",
+          phone: "",
         })
       }
     })
 
     return Array.from(map.values())
-  }, [rawSuppliers, entries])
+  }, [rawSuppliers, activeEntries])
 
   // Collect all soft-deleted items across entities and deletion_requests for Admin Deletions view
   const deletedItems: SoftDeletedItem[] = React.useMemo(() => {
@@ -1231,17 +1452,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Compute stats per employee
   const allEmployeeStats = React.useMemo(() => {
+    const visitsById = new Map<number, Visit>()
+    visits.forEach((v) => visitsById.set(Number(v.id), v))
     return employees.map((emp) => {
-      // Find all visits by this employee (matching by id or name)
-      const empVisits = visits.filter(
-        (v) =>
-          Number(v.employeeId) === emp.id ||
-          (v.employeeName && v.employeeName.trim().toLowerCase() === emp.name.trim().toLowerCase())
-      )
-      const visitIdsSet = new Set(empVisits.map((v) => v.id))
+      // Trips this person started, co-owned or joined
+      const empVisits = visits.filter((v) => hasMember(v, emp))
 
-      // Find all purchase entries for these visits
-      const empEntries = entries.filter((e) => visitIdsSet.has(Number(e.visitId)))
+      // Orders credited to this person (they are the order's salesman; old orders count for the trip starter)
+      const empEntries = entries.filter((e) => {
+        const sid = toNumericId(e.salesmanId)
+        if (sid > 0) return sid === Number(emp.id)
+        if ((e.salesmanName || "").trim()) {
+          return e.salesmanName!.trim().toLowerCase() === (emp.name || "").trim().toLowerCase()
+        }
+        const v = visitsById.get(Number(e.visitId))
+        return Boolean(v && Number(v.employeeId) === Number(emp.id))
+      })
 
       const totalInvoiced = empEntries.reduce((sum, e) => {
         return sum + (Number(e.totalAmount) || 0) + (Number(e.gstAmount) || 0)
@@ -1295,7 +1521,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ) => {
     const entryRef = ref(rtdb, `purchase_entries/${entryId}`)
     await update(entryRef, sanitizePayload({
-      paymentStatus,
+      paymentStatus: dbPaymentStatus(paymentStatus),
       paymentMode,
       paidAmount,
       paymentRemarks: paymentRemarks || "",
@@ -1320,7 +1546,67 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const saveVisit = async (visit: Visit) => {
     const visitRef = ref(rtdb, `visits/${visit.id}`)
-    await set(visitRef, sanitizePayload(visit))
+    const exists = rawVisits.some((v) => String(v.id) === String(visit.id))
+    if (!exists) {
+      await set(visitRef, sanitizePayload(visit))
+      return
+    }
+    // Existing trip: merge instead of overwrite, and never write the member list from a possibly
+    // stale copy (salesmen may have joined from their phones). Members change only via joinVisit/addVisitMember.
+    const { memberIds: _ids, memberNames: _names, ...rest } = visit
+    await update(visitRef, sanitizePayload(rest))
+  }
+
+  /** Atomically adds a salesman to visits/<id>/memberIds + memberNames (same transaction as Android). */
+  const addVisitMember = async (visitId: number, member: { id: number; name: string }): Promise<boolean> => {
+    if (!member?.id) return false
+    try {
+      const result = await runTransaction(ref(rtdb, `visits/${visitId}`), (current: any) => {
+        // null = not in the local cache yet; the server re-runs this with the real value
+        if (current === null) return current
+        const next = withMember(current as Visit, Number(member.id), member.name || "")
+        return { ...current, ...next }
+      })
+      return result.committed && result.snapshot.exists()
+    } catch (e) {
+      console.error("addVisitMember failed:", e)
+      return false
+    }
+  }
+
+  const joinVisit = async (visitId: number): Promise<boolean> => {
+    if (!currentEmployee || isAgentUser) return false
+    return addVisitMember(visitId, { id: Number(currentEmployee.id), name: currentEmployee.name })
+  }
+
+  const closeVisit = async (visitId: number) => {
+    await update(ref(rtdb, `visits/${visitId}`), {
+      status: "Completed",
+      closedAt: Date.now(),
+      closedBy: currentEmployee?.name || user?.displayName || user?.email || "Admin",
+    })
+  }
+
+  const reopenVisit = async (visitId: number) => {
+    await update(ref(rtdb, `visits/${visitId}`), {
+      status: "Active",
+      closedAt: null,
+      closedBy: null,
+    })
+  }
+
+  /** Shared counters/orderNo so a phone and the web never hand out the same HT-number. */
+  const nextOrderNo = async (): Promise<string> => {
+    const localMax = localMaxOrderSequence(rawEntries, transactions)
+    const result = await withTimeout(
+      runTransaction(ref(rtdb, "counters/orderNo"), (current: any) => {
+        const n = typeof current === "number" ? current : Number(current) || 0
+        return Math.max(n, localMax) + 1
+      }),
+      4000
+    )
+    const value = result && result.committed ? Number(result.snapshot.val()) : NaN
+    return `HT-${Number.isFinite(value) && value > 0 ? value : localMax + 1}`
   }
 
   const deleteVisit = async (id: number) => {
@@ -1347,6 +1633,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const customerRef = ref(rtdb, `customers/${customer.id}`)
     const payload = {
       ...customer,
+      ...androidCustomerFields(customer),
       firmName: customer.firmName || customer.name,
       city: customer.city || "Ahmedabad",
       state: customer.state || "Gujarat",
@@ -1354,6 +1641,37 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       gstNumber: customer.gstNumber || customer.gstin || "",
     }
     await set(customerRef, sanitizePayload(payload))
+
+    // Automatically sync security cheques to cheques_pdc
+    if (customer.securityCheques && Array.isArray(customer.securityCheques)) {
+      for (let i = 0; i < customer.securityCheques.length; i++) {
+        const sc = customer.securityCheques[i]
+        if (!sc.chequeNo?.trim()) continue
+        const chequeId = Number(sc.pdcChequeId || sc.id || (Date.now() + i))
+        const chequeRef = ref(rtdb, `cheques_pdc/${chequeId}`)
+        const chequePayload: ChequePdc = {
+          id: chequeId,
+          chequeNo: sc.chequeNo.trim(),
+          bankName: sc.bankName?.trim() || "",
+          amount: Number(sc.amount || 0),
+          chequeDate: sc.chequeDate?.trim() || "",
+          partyType: "Customer",
+          partyId: customer.id,
+          partyName: customer.firmName || customer.name,
+          status: (sc.status as any) || "Pending",
+          notes: sc.notes?.trim()
+            ? sc.notes.includes("[Security Cheque]")
+              ? sc.notes.trim()
+              : `[Security Cheque] ${sc.notes.trim()}`
+            : "[Security Cheque]",
+          isSecurityCheque: true,
+          accountNumber: sc.accountNumber?.trim() || "",
+          createdAt: sc.createdAt || Date.now(),
+          isDeleted: false,
+        }
+        await set(chequeRef, sanitizePayload(chequePayload))
+      }
+    }
   }
 
   const deleteCustomer = async (id: number | string) => {
@@ -1374,14 +1692,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const supplierRef = ref(rtdb, `suppliers/${supplier.id}`)
     const payload = {
       ...supplier,
+      ...androidSupplierFields(supplier),
       firmName: supplier.firmName || supplier.name,
       gstin: supplier.gstin || supplier.gstNumber || "",
       gstNumber: supplier.gstNumber || supplier.gstin || "",
     }
     await set(supplierRef, sanitizePayload(payload))
+    // Android also reads a manufacturers/ copy; keep it in step (and drop it when the type changes)
+    const mfgRef = ref(rtdb, `manufacturers/${supplier.id}`)
     if (supplier.type?.toLowerCase() === "manufacturer") {
-      const mfgRef = ref(rtdb, `manufacturers/${supplier.id}`)
       await set(mfgRef, sanitizePayload(payload))
+    } else {
+      await remove(mfgRef)
     }
   }
 
@@ -1421,7 +1743,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const saveTransporter = async (transporter: Transporter) => {
     const transporterRef = ref(rtdb, `transporters/${transporter.id}`)
-    await set(transporterRef, sanitizePayload(transporter))
+    // Android reads the first number from phone1
+    await set(transporterRef, sanitizePayload({ ...transporter, phone1: (transporter as any).phone1 || transporter.phone || "" }))
   }
 
   const deleteTransporter = async (id: number | string) => {
@@ -1466,6 +1789,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const empRef = ref(rtdb, `employees/${id}`)
     await update(empRef, {
       isBlocked: true,
+      // The Android app reads the same flag as "blocked"
+      blocked: true,
       status: "Suspended",
       blockedAt: Date.now(),
       blockedReason: reason || "Access suspended by Administrator",
@@ -1477,6 +1802,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await update(empRef, {
       isBlocked: false,
       isDeleted: false,
+      // Android reads these as "blocked" / "deleted"; clear both so the phone lets them in again
+      blocked: false,
+      deleted: false,
       status: "Active",
       blockedAt: null,
       blockedReason: null,
@@ -1495,6 +1823,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await update(empRef, {
       isBlocked: true,
       isDeleted: true,
+      blocked: true,
+      deleted: true,
       status: "Deactivated",
       deletedAt: Date.now(),
       deletedBy: "Admin",
@@ -1511,8 +1841,70 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const savePurchaseEntry = async (entry: PurchaseEntry) => {
     const entryRef = ref(rtdb, `purchase_entries/${entry.id}`)
-    await set(entryRef, sanitizePayload(entry))
+    // Android reads rate / gstRate, the web pricePerPiece / gstPercent: write both
+    const rate = Number(entry.rate ?? entry.pricePerPiece) || 0
+    const gst = Number(entry.gstRate ?? entry.gstPercent)
+    const payload: PurchaseEntry = {
+      ...entry,
+      rate,
+      pricePerPiece: rate,
+      ...(Number.isFinite(gst) ? { gstRate: gst, gstPercent: gst } : {}),
+      paymentStatus: dbPaymentStatus(entry.paymentStatus),
+    }
+    // Merge: keeps fields another device wrote meanwhile (e.g. delivery update from a phone)
+    await update(entryRef, sanitizePayload(payload))
   }
+
+  /**
+   * Creates Market master records for the standard Ahmedabad market names (the old hard-coded
+   * supplier-form list). Skips names that already exist, including soft-deleted ones.
+   */
+  const seedStandardMarkets = async (): Promise<number> => {
+    if (!isAdmin) return 0
+    const existing = new Set(
+      rawMarkets.map((m) => normalizeMarketName(m.marketName || (m as any).name || "")).filter(Boolean)
+    )
+    let added = 0
+    for (const name of STANDARD_MARKET_NAMES) {
+      const key = normalizeMarketName(name)
+      if (!key || existing.has(key)) continue
+      const id = newId()
+      const market: Market = {
+        id,
+        marketName: name,
+        city: "Ahmedabad",
+        marketType: "Wholesale Textile Cluster",
+        isActive: true,
+        isDeleted: false,
+        createdAt: Date.now(),
+      }
+      await set(ref(rtdb, `markets/${id}`), sanitizePayload(market))
+      existing.add(key)
+      added++
+    }
+    return added
+  }
+
+  // One-time automatic seeding for admins. The marker lives in counters/ so a market the admin
+  // deletes later is not re-created. If the counters rule is not deployed yet the read fails and we skip.
+  const [marketsSeedChecked, setMarketsSeedChecked] = useState(false)
+  useEffect(() => {
+    if (!isAdmin || loading || marketsSeedChecked) return
+    setMarketsSeedChecked(true)
+    ;(async () => {
+      try {
+        const markerRef = ref(rtdb, "counters/marketsSeededAt")
+        const marker = await get(markerRef)
+        if (marker.exists()) return
+        const added = await seedStandardMarkets()
+        await set(markerRef, Date.now())
+        if (added > 0) console.info(`Added ${added} standard markets to the Market master`)
+      } catch (e) {
+        console.warn("Skipped automatic market seeding (deploy database.rules.json to enable):", e)
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, loading, marketsSeedChecked])
 
   const deletePurchaseEntry = async (id: number) => {
     const entryRef = ref(rtdb, `purchase_entries/${id}`)
@@ -1730,6 +2122,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       creditLimit?: number
       religion?: string
       fallbackRequest?: CustomerRegistrationRequest
+      subAgentId?: number | null
+      subAgentName?: string
     }
   ) => {
     let targetId = requestId
@@ -1786,15 +2180,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (!req) throw new Error("Registration request not found")
 
-    // Find next numeric customer ID
-    const maxId = customers.reduce((max, c) => Math.max(max, Number(c.id) || 0), 0)
-    const newCustId = maxId + 1
+    // Globally unique id (max + 1 collided when a phone and the web approved at the same time)
+    const newCustId = newId()
 
     const assignedReligion = (options.religion !== undefined ? options.religion.trim() : (req.religion?.trim() || ""))
 
+    // Staff owner: always store a numeric id (older builds wrote the <select> string)
+    const ownerId = toNumericId(options.assignedAgentId)
+    const ownerName = options.assignedAgentName || ""
+
+    // Sub Agent: explicit choice in the approval dialog, else the one from the registration link
+    const pickedSubAgentId =
+      options.subAgentId !== undefined ? toNumericId(options.subAgentId) : toNumericId(req.subAgentId)
+    const pickedSubAgent = pickedSubAgentId > 0 ? allPeople.find((p) => Number(p.id) === pickedSubAgentId) : undefined
+    const subAgentName =
+      pickedSubAgentId > 0 ? pickedSubAgent?.name || options.subAgentName || req.subAgentName || "" : ""
+
     const newCustomer: Customer = {
       id: newCustId,
-      customerId: `CUST-${newCustId}`,
+      customerId: displayCode("CUST"),
       name: req.name.trim(),
       firmName: req.firmName?.trim() || req.name.trim(),
       phone: req.phone.trim(),
@@ -1810,6 +2214,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       shopMapLink: req.shopMapLink?.trim() || "",
       garmentTypes: req.garmentTypes?.trim() || "",
       preferredCategories: req.garmentTypes?.trim() || "",
+      workingMarkets: req.workingMarkets?.trim() || "",
+      dob: req.dob?.trim() || "",
       gstin: req.gstin?.trim() || "",
       gstNumber: req.gstin?.trim() || "",
       panNumber: req.panNumber?.trim() || "",
@@ -1822,6 +2228,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       aadharPhotoUri: req.aadharPhotoUri || "",
       aadharBackPhotoUri: req.aadharBackPhotoUri || "",
       cancelChequePhotoUri: req.cancelChequePhotoUri || "",
+      purchaserPhotoUri: req.purchaserPhotoUri || "",
+      bankName: req.bankName?.trim() || "",
+      accountNumber: req.accountNumber?.trim() || "",
+      ifscCode: req.ifscCode?.trim() || "",
       notes: [
         req.bankName ? `Bank: ${req.bankName} | A/C: ${req.accountNumber || ""} | IFSC: ${req.ifscCode || ""}` : "",
         req.notes ? `Customer Note: ${req.notes}` : "",
@@ -1830,8 +2240,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       customerType: options.creditType || "Cash",
       creditDays: Number(options.creditDays) || 0,
       creditLimit: Number(options.creditLimit) || 0,
-      addedByAgentId: options.assignedAgentId,
-      addedByAgentName: options.assignedAgentName,
+      addedByAgentId: ownerId > 0 ? ownerId : undefined,
+      addedByAgentName: ownerId > 0 ? ownerName : undefined,
+      subAgentId: pickedSubAgentId > 0 ? pickedSubAgentId : undefined,
+      subAgentName: pickedSubAgentId > 0 ? subAgentName : undefined,
       createdAt: Date.now(),
     }
 
@@ -1845,9 +2257,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await update(reqRef, sanitizePayload({
         status: "APPROVED",
         approvedAt: Date.now(),
-        approvedBy: "Admin",
-        assignedAgentId: options.assignedAgentId,
-        assignedAgentName: options.assignedAgentName,
+        approvedBy: currentEmployee?.name || user?.displayName || "Admin",
+        assignedAgentId: ownerId > 0 ? ownerId : null,
+        assignedAgentName: ownerId > 0 ? ownerName : null,
+        subAgentId: pickedSubAgentId > 0 ? pickedSubAgentId : null,
+        subAgentName: pickedSubAgentId > 0 ? subAgentName : null,
         creditType: options.creditType || "Cash",
         creditDays: Number(options.creditDays) || 0,
         creditLimit: Number(options.creditLimit) || 0,
@@ -1937,6 +2351,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       brand?: string
       marketName?: string
       fallbackRequest?: SupplierRegistrationRequest
+      system?: {
+        mrp?: { value?: string; percentage?: string | number }
+        less?: { value?: string; percentage?: string | number }
+      }
+      systemMrpValue?: string
+      systemMrpPercent?: string | number
+      systemLessValue?: string
+      systemLessPercent?: string | number
+      createMarketMaster?: boolean
+      newMarketName?: string
+      newMarketCity?: string
     }
   ) => {
     let targetId = requestId
@@ -1990,16 +2415,63 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (!req) throw new Error("Supplier registration request not found")
 
-    // Next numeric supplier ID
-    const maxId = suppliers.reduce((max, s) => Math.max(max, Number(s.id) || 0), 0)
-    const newSupId = maxId + 1
+    // Globally unique id (max + 1 collided when a phone and the web approved at the same time)
+    const newSupId = newId()
 
     const finalFirmName = req.firmName?.trim() || req.name.trim()
     const finalContactPerson = req.contactPerson?.trim() || req.name.trim()
+    const finalMarketName = options?.marketName?.trim() || req.marketName?.trim() || req.marketArea?.trim() || ""
+
+    // Link the Market master record: the id picked on the form, else an exact name match
+    const findMarket = (name: string) =>
+      rawMarkets.find((m) => !m.isDeleted && (m.marketName || "").trim().toLowerCase() === name.trim().toLowerCase())
+    let linkedMarket: Market | undefined =
+      (!options?.marketName && toNumericId(req.marketId) > 0
+        ? rawMarkets.find((m) => Number(m.id) === toNumericId(req.marketId) && !m.isDeleted)
+        : undefined) || (finalMarketName ? findMarket(finalMarketName) : undefined)
+
+    // Optional Market Master creation if supplier entered custom market or admin opted in
+    const marketNameToCreate = (options?.newMarketName || finalMarketName).trim()
+    if (options?.createMarketMaster && marketNameToCreate) {
+      const existingMarket = findMarket(marketNameToCreate)
+      if (existingMarket) {
+        linkedMarket = existingMarket
+      } else {
+        const newMarketObj: Market = {
+          id: newId(),
+          marketName: marketNameToCreate,
+          city: (options?.newMarketCity || req.city || "Ahmedabad").trim(),
+          isActive: true,
+          createdAt: Date.now(),
+        }
+        await saveMarket(newMarketObj)
+        linkedMarket = newMarketObj
+      }
+    }
+
+    const resolvedMrpValue = options?.systemMrpValue !== undefined
+      ? String(options.systemMrpValue).trim()
+      : (req.systemMrpValue || (options?.system?.mrp?.value ? String(options.system.mrp.value).trim() : ""))
+    const resolvedMrpPercent = options?.systemMrpPercent !== undefined
+      ? options.systemMrpPercent
+      : (req.systemMrpPercent ?? options?.system?.mrp?.percentage ?? "")
+    const resolvedLessValue = options?.systemLessValue !== undefined
+      ? String(options.systemLessValue).trim()
+      : (req.systemLessValue || (options?.system?.less?.value ? String(options.system.less.value).trim() : ""))
+    const resolvedLessPercent = options?.systemLessPercent !== undefined
+      ? options.systemLessPercent
+      : (req.systemLessPercent ?? options?.system?.less?.percentage ?? "")
+
+    const resolvedSystem = options?.system || {
+      mrp: { value: resolvedMrpValue, percentage: resolvedMrpPercent },
+      less: { value: resolvedLessValue, percentage: resolvedLessPercent },
+    }
+
+    const linkedMarketName = linkedMarket?.marketName || finalMarketName
 
     const newSupplier: Supplier = {
       id: newSupId,
-      supplierId: `SUP-${newSupId}`,
+      supplierId: displayCode("SUP"),
       name: finalFirmName,
       firmName: finalFirmName,
       type: req.type || "Manufacturer",
@@ -2011,12 +2483,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       email: req.email?.trim() || "",
       address: req.address?.trim() || "",
       officeAddress: req.officeAddress?.trim() || "",
-      marketArea: options?.marketName?.trim() || req.marketArea?.trim() || "",
-      marketName: options?.marketName?.trim() || req.marketArea?.trim() || "",
+      homeAddress: req.homeAddress?.trim() || "",
+      bankName: req.bankName?.trim() || "",
+      accountNumber: req.accountNumber?.trim() || "",
+      ifscCode: req.ifscCode?.trim() || "",
+      marketId: linkedMarket ? Number(linkedMarket.id) : undefined,
+      marketArea: linkedMarketName,
+      marketName: linkedMarketName,
       city: req.city?.trim() || "Ahmedabad",
+      district: req.district?.trim() || "",
       state: req.state?.trim() || "Gujarat",
+      pincode: req.pincode?.trim() || "",
       productsMade: req.productsMade?.trim() || "",
       categories: req.categories?.trim() || req.productsMade?.trim() || "",
+      subCategories: req.subCategories?.trim() || "",
       garmentTypes: req.categories?.trim() || req.productsMade?.trim() || "",
       priceRange: req.priceRange?.trim() || "",
       gstin: req.gstin?.trim() || "",
@@ -2024,6 +2504,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       panNumber: req.panNumber?.trim() || "",
       visitingCardPhotoUri: req.visitingCardPhotoUri || "",
       shopPhotoUri: req.shopPhotoUri || "",
+      godownPhotoUri: req.godownPhotoUri || "",
       gstCertPhotoUri: req.gstCertPhotoUri || "",
       panPhotoUri: req.panPhotoUri || "",
       idProofPhotoUri: req.idProofPhotoUri || req.aadharPhotoUri || "",
@@ -2031,6 +2512,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       aadharPhotoUri: req.aadharPhotoUri || req.idProofPhotoUri || "",
       aadharBackPhotoUri: req.aadharBackPhotoUri || req.idProofBackPhotoUri || "",
       cancelChequePhotoUri: req.cancelChequePhotoUri || "",
+      purchaserPhotoUri: req.purchaserPhotoUri || "",
+      system: resolvedSystem,
+      systemMrpValue: resolvedMrpValue,
+      systemMrpPercent: resolvedMrpPercent,
+      systemLessValue: resolvedLessValue,
+      systemLessPercent: resolvedLessPercent,
       notes: [
         req.bankName ? `Bank: ${req.bankName} | A/C: ${req.accountNumber || ""} | IFSC: ${req.ifscCode || ""}` : "",
         req.notes ? `Supplier Note: ${req.notes}` : "",
@@ -2047,8 +2534,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await update(reqRef, sanitizePayload({
         status: "APPROVED",
         approvedAt: Date.now(),
-        approvedBy: "Admin",
+        approvedBy: currentEmployee?.name || user?.displayName || "Admin",
         createdSupplierId: newSupId,
+        system: resolvedSystem,
+        systemMrpValue: resolvedMrpValue || undefined,
+        systemMrpPercent: resolvedMrpPercent || undefined,
+        systemLessValue: resolvedLessValue || undefined,
+        systemLessPercent: resolvedLessPercent || undefined,
       }))
     }
 
@@ -2139,11 +2631,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const convertLeadToMaster = async (lead: Lead, targetType: "customer" | "supplier") => {
     if (targetType === "customer") {
-      const maxId = customers.reduce((max, c) => Math.max(max, Number(c.id) || 0), 0)
-      const newCustId = maxId + 1
+      const newCustId = newId()
       const newCust: Customer = {
         id: newCustId,
-        customerId: `CUST-${newCustId}`,
+        customerId: displayCode("CUST"),
         name: lead.name?.trim() || lead.firmName.trim(),
         firmName: lead.firmName.trim(),
         phone: lead.phone.trim(),
@@ -2165,11 +2656,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         convertedTargetId: newCustId,
       })
     } else {
-      const maxId = suppliers.reduce((max, s) => Math.max(max, Number(s.id) || 0), 0)
-      const newSupId = maxId + 1
+      const newSupId = newId()
       const newSup: Supplier = {
         id: newSupId,
-        supplierId: `SUP-${newSupId}`,
+        supplierId: displayCode("SUP"),
         name: lead.name?.trim() || lead.firmName.trim(),
         firmName: lead.firmName.trim(),
         type: lead.supplierType || "Manufacturer",
@@ -2218,6 +2708,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       status: (chequeData.status as any) || "Pending",
       notes: chequeData.notes?.trim() || "",
       photoUri: chequeData.photoUri || "",
+      isSecurityCheque: Boolean(chequeData.isSecurityCheque),
+      accountNumber: chequeData.accountNumber?.trim() || "",
+      branchName: chequeData.branchName?.trim() || "",
       createdAt: isNew ? Date.now() : chequeData.createdAt || Date.now(),
       isDeleted: false,
     }
@@ -2246,6 +2739,89 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await remove(ref(rtdb, `cheques_pdc/${id}`))
   }
 
+  const saveCustomerSecurityCheque = async (
+    customerId: number,
+    cheque: Partial<CustomerSecurityCheque> & {
+      chequeNo: string
+      bankName: string
+      amount: number
+      chequeDate: string
+    }
+  ) => {
+    const cust = rawCustomers.find((c) => c.id === customerId)
+    const partyName = cust?.firmName || cust?.name || `Customer #${customerId}`
+    const chequeId = Number(cheque.pdcChequeId || cheque.id || Date.now())
+
+    // 1. Save or update in cheques_pdc
+    const chequeRef = ref(rtdb, `cheques_pdc/${chequeId}`)
+    const chequePayload: ChequePdc = {
+      id: chequeId,
+      chequeNo: cheque.chequeNo.trim(),
+      bankName: cheque.bankName.trim(),
+      amount: Number(cheque.amount || 0),
+      chequeDate: cheque.chequeDate.trim(),
+      partyType: "Customer",
+      partyId: customerId,
+      partyName,
+      status: (cheque.status as any) || "Pending",
+      notes: cheque.notes?.trim()
+        ? cheque.notes.includes("[Security Cheque]")
+          ? cheque.notes.trim()
+          : `[Security Cheque] ${cheque.notes.trim()}`
+        : "[Security Cheque]",
+      isSecurityCheque: true,
+      accountNumber: cheque.accountNumber?.trim() || "",
+      branchName: cheque.branchName?.trim() || "",
+      createdAt: cheque.createdAt || Date.now(),
+      isDeleted: false,
+    }
+    await set(chequeRef, sanitizePayload(chequePayload))
+
+    // 2. Keep customer's securityCheques array in sync
+    if (cust) {
+      const existingCheques: CustomerSecurityCheque[] = cust.securityCheques ? [...cust.securityCheques] : []
+      const scItem: CustomerSecurityCheque = {
+        id: chequeId,
+        pdcChequeId: chequeId,
+        chequeNo: cheque.chequeNo.trim(),
+        bankName: cheque.bankName.trim(),
+        amount: Number(cheque.amount || 0),
+        chequeDate: cheque.chequeDate.trim(),
+        accountNumber: cheque.accountNumber?.trim() || "",
+        branchName: cheque.branchName?.trim() || "",
+        notes: cheque.notes?.trim() || "",
+        status: (cheque.status as any) || "Pending",
+        createdAt: cheque.createdAt || Date.now(),
+      }
+      const existingIdx = existingCheques.findIndex((c) => Number(c.pdcChequeId || c.id) === chequeId)
+      if (existingIdx >= 0) {
+        existingCheques[existingIdx] = scItem
+      } else {
+        existingCheques.push(scItem)
+      }
+      await update(ref(rtdb, `customers/${customerId}`), {
+        securityCheques: sanitizePayload(existingCheques)
+      })
+    }
+
+    return chequeId
+  }
+
+  const deleteCustomerSecurityCheque = async (customerId: number, chequeId: number | string) => {
+    const numId = Number(chequeId)
+    // 1. Remove from cheques_pdc
+    await remove(ref(rtdb, `cheques_pdc/${numId}`))
+
+    // 2. Remove from customer's securityCheques array
+    const cust = rawCustomers.find((c) => c.id === customerId)
+    if (cust && cust.securityCheques) {
+      const updated = cust.securityCheques.filter((c) => Number(c.pdcChequeId || c.id) !== numId)
+      await update(ref(rtdb, `customers/${customerId}`), {
+        securityCheques: sanitizePayload(updated)
+      })
+    }
+  }
+
   return (
     <DataContext.Provider
       value={{
@@ -2260,6 +2836,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         packGroups,
         transactions,
         employees,
+        subAgents,
+        allPeople,
+        joinableVisits,
         loading,
         deletedItems,
         pendingDeletionsCount,
@@ -2279,6 +2858,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateDelivery,
         saveVisit,
         deleteVisit,
+        joinVisit,
+        addVisitMember,
+        closeVisit,
+        reopenVisit,
+        nextOrderNo,
+        seedStandardMarkets,
         saveCustomer,
         deleteCustomer,
         saveSupplier,
@@ -2323,6 +2908,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         saveChequePdc,
         updateChequePdcStatus,
         deleteChequePdc,
+        saveCustomerSecurityCheque,
+        deleteCustomerSecurityCheque,
       }}
     >
       {children}

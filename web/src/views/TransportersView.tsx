@@ -21,6 +21,7 @@ import { Badge } from "../components/ui/Badge"
 import { Dialog } from "../components/ui/Dialog"
 import { Input } from "../components/ui/Input"
 import { Transporter } from "../types"
+import { newId } from "../lib/domain"
 import { getMasterDraft, saveMasterDraft, clearMasterDraft } from "../lib/masterDrafts"
 import { TransporterDetailView } from "./TransporterDetailView"
 
@@ -157,7 +158,9 @@ export function TransportersView() {
     if (!transporterName.trim() || !phone.trim()) return
 
     const payload: Transporter = {
-      id: editingTransporter?.id || Date.now(),
+      // Keep fields this form does not show
+      ...(editingTransporter || {}),
+      id: editingTransporter?.id || newId(),
       transporterName: transporterName.trim(),
       contactPerson: contactPerson.trim(),
       phone: phone.trim(),

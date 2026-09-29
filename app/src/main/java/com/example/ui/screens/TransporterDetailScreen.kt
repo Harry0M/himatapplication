@@ -106,6 +106,7 @@ fun TransporterDetailScreen(
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf("SHIPMENTS") } // "SHIPMENTS", "CUSTOMERS", "DEPOT"
+    var shipmentDateFilter by remember { mutableStateOf(com.example.util.DateRangeFilter()) }
 
     val shipments = remember(allEntries, transporter.transporterName) {
         allEntries.filter {
@@ -127,10 +128,11 @@ fun TransporterDetailScreen(
     val pendingCount = shipments.count { it.deliveryStatus != "Delivered" && it.deliveryStatus != "Dispatched" }
 
     // Filtered by Search
-    val filteredShipments = remember(shipments, searchQuery, visitMap) {
+    val filteredShipments = remember(shipments, searchQuery, visitMap, shipmentDateFilter) {
         val q = searchQuery.trim()
-        if (q.isBlank()) shipments
-        else shipments.filter {
+        val inRange = shipments.filter { shipmentDateFilter.matches(it.orderDate.ifBlank { visitMap[it.visitId]?.date.orEmpty() }) }
+        if (q.isBlank()) inRange
+        else inRange.filter {
             val visit = visitMap[it.visitId]
             val custName = visit?.customerName ?: ""
             it.orderNo.contains(q, ignoreCase = true) ||
@@ -189,6 +191,7 @@ fun TransporterDetailScreen(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
@@ -217,24 +220,70 @@ fun TransporterDetailScreen(
                         Icon(Icons.Default.Edit, contentDescription = "Edit Transporter", tint = MaterialTheme.colorScheme.primary)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFFF6F8FB))
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
         }
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFFF6F8FB))
-                .nestedScroll(nestedScrollConnection)
+                .background(MaterialTheme.colorScheme.background)
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp)
         ) {
-            // 1. Collapsible Profile Details (above Search Bar)
-            AnimatedVisibility(
-                visible = isProfileExpanded && searchQuery.isBlank(),
-                enter = expandVertically(tween(240, easing = FastOutSlowInEasing)) + fadeIn(tween(200)),
-                exit = shrinkVertically(tween(220, easing = FastOutSlowInEasing)) + fadeOut(tween(180))
+
+            // 2. Fixed/Pinned Search Bar
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
             ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    placeholder = {
+                        Text(
+                            if (selectedTab == "SHIPMENTS") "Search shipments by order or buyer..."
+                            else if (selectedTab == "CUSTOMERS") "Search preferred customers..."
+                            else "Search details...",
+                            fontSize = 12.sp,
+                            color = Color(0xFF94A3B8)
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Default.Search, contentDescription = "Search", tint = Color(0xFF64748B), modifier = Modifier.size(18.dp))
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotBlank()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color(0xFF64748B), modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(24.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White,
+                        focusedBorderColor = Color(0xFF0891B2),
+                        unfocusedBorderColor = Color(0xFFE2E8F0)
+                    )
+                )
+            }
+
+            // 3. Scrollable List Content
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Profile scrolls with the list (it used to collapse on scroll, which made the screen jump)
+                item(key = "profile_header") {
+                    if (searchQuery.isBlank()) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -432,56 +481,7 @@ fun TransporterDetailScreen(
                     }
                 }
             }
-
-            // 2. Fixed/Pinned Search Bar
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp)
-            ) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    placeholder = {
-                        Text(
-                            if (selectedTab == "SHIPMENTS") "Search shipments by order or buyer..."
-                            else if (selectedTab == "CUSTOMERS") "Search preferred customers..."
-                            else "Search details...",
-                            fontSize = 12.sp,
-                            color = Color(0xFF94A3B8)
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Default.Search, contentDescription = "Search", tint = Color(0xFF64748B), modifier = Modifier.size(18.dp))
-                    },
-                    trailingIcon = {
-                        if (searchQuery.isNotBlank()) {
-                            IconButton(onClick = { searchQuery = "" }) {
-                                Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color(0xFF64748B), modifier = Modifier.size(16.dp))
-                            }
-                        }
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(24.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = Color.White,
-                        focusedBorderColor = Color(0xFF0891B2),
-                        unfocusedBorderColor = Color(0xFFE2E8F0)
-                    )
-                )
-            }
-
-            // 3. Scrollable List Content
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+                }
                 // Tab Selector Pills (Horizontally Scrollable)
                 item {
                     Row(
@@ -581,6 +581,12 @@ fun TransporterDetailScreen(
 
             // TAB 1: SHIPMENTS & ORDERS
             if (selectedTab == "SHIPMENTS") {
+                item {
+                    com.example.ui.components.DateRangeFilterBar(
+                        filter = shipmentDateFilter,
+                        onChange = { shipmentDateFilter = it }
+                    )
+                }
                 if (filteredShipments.isEmpty()) {
                     item {
                         ElevatedCard(

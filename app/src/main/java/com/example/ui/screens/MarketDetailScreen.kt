@@ -118,15 +118,17 @@ fun MarketDetailScreen(
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf("CUSTOMERS") } // "CUSTOMERS", "SUPPLIERS", "ORDERS", "AGENTS"
+    var orderDateFilter by remember { mutableStateOf(com.example.util.DateRangeFilter()) }
+    // Exact market-name match inside comma separated lists ("Safal 1" must not match "Safal 10")
+    fun marketNamesIn(raw: String): List<String> =
+        raw.split(",", ";", "/").map { it.trim().lowercase() }.filter { it.isNotBlank() }
 
     val marketCustomers = remember(allCustomers, market.id, market.marketName, market.area) {
         val mName = market.marketName.trim().lowercase()
         val mArea = market.area.trim().lowercase()
         allCustomers.filter { c ->
-            val cArea = c.marketArea.lowercase()
-            val cMkts = c.markets.lowercase()
             val cAddress = c.address.lowercase()
-            (mName.isNotBlank() && (cArea.contains(mName) || cMkts.contains(mName))) ||
+            (mName.isNotBlank() && (mName in marketNamesIn(c.marketArea) || mName in marketNamesIn(c.markets) || mName in marketNamesIn(c.workingMarkets))) ||
             (mArea.isNotBlank() && cAddress.contains(mArea))
         }.sortedBy { it.firmName.ifBlank { it.name } }
     }
@@ -135,21 +137,19 @@ fun MarketDetailScreen(
         val mName = market.marketName.trim().lowercase()
         val mArea = market.area.trim().lowercase()
         allSuppliers.filter { s ->
-            val sArea = s.marketArea.lowercase()
-            val sMkts = s.markets.lowercase()
             val sAddress = s.address.lowercase()
-            s.marketId == market.id ||
-            (mName.isNotBlank() && (sArea.contains(mName) || sMkts.contains(mName))) ||
-            (mArea.isNotBlank() && sAddress.contains(mArea))
+            // A supplier linked to another market by id never matches by name
+            s.marketId == market.id || ((s.marketId == null || s.marketId == 0L) && (
+                (mName.isNotBlank() && (s.marketName.trim().lowercase() == mName || mName in marketNamesIn(s.marketArea) || mName in marketNamesIn(s.markets))) ||
+                (mArea.isNotBlank() && sAddress.contains(mArea))
+            ))
         }.sortedBy { it.firmName.ifBlank { it.name } }
     }
 
     val assignedAgents = remember(allEmployees, market.marketName) {
         val mName = market.marketName.trim().lowercase()
         allEmployees.filter { emp ->
-            val assigned = emp.assignedMarkets.lowercase()
-            val mkts = emp.markets.lowercase()
-            (mName.isNotBlank() && (assigned.contains(mName) || mkts.contains(mName)))
+            mName.isNotBlank() && (mName in marketNamesIn(emp.assignedMarkets) || mName in marketNamesIn(emp.markets))
         }.sortedBy { it.name }
     }
 
@@ -192,10 +192,11 @@ fun MarketDetailScreen(
         }
     }
 
-    val filteredOrders = remember(marketOrders, searchQuery, visitMap, customerNameMap, supplierNameMap) {
+    val filteredOrders = remember(marketOrders, searchQuery, visitMap, customerNameMap, supplierNameMap, orderDateFilter) {
         val q = searchQuery.trim()
-        if (q.isBlank()) marketOrders
-        else marketOrders.filter { entry ->
+        val inRange = marketOrders.filter { orderDateFilter.matches(it.orderDate.ifBlank { visitMap[it.visitId]?.date.orEmpty() }) }
+        if (q.isBlank()) inRange
+        else inRange.filter { entry ->
             val visit = visitMap[entry.visitId]
             val custName = visit?.customerName ?: (visit?.let { customerNameMap[it.customerId] } ?: "")
             val suppName = entry.supplierName.ifBlank { supplierNameMap[entry.supplierId] ?: "" }
@@ -257,6 +258,7 @@ fun MarketDetailScreen(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
@@ -285,24 +287,74 @@ fun MarketDetailScreen(
                         Icon(Icons.Default.Edit, contentDescription = "Edit Market", tint = MaterialTheme.colorScheme.primary)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFFF6F8FB))
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
         }
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFFF6F8FB))
-                .nestedScroll(nestedScrollConnection)
+                .background(MaterialTheme.colorScheme.background)
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp)
         ) {
-            // 1. Collapsible Profile Details (above Search Bar)
-            AnimatedVisibility(
-                visible = isProfileExpanded && searchQuery.isBlank(),
-                enter = expandVertically(tween(240, easing = FastOutSlowInEasing)) + fadeIn(tween(200)),
-                exit = shrinkVertically(tween(220, easing = FastOutSlowInEasing)) + fadeOut(tween(180))
+
+            // 2. Fixed/Pinned Search Bar
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
             ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    placeholder = {
+                        Text(
+                            text = when (selectedTab) {
+                                "CUSTOMERS" -> "Search buyers by name, firm or phone..."
+                                "SUPPLIERS" -> "Search suppliers by name, firm or type..."
+                                "ORDERS" -> "Search orders by order no, item, status..."
+                                "AGENTS" -> "Search salesmen by name or phone..."
+                                else -> "Search in this market hub..."
+                            },
+                            fontSize = 12.sp,
+                            color = Color(0xFF94A3B8)
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Default.Search, contentDescription = "Search", tint = Color(0xFF64748B), modifier = Modifier.size(18.dp))
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotBlank()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color(0xFF64748B), modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(24.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White,
+                        focusedBorderColor = Color(0xFF9333EA),
+                        unfocusedBorderColor = Color(0xFFE2E8F0)
+                    )
+                )
+            }
+
+            // 3. Scrollable List Content
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Profile scrolls with the list (it used to collapse on scroll, which made the screen jump)
+                item(key = "profile_header") {
+                    if (searchQuery.isBlank()) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -562,60 +614,7 @@ fun MarketDetailScreen(
                     }
                 }
             }
-
-            // 2. Fixed/Pinned Search Bar
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp)
-            ) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    placeholder = {
-                        Text(
-                            text = when (selectedTab) {
-                                "CUSTOMERS" -> "Search buyers by name, firm or phone..."
-                                "SUPPLIERS" -> "Search suppliers by name, firm or type..."
-                                "ORDERS" -> "Search orders by order no, item, status..."
-                                "AGENTS" -> "Search salesmen by name or phone..."
-                                else -> "Search in this market hub..."
-                            },
-                            fontSize = 12.sp,
-                            color = Color(0xFF94A3B8)
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Default.Search, contentDescription = "Search", tint = Color(0xFF64748B), modifier = Modifier.size(18.dp))
-                    },
-                    trailingIcon = {
-                        if (searchQuery.isNotBlank()) {
-                            IconButton(onClick = { searchQuery = "" }) {
-                                Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color(0xFF64748B), modifier = Modifier.size(16.dp))
-                            }
-                        }
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(24.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = Color.White,
-                        focusedBorderColor = Color(0xFF9333EA),
-                        unfocusedBorderColor = Color(0xFFE2E8F0)
-                    )
-                )
-            }
-
-            // 3. Scrollable List Content
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+                }
                 // 4 Tabs: CUSTOMERS, SUPPLIERS, ORDERS, AGENTS (Horizontally Scrollable)
                 item {
                     Row(
@@ -915,6 +914,12 @@ fun MarketDetailScreen(
                 }
 
                 "ORDERS" -> {
+                    item {
+                        com.example.ui.components.DateRangeFilterBar(
+                            filter = orderDateFilter,
+                            onChange = { orderDateFilter = it }
+                        )
+                    }
                     if (filteredOrders.isEmpty()) {
                         item {
                             ElevatedCard(

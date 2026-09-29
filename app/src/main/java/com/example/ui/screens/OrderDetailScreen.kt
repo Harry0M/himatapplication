@@ -30,9 +30,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -50,10 +52,14 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
@@ -74,8 +80,13 @@ import com.example.ui.theme.NavyPrimary
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 import com.example.ui.viewmodel.HimatViewModel
+import com.example.ui.dialogs.FullScreenImageViewerDialog
+import coil.compose.AsyncImage
+import com.example.ui.dialogs.SupplierOrderFormOptionsSheet
 import com.example.util.PdfGenerator
+import com.example.util.RelatedLogic
 import com.example.util.ShareUtil
+import com.example.util.brandName
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,8 +102,13 @@ fun OrderDetailScreen(
     val allSuppliers by viewModel.allSuppliers.collectAsStateWithLifecycle()
     val allEmployees by viewModel.allEmployees.collectAsStateWithLifecycle()
 
+    var fullscreenImageUrl by remember { mutableStateOf<String?>(null) }
+    var fullscreenImageTitle by remember { mutableStateOf("") }
+    var showOrderFormOptions by remember { mutableStateOf(false) }
+
     val visit = allVisits.find { it.id == entry.visitId }
-    val customer = allCustomers.find { it.id == visit?.customerId }
+    // Orphaned trips (no customer id) still find their customer by exact name
+    val customer = visit?.let { RelatedLogic.customerOfTrip(it, allCustomers) }
     val supplier = allSuppliers.find {
         it.id == entry.supplierId ||
         (it.name.isNotBlank() && it.name.trim().equals(entry.supplierName.trim(), ignoreCase = true)) ||
@@ -112,7 +128,19 @@ fun OrderDetailScreen(
     val customerPhone = customer?.phone?.takeIf { it.isNotBlank() } ?: ""
     val supplierPhone = supplier.phone.takeIf { it.isNotBlank() } ?: ""
 
+    if (showOrderFormOptions) {
+        SupplierOrderFormOptionsSheet(
+            supplierName = supplier.brandName(),
+            onDismiss = { showOrderFormOptions = false },
+            onCreate = { options ->
+                showOrderFormOptions = false
+                viewModel.shareOrderPdf(entry, options)
+            }
+        )
+    }
+
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
@@ -173,13 +201,13 @@ fun OrderDetailScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFFF6F8FB)
+                    containerColor = MaterialTheme.colorScheme.surface
                 )
             )
         },
         bottomBar = {
             Surface(
-                color = Color.White,
+                color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 8.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -198,12 +226,12 @@ fun OrderDetailScreen(
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                         modifier = Modifier.weight(1.1f)
                     ) {
-                        Text("WhatsApp", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                        Text("WhatsApp", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall, color = Color.White)
                     }
 
                     // PDF Bill
                     Button(
-                        onClick = { viewModel.shareOrderPdf(entry) },
+                        onClick = { showOrderFormOptions = true },
                         colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
                         shape = RoundedCornerShape(10.dp),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
@@ -211,7 +239,7 @@ fun OrderDetailScreen(
                     ) {
                         Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = GoldAccent, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("PDF Bill", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                        Text("PDF Bill", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall, color = Color.White)
                     }
 
                     // Copy text details
@@ -240,7 +268,7 @@ fun OrderDetailScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFFF6F8FB))
+                .background(MaterialTheme.colorScheme.background)
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp),
             contentPadding = PaddingValues(vertical = 14.dp),
@@ -274,7 +302,7 @@ fun OrderDetailScreen(
 
                     Text(
                         text = "Order #${entry.orderNo}",
-                        fontSize = 20.sp,
+                        style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF0F172A)
                     )
@@ -282,7 +310,7 @@ fun OrderDetailScreen(
                     val dateSubtitle = visit?.date?.takeIf { it.isNotBlank() } ?: entry.expectedDeliveryDate
                     Text(
                         text = "Trip Date: $dateSubtitle • Item: ${entry.itemCode}",
-                        fontSize = 12.5.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Medium,
                         color = Color(0xFF64748B)
                     )
@@ -302,7 +330,7 @@ fun OrderDetailScreen(
                             ) {
                                 Text(
                                     text = "🚚 ${entry.transporter}",
-                                    fontSize = 10.5.sp,
+                                    style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.SemiBold,
                                     color = Color(0xFF334155),
                                     modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
@@ -317,7 +345,7 @@ fun OrderDetailScreen(
                             ) {
                                 Text(
                                     text = "Exp: ${entry.expectedDeliveryDate}",
-                                    fontSize = 10.5.sp,
+                                    style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFF92400E),
                                     modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
@@ -340,13 +368,13 @@ fun OrderDetailScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = "${entry.pieces} pcs",
-                            fontSize = 17.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF0F172A)
                         )
                         Text(
                             text = "Quantity",
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             color = Color(0xFF64748B)
                         )
                     }
@@ -362,13 +390,13 @@ fun OrderDetailScreen(
                         val packText = if (entry.caseCount > 0) "${entry.caseCount}c + ${entry.loosePieces}L" else "${entry.loosePieces} Loose"
                         Text(
                             text = packText,
-                            fontSize = 17.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF0F172A)
                         )
                         Text(
                             text = "Packaging",
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             color = Color(0xFF64748B)
                         )
                     }
@@ -383,13 +411,13 @@ fun OrderDetailScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = "₹${entry.rate.toInt()}",
-                            fontSize = 17.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF059669)
                         )
                         Text(
                             text = "Rate / pc",
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             color = Color(0xFF64748B)
                         )
                     }
@@ -404,13 +432,13 @@ fun OrderDetailScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = PdfGenerator.formatInr(entry.grandTotalWithGst),
-                            fontSize = 17.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = NavyPrimary
                         )
                         Text(
                             text = "Net Amount",
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             color = Color(0xFF64748B)
                         )
                     }
@@ -435,7 +463,7 @@ fun OrderDetailScreen(
                                 "dispatched" -> "Mark Delivered"
                                 else -> "Advance Status"
                             }
-                            Text(nextLabel, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(nextLabel, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                         }
                     }
 
@@ -447,7 +475,7 @@ fun OrderDetailScreen(
                         ) {
                             Icon(Icons.Default.Place, contentDescription = null, modifier = Modifier.size(15.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Open Trip (${visit.date})", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Open Trip (${visit.date})", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -469,7 +497,7 @@ fun OrderDetailScreen(
                         ) {
                             Text(
                                 text = "CUSTOMER / BUYER DETAILS",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = NavyPrimary,
                                 letterSpacing = 0.5.sp
@@ -481,7 +509,7 @@ fun OrderDetailScreen(
                                 ) {
                                     Text(
                                         text = customer.customerType,
-                                        fontSize = 10.sp,
+                                        style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = Color(0xFF1D4ED8),
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -493,7 +521,7 @@ fun OrderDetailScreen(
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = customerDisplayName,
-                            fontSize = 15.sp,
+                            style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF0F172A)
                         )
@@ -501,7 +529,7 @@ fun OrderDetailScreen(
                         if (customer?.firmName?.isNotBlank() == true && customer.name.isNotBlank() && customer.firmName != customer.name) {
                             Text(
                                 text = "Contact Person: ${customer.name}",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xFF475569)
                             )
                         }
@@ -515,7 +543,7 @@ fun OrderDetailScreen(
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "City: $customerCity",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xFF475569)
                             )
                         }
@@ -525,7 +553,7 @@ fun OrderDetailScreen(
                             Text(
                                 text = "GSTIN: ${customer.gstin}",
                                 fontFamily = FontFamily.Monospace,
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color(0xFF334155)
                             )
@@ -535,7 +563,7 @@ fun OrderDetailScreen(
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = "Escort / Salesman: ${salesman.name} (${salesman.phone})",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelSmall,
                                 color = Color(0xFF64748B)
                             )
                         }
@@ -562,7 +590,7 @@ fun OrderDetailScreen(
                                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
                                             Icon(Icons.Default.Call, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(13.dp))
-                                            Text(text = customerPhone, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1D4ED8))
+                                            Text(text = customerPhone, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = Color(0xFF1D4ED8))
                                         }
                                     }
                                 }
@@ -587,7 +615,7 @@ fun OrderDetailScreen(
                                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
                                             Icon(Icons.Default.Place, contentDescription = null, tint = Color(0xFF475569), modifier = Modifier.size(13.dp))
-                                            Text(text = "Directions", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
+                                            Text(text = "Directions", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
                                         }
                                     }
                                 }
@@ -613,7 +641,7 @@ fun OrderDetailScreen(
                         ) {
                             Text(
                                 text = "SUPPLIER / MILL DETAILS",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF059669),
                                 letterSpacing = 0.5.sp
@@ -625,7 +653,7 @@ fun OrderDetailScreen(
                         val supplierDisplayName = supplier.firmName.ifBlank { supplier.name }
                         Text(
                             text = supplierDisplayName,
-                            fontSize = 15.sp,
+                            style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF0F172A)
                         )
@@ -633,7 +661,7 @@ fun OrderDetailScreen(
                         if (supplier.firmName.isNotBlank() && supplier.name.isNotBlank() && supplier.firmName != supplier.name) {
                             Text(
                                 text = "Contact Person: ${supplier.name}",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xFF475569)
                             )
                         }
@@ -643,7 +671,7 @@ fun OrderDetailScreen(
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "Market: $marketStr",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xFF475569)
                             )
                         }
@@ -653,7 +681,7 @@ fun OrderDetailScreen(
                             Text(
                                 text = "GSTIN: ${supplier.gstin}",
                                 fontFamily = FontFamily.Monospace,
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color(0xFF334155)
                             )
@@ -678,7 +706,7 @@ fun OrderDetailScreen(
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     Icon(Icons.Default.Call, contentDescription = null, tint = Color(0xFF059669), modifier = Modifier.size(13.dp))
-                                    Text(text = supplierPhone, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF065F46))
+                                    Text(text = supplierPhone, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = Color(0xFF065F46))
                                 }
                             }
                         }
@@ -697,7 +725,7 @@ fun OrderDetailScreen(
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
                             text = "ORDER & PACKAGING SPECIFICATIONS",
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF475569),
                             letterSpacing = 0.5.sp
@@ -706,22 +734,22 @@ fun OrderDetailScreen(
                         HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 0.5.dp)
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Design / Item Code:", fontSize = 12.sp, color = Color(0xFF64748B))
-                            Text(entry.itemCode, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2563EB))
+                            Text("Design / Item Code:", style = MaterialTheme.typography.bodySmall, color = Color(0xFF64748B))
+                            Text(entry.itemCode, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = Color(0xFF2563EB))
                         }
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Total Pieces:", fontSize = 12.sp, color = Color(0xFF64748B))
-                            Text("${entry.pieces} Pcs", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                            Text("Total Pieces:", style = MaterialTheme.typography.bodySmall, color = Color(0xFF64748B))
+                            Text("${entry.pieces} Pcs", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
                         }
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Rate per Piece:", fontSize = 12.sp, color = Color(0xFF64748B))
-                            Text("₹${entry.rate.toInt()}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                            Text("Rate per Piece:", style = MaterialTheme.typography.bodySmall, color = Color(0xFF64748B))
+                            Text("₹${entry.rate.toInt()}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
                         }
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Case Packaging:", fontSize = 12.sp, color = Color(0xFF64748B))
+                            Text("Case Packaging:", style = MaterialTheme.typography.bodySmall, color = Color(0xFF64748B))
                             val packStr = if (entry.caseCount > 0 && entry.loosePieces > 0) {
                                 "${entry.caseCount} Cases (${entry.caseCount * entry.caseSize} pcs) + ${entry.loosePieces} Loose"
                             } else if (entry.caseCount > 0) {
@@ -729,7 +757,7 @@ fun OrderDetailScreen(
                             } else {
                                 "${entry.loosePieces} Loose pcs"
                             }
-                            Text(packStr, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color(0xFF0F172A))
+                            Text(packStr, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium, color = Color(0xFF0F172A))
                         }
 
                         if (!entry.mixedPackNote.isNullOrBlank()) {
@@ -740,7 +768,7 @@ fun OrderDetailScreen(
                             ) {
                                 Text(
                                     text = "Pack Group Note: ${entry.mixedPackNote}",
-                                    fontSize = 11.sp,
+                                    style = MaterialTheme.typography.labelSmall,
                                     color = Color(0xFF92400E),
                                     fontWeight = FontWeight.Medium,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
@@ -750,19 +778,193 @@ fun OrderDetailScreen(
 
                         if (entry.transporter.isNotBlank()) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Transporter:", fontSize = 12.sp, color = Color(0xFF64748B))
-                                Text(entry.transporter, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0F172A))
+                                Text("Transporter:", style = MaterialTheme.typography.bodySmall, color = Color(0xFF64748B))
+                                Text(entry.transporter, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = Color(0xFF0F172A))
                             }
                         }
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Payment Status:", fontSize = 12.sp, color = Color(0xFF64748B))
+                            Text("Payment Status:", style = MaterialTheme.typography.bodySmall, color = Color(0xFF64748B))
                             Text(
                                 text = "${entry.paymentStatus} (${entry.paymentMode})",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.SemiBold,
                                 color = if (entry.paymentStatus == "Received") Color(0xFF059669) else Color(0xFFDC2626)
                             )
+                        }
+                    }
+                }
+            }
+
+            // Attached Spot Documents / Photos Card
+            val hasOrderPhoto = !entry.orderFormPhotoUri.isNullOrBlank()
+            val hasBillPhoto = !entry.supplierInvoiceUri.isNullOrBlank()
+            if (hasOrderPhoto || hasBillPhoto) {
+                item {
+                    Text(
+                        text = "ATTACHED SPOT DOCUMENTS",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = NavyPrimary,
+                        letterSpacing = 0.5.sp,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
+
+                item {
+                    Surface(
+                        color = Color.White,
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            if (hasOrderPhoto) {
+                                Surface(
+                                    color = Color(0xFFF0FDF4),
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.dp, Color(0xFF86EFAC)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(42.dp)
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .clickable {
+                                                        fullscreenImageUrl = entry.orderFormPhotoUri
+                                                        fullscreenImageTitle = "Order Form (${entry.orderNo})"
+                                                    }
+                                            ) {
+                                                AsyncImage(
+                                                    model = entry.orderFormPhotoUri,
+                                                    contentDescription = "Order Form",
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Column {
+                                                Text(
+                                                    text = "Order Form Pic",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF15803D)
+                                                )
+                                                Text(
+                                                    text = "Document attached on spot",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = TextSecondary
+                                                )
+                                            }
+                                        }
+                                        Button(
+                                            onClick = {
+                                                fullscreenImageUrl = entry.orderFormPhotoUri
+                                                fullscreenImageTitle = "Order Form (${entry.orderNo})"
+                                            },
+                                            shape = RoundedCornerShape(8.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier.defaultMinSize(minHeight = 28.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Visibility,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("View", style = MaterialTheme.typography.labelSmall, color = Color.White, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (hasBillPhoto) {
+                                Surface(
+                                    color = Color(0xFFEFF6FF),
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.dp, Color(0xFF93C5FD)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(42.dp)
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .clickable {
+                                                        fullscreenImageUrl = entry.supplierInvoiceUri
+                                                        fullscreenImageTitle = "Wholesaler Bill (${entry.orderNo})"
+                                                    }
+                                            ) {
+                                                AsyncImage(
+                                                    model = entry.supplierInvoiceUri,
+                                                    contentDescription = "Wholesaler Bill",
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Column {
+                                                Text(
+                                                    text = "Wholesaler Bill / Invoice",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF1D4ED8)
+                                                )
+                                                Text(
+                                                    text = "Supplier invoice attached on spot",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = TextSecondary
+                                                )
+                                            }
+                                        }
+                                        Button(
+                                            onClick = {
+                                                fullscreenImageUrl = entry.supplierInvoiceUri
+                                                fullscreenImageTitle = "Wholesaler Bill (${entry.orderNo})"
+                                            },
+                                            shape = RoundedCornerShape(8.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier.defaultMinSize(minHeight = 28.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Visibility,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("View", style = MaterialTheme.typography.labelSmall, color = Color.White, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -772,7 +974,7 @@ fun OrderDetailScreen(
             item {
                 Text(
                     text = "PDF VOUCHER PREVIEW",
-                    fontSize = 11.5.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Bold,
                     color = NavyPrimary,
                     letterSpacing = 0.5.sp,
@@ -805,20 +1007,20 @@ fun OrderDetailScreen(
                                 Column {
                                     Text(
                                         text = "HIMAT TEXTILE",
-                                        fontSize = 16.sp,
+                                        style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold,
                                         color = NavyPrimary,
                                         letterSpacing = 0.5.sp
                                     )
                                     Text(
                                         text = "YOUR BUSINESS GUIDE ACROSS INDIA",
-                                        fontSize = 9.sp,
+                                        style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = GoldAccent
                                     )
                                     Text(
                                         text = "Spot Procurement Voucher",
-                                        fontSize = 8.5.sp,
+                                        style = MaterialTheme.typography.labelSmall,
                                         color = TextSecondary
                                     )
                                 }
@@ -833,14 +1035,14 @@ fun OrderDetailScreen(
                                         text = "VOUCHER",
                                         color = Color.White,
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 9.sp,
+                                        style = MaterialTheme.typography.labelSmall,
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                     )
                                 }
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = "Date: ${visit?.date ?: entry.expectedDeliveryDate}",
-                                    fontSize = 9.5.sp,
+                                    style = MaterialTheme.typography.labelSmall,
                                     color = TextSecondary
                                 )
                             }
@@ -858,11 +1060,11 @@ fun OrderDetailScreen(
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("ITEM / ORDER", fontWeight = FontWeight.Bold, fontSize = 9.5.sp, color = Color.White, modifier = Modifier.weight(1.8f))
-                                Text("PCS", fontWeight = FontWeight.Bold, fontSize = 9.5.sp, color = Color.White, textAlign = TextAlign.Center, modifier = Modifier.weight(0.7f))
-                                Text("RATE", fontWeight = FontWeight.Bold, fontSize = 9.5.sp, color = Color.White, textAlign = TextAlign.Center, modifier = Modifier.weight(0.8f))
-                                Text("PACK", fontWeight = FontWeight.Bold, fontSize = 9.5.sp, color = Color.White, textAlign = TextAlign.Center, modifier = Modifier.weight(1.0f))
-                                Text("AMOUNT", fontWeight = FontWeight.Bold, fontSize = 9.5.sp, color = Color.White, textAlign = TextAlign.End, modifier = Modifier.weight(1.2f))
+                                Text("ITEM / ORDER", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.weight(1.8f))
+                                Text("PCS", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, color = Color.White, textAlign = TextAlign.Center, modifier = Modifier.weight(0.7f))
+                                Text("RATE", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, color = Color.White, textAlign = TextAlign.Center, modifier = Modifier.weight(0.8f))
+                                Text("PACK", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, color = Color.White, textAlign = TextAlign.Center, modifier = Modifier.weight(1.0f))
+                                Text("AMOUNT", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, color = Color.White, textAlign = TextAlign.End, modifier = Modifier.weight(1.2f))
                             }
                         }
 
@@ -875,12 +1077,12 @@ fun OrderDetailScreen(
                                 Text(
                                     text = entry.itemCode,
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 11.5.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = TextPrimary
                                 )
                                 Text(
                                     text = entry.orderNo,
-                                    fontSize = 9.5.sp,
+                                    style = MaterialTheme.typography.labelSmall,
                                     color = TextSecondary
                                 )
                             }
@@ -898,7 +1100,7 @@ fun OrderDetailScreen(
                                     Text(
                                         text = "${entry.pieces} p",
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp,
+                                        style = MaterialTheme.typography.labelSmall,
                                         color = Color(0xFF1D4ED8),
                                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                                     )
@@ -907,7 +1109,7 @@ fun OrderDetailScreen(
 
                             Text(
                                 text = "₹${entry.rate.toInt()}",
-                                fontSize = 10.5.sp,
+                                style = MaterialTheme.typography.labelSmall,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.weight(0.8f)
                             )
@@ -915,7 +1117,7 @@ fun OrderDetailScreen(
                             val pack = if (entry.loosePieces > 0) "${entry.caseCount}c+${entry.loosePieces}L" else "${entry.caseCount}c"
                             Text(
                                 text = pack,
-                                fontSize = 10.sp,
+                                style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Medium,
                                 textAlign = TextAlign.Center,
                                 color = if (entry.loosePieces > 0) Color(0xFFD97706) else Color(0xFF15803D),
@@ -925,7 +1127,7 @@ fun OrderDetailScreen(
                             Text(
                                 text = PdfGenerator.formatInr(entry.totalAmount),
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelSmall,
                                 textAlign = TextAlign.End,
                                 color = TextPrimary,
                                 modifier = Modifier.weight(1.2f)
@@ -947,16 +1149,16 @@ fun OrderDetailScreen(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text("Taxable Subtotal:", fontSize = 11.5.sp, color = TextSecondary)
-                                    Text(PdfGenerator.formatInr(entry.totalAmount), fontWeight = FontWeight.Bold, fontSize = 11.5.sp)
+                                    Text("Taxable Subtotal:", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                                    Text(PdfGenerator.formatInr(entry.totalAmount), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
                                 }
 
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text("Garment GST (${entry.gstRate.toInt()}%):", fontSize = 11.5.sp, color = TextSecondary)
-                                    Text(PdfGenerator.formatInr(entry.gstAmount), fontWeight = FontWeight.Bold, fontSize = 11.5.sp)
+                                    Text("Garment GST (${entry.gstRate.toInt()}%):", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                                    Text(PdfGenerator.formatInr(entry.gstAmount), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
                                 }
 
                                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = Color(0xFFE2E8F0))
@@ -966,8 +1168,8 @@ fun OrderDetailScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("NET TOTAL PAYABLE:", fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = NavyPrimary)
-                                    Text(PdfGenerator.formatInr(entry.grandTotalWithGst), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = NavyPrimary)
+                                    Text("NET TOTAL PAYABLE:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall, color = NavyPrimary)
+                                    Text(PdfGenerator.formatInr(entry.grandTotalWithGst), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, color = NavyPrimary)
                                 }
                             }
                         }
@@ -975,12 +1177,20 @@ fun OrderDetailScreen(
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = "• Supplier to issue original GST Tax Invoice against this purchase order.",
-                            fontSize = 9.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             color = TextSecondary
                         )
                     }
                 }
             }
         }
+    }
+
+    fullscreenImageUrl?.let { url ->
+        FullScreenImageViewerDialog(
+            imageUrl = url,
+            title = fullscreenImageTitle,
+            onDismiss = { fullscreenImageUrl = null }
+        )
     }
 }

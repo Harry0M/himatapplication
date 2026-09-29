@@ -72,6 +72,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.data.local.entity.PurchaseEntryEntity
+import com.example.ui.components.DeliveryStatusPill
+import com.example.ui.components.ListRow
 import com.example.ui.components.StatusBadge
 import com.example.ui.viewmodel.HimatViewModel
 import com.example.util.PdfGenerator
@@ -223,7 +225,7 @@ fun DeliveriesScreen(
                         Text(
                             text = "$status ($count)",
                             style = MaterialTheme.typography.labelMedium,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                            fontWeight = FontWeight.SemiBold
                         )
                     },
                     colors = FilterChipDefaults.filterChipColors(
@@ -263,108 +265,46 @@ fun DeliveriesScreen(
                 }
             }
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            // One compact row per order: tap the truck to change the status, the bin to delete
+            LazyColumn(contentPadding = PaddingValues(bottom = 16.dp)) {
                 items(filtered, key = { it.id }) { entry ->
-                    ElevatedCard(
-                        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.5.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        entry.orderNo,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        style = MaterialTheme.typography.labelLarge
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        entry.supplierName,
-                                        fontWeight = FontWeight.SemiBold,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                                StatusBadge(status = entry.deliveryStatus)
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    "Item: ${entry.itemCode} • ${entry.pieces} Pcs",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    PdfGenerator.formatInr(entry.totalAmount),
-                                    fontWeight = FontWeight.Bold,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    val exp = if (entry.expectedDeliveryDate.isNotBlank()) entry.expectedDeliveryDate else "Standard"
-                                    val trans = if (entry.transporter.isNotBlank()) entry.transporter else "Not assigned"
-                                    Text("Exp Date: $exp", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(
-                                        "Transporter: $trans",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    val expected = entry.expectedDeliveryDate.ifBlank { "Standard" }
+                    val transporter = entry.transporter.ifBlank { "Transporter not assigned" }
+                    ListRow(
+                        horizontalPadding = 0.dp,
+                        title = "${entry.orderNo.ifBlank { "Order" }} • ${entry.supplierName}",
+                        value = "₹${PdfGenerator.formatInr(entry.totalAmount)}",
+                        detail = "${entry.itemCode.ifBlank { "Item" }} • ${entry.pieces} pcs",
+                        note = "Exp: $expected • $transporter",
+                        status = { DeliveryStatusPill(entry.deliveryStatus) },
+                        onClick = { entryToUpdate = entry },
+                        trailing = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(
+                                    onClick = { entryToUpdate = entry },
+                                    modifier = Modifier.size(40.dp)
                                 ) {
-                                    IconButton(
-                                        onClick = { entryToDelete = entry },
-                                        modifier = Modifier.size(36.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.DeleteOutline,
-                                            contentDescription = "Delete Order",
-                                            tint = Color(0xFFDC2626),
-                                            modifier = Modifier.size(19.dp)
-                                        )
-                                    }
-
-                                    FilledTonalButton(
-                                        onClick = { entryToUpdate = entry },
-                                        shape = RoundedCornerShape(10.dp),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                        modifier = Modifier.defaultMinSize(minHeight = 38.dp)
-                                    ) {
-                                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Update Status", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                                    }
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "Update delivery status for ${entry.orderNo}",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { entryToDelete = entry },
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DeleteOutline,
+                                        contentDescription = "Delete order ${entry.orderNo}",
+                                        tint = Color(0xFFDC2626),
+                                        modifier = Modifier.size(18.dp)
+                                    )
                                 }
                             }
                         }
-                    }
+                    )
                 }
             }
         }

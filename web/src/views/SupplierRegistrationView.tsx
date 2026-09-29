@@ -1,30 +1,27 @@
-import React, { useState, useEffect, useRef } from "react"
+import React, { useEffect, useState } from "react"
 import {
   Building2,
   User,
   Phone,
-  Mail,
   MapPin,
-  Factory,
-  Landmark,
-  ShieldCheck,
+  Store,
+  Layers,
+  Sparkles,
+  Check,
   CheckCircle2,
   ArrowRight,
   ArrowLeft,
   Send,
   RefreshCw,
   AlertCircle,
-  Sparkles,
-  Check,
   MessageSquare,
   Globe,
-  Tag,
-  Store
+  Tag
 } from "lucide-react"
-import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from "firebase/auth"
-import { ref, set } from "firebase/database"
-import { auth, rtdb } from "../lib/firebase"
+import { ref, set, onValue } from "firebase/database"
+import { rtdb } from "../lib/firebase"
 import { FileUpload } from "../components/ui/FileUpload"
+import { Toast } from "../components/ui/Toast"
 import AutoGrowTextarea from "../components/ui/AutoGrowTextarea"
 import { SupplierRegistrationRequest } from "../types"
 import { HIMAT_LOGO_DATA_URI } from "../lib/logoBase64"
@@ -34,40 +31,66 @@ import {
   extractPanFromGstin,
   getStateFromGstin,
 } from "../lib/gstHelper"
+import {
+  AHMEDABAD_TEXTILE_MARKETS,
+  SUPPLIER_TYPES,
+  SUPPLIER_CATEGORIES,
+  SUPPLIER_GENTS_CHILD_OPTIONS,
+  SUPPLIER_LADIES_CHILD_OPTIONS,
+} from "../lib/constants"
 
-const SUPPLIER_FABRIC_CATEGORIES = [
-  "Shirting (Cotton & PC)",
-  "Suiting & Trouser",
-  "Denim & Jeans",
-  "Rayon & Viscose",
-  "Lycra & Stretch",
-  "Digital Print Fabrics",
-  "Linen & Flax",
-  "Knits & Hosiery",
-  "T-Shirts & Polos",
-  "Formal Shirts",
-  "Casual Shirts",
-  "Kurtis & Ethnic Wear",
-  "Nightwear & Loungewear",
-  "Yarn & Grey Fabric",
-]
+interface MarketOption {
+  /** Market master id (0 for the built-in fallback list) */
+  id: number
+  name: string
+}
 
-const AHMEDABAD_MARKETS = [
-  "Maskati Market",
-  "New Cloth Market",
-  "Revdi Bazar",
-  "Rituraj Market",
-  "Sumel Business Park 1, 2 & 3",
-  "Narol GIDC Industrial Area",
-  "Changodar Industrial Area",
-  "Piramana Industrial Hub",
-  "Kalupur Commercial Center",
-  "Kuber Nagar Textile Market",
-  "Other / Outside Ahmedabad"
-]
+const OTHER_MARKET_VALUES = new Set(["Other / Outside Ahmedabad", "Other / Specify"])
+
+// Used only until the Market master can be read (offline, or database rules not deployed yet)
+const FALLBACK_MARKETS: MarketOption[] = AHMEDABAD_TEXTILE_MARKETS.filter((m) => !OTHER_MARKET_VALUES.has(m)).map(
+  (name) => ({ id: 0, name })
+)
+
+/** Active, non-deleted markets from the markets node, de-duplicated by name */
+function parseMarkets(val: any): MarketOption[] {
+  if (!val || typeof val !== "object") return []
+  const pairs: Array<[string, any]> = Array.isArray(val) ? val.map((v, i) => [String(i), v]) : Object.entries(val)
+  const seen = new Set<string>()
+  const list: MarketOption[] = []
+  pairs.forEach(([key, m]) => {
+    if (!m || typeof m !== "object") return
+    if (m.isDeleted || m.deleted) return
+    if (m.isActive === false || m.active === false) return
+    const name = String(m.marketName || m.name || "").trim()
+    const lower = name.toLowerCase()
+    if (!name || seen.has(lower)) return
+    seen.add(lower)
+    const rawId = m.id ?? key
+    list.push({ id: /^\d+$/.test(String(rawId)) ? Number(rawId) : 0, name })
+  })
+  return list.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+}
 
 export function SupplierRegistrationView() {
   const [currentStep, setCurrentStep] = useState<number>(1)
+
+  // Market list comes from the Market master (same list as the app), live: a market added in the
+  // app or the admin shows up here without a reload. The built-in list is only a fallback.
+  const [marketOptions, setMarketOptions] = useState<MarketOption[]>(FALLBACK_MARKETS)
+  useEffect(() => {
+    const unsubscribe = onValue(
+      ref(rtdb, "markets"),
+      (snap) => {
+        const list = parseMarkets(snap.val())
+        setMarketOptions(list.length > 0 ? list : FALLBACK_MARKETS)
+      },
+      (err) => {
+        console.warn("Could not load markets, using the built-in list:", err?.message || err)
+      }
+    )
+    return () => unsubscribe()
+  }, [])
 
   // Language State - English ('en'), Hindi ('hi'), Gujarati ('gu')
   const [lang, setLang] = useState<"en" | "hi" | "gu">(() => {
@@ -84,63 +107,94 @@ export function SupplierRegistrationView() {
     // Step 1: Business Profile
     firmName: "",
     contactPerson: "",
-    type: "Manufacturer" as "Manufacturer" | "Wholesaler",
+    type: "Manufacturer", // Manufacturer, Trading, Distributor, Fabric
     brand: "",
     phone: "",
     phone2: "",
-    sameAsMobile: true,
     email: "",
+    gstin: "",
+    panNumber: "",
 
-    // Step 2: Location & Mill
-    marketArea: "Maskati Market",
+    // Step 2: Location (supplier must pick their market; no silent default)
+    marketArea: "",
     customMarket: "",
-    address: "",
-    officeAddress: "",
+    address: "", // Factory / Work Address (optional)
+    officeAddress: "", // Shop / Office Address (mandatory)
     city: "Ahmedabad",
     district: "",
     state: "Gujarat",
     pincode: "",
     mapLink: "",
 
-    // Step 3: Fabrics, Garments & Commercials
-    priceRange: "",
-    gstin: "",
-    panNumber: "",
+    // Step 3: Photos & Bank Details (optional)
+    shopPhotoUri: "",
+    godownPhotoUri: "",
+    visitingCardPhotoUri: "",
     bankName: "",
     accountNumber: "",
     ifscCode: "",
     notes: "",
-
-    // Step 4: KYC & Photos (all mandatory)
-    visitingCardPhotoUri: "",
-    shopPhotoUri: "",
-    gstCertPhotoUri: "",
-    panPhotoUri: "",
-    idProofPhotoUri: "",
-    idProofBackPhotoUri: "",
-    cancelChequePhotoUri: "",
   })
 
-  // Selected Fabrics/Garment Categories
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([
-    "Shirting (Cotton & PC)",
-    "Rayon & Viscose"
-  ])
-  const [customCategory, setCustomCategory] = useState<string>("")
+  // Selected Categories (Ladies, Gents, Kids, Handloom) - multi-select
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([])
 
-  // Phone Auth State
-  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null)
-  const [otpCode, setOtpCode] = useState<string>("")
-  const [isSendingOtp, setIsSendingOtp] = useState<boolean>(false)
-  const [isVerifyingOtp, setIsVerifyingOtp] = useState<boolean>(false)
-  const [otpSent, setOtpSent] = useState<boolean>(false)
-  const [resendTimer, setResendTimer] = useState<number>(0)
+  // Selected Child Options
+  const [selectedGentsItems, setSelectedGentsItems] = useState<string[]>([])
+  const [customGentsItem, setCustomGentsItem] = useState<string>("")
+
+  const [selectedLadiesItems, setSelectedLadiesItems] = useState<string[]>([])
+  const [customLadiesItem, setCustomLadiesItem] = useState<string>("")
+
+  // Submission State
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false)
   const [submittedRequestId, setSubmittedRequestId] = useState<string | null>(null)
-
-  // Feedback State
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null)
-  const recaptchaWrapperRef = useRef<HTMLDivElement | null>(null)
+
+  // Toast Notification
+  const [toast, setToast] = useState<{
+    open: boolean
+    message: string
+    title?: string
+    type?: "error" | "warning" | "success" | "info"
+  }>({
+    open: false,
+    message: "",
+    title: "",
+    type: "error",
+  })
+
+  const triggerValidationError = (
+    msg: string,
+    fieldId?: string,
+    customTitle?: string,
+    type: "error" | "warning" | "success" | "info" = "error"
+  ) => {
+    setErrorMessage(msg)
+    setToast({
+      open: true,
+      message: msg,
+      title:
+        customTitle ||
+        (lang === "hi"
+          ? "आवश्यक जानकारी अधूरी है (Mandatory)"
+          : lang === "gu"
+          ? "જરૂરી વિગત ખૂટે છે (Mandatory)"
+          : "Mandatory Field Required"),
+      type,
+    })
+    if (fieldId) {
+      setTimeout(() => {
+        const el = document.getElementById(fieldId)
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" })
+          if ("focus" in el && typeof (el as HTMLElement).focus === "function") {
+            ;(el as HTMLElement).focus()
+          }
+        }
+      }, 80)
+    }
+  }
 
   // GST Lookup and auto-population state
   const [isFetchingGst, setIsFetchingGst] = useState<boolean>(false)
@@ -182,7 +236,7 @@ export function SupplierRegistrationView() {
         state: offlineState || prev.state,
       }))
 
-      // Attempt live fetch for mill name, address, city, pincode
+      // Attempt live fetch for firm name, address, city, pincode
       const details = await fetchGstDetails(cleanGst)
 
       if (details && (details.firmName || details.address || details.city || details.pincode)) {
@@ -192,7 +246,6 @@ export function SupplierRegistrationView() {
           panNumber: details.pan || offlinePan || prev.panNumber,
           state: details.state || offlineState || prev.state,
           firmName: details.firmName || prev.firmName,
-          address: details.address || prev.address,
           officeAddress: details.address || prev.officeAddress || prev.address,
           city: details.city || prev.city,
           pincode: details.pincode || prev.pincode,
@@ -209,8 +262,8 @@ export function SupplierRegistrationView() {
           type: "offline",
           message:
             lang === "hi"
-              ? "✓ राज्य और पैन नंबर स्वतः पहचान लिए गए हैं। कृपया नीचे मिल का नाम दर्ज करें।"
-              : "✓ State & PAN auto-detected from GSTIN. Please enter Mill Name below.",
+              ? "✓ राज्य और पैन नंबर स्वतः पहचान लिए गए हैं।"
+              : "✓ State & PAN auto-detected from GSTIN.",
         })
       }
     } catch (err) {
@@ -236,28 +289,9 @@ export function SupplierRegistrationView() {
   }
 
   const handleClearGst = () => {
-    setFormData((prev) => ({
-      ...prev,
-      gstin: "",
-    }))
+    setFormData((prev) => ({ ...prev, gstin: "" }))
     setGstFeedback({ type: null, message: "" })
   }
-
-  // Sync phone2 if sameAsMobile is checked
-  useEffect(() => {
-    if (formData.sameAsMobile) {
-      setFormData((prev) => ({ ...prev, phone2: prev.phone }))
-    }
-  }, [formData.phone, formData.sameAsMobile])
-
-  // Timer countdown for OTP resend
-  useEffect(() => {
-    if (resendTimer <= 0) return
-    const interval = setInterval(() => {
-      setResendTimer((prev) => (prev > 0 ? prev - 1 : 0))
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [resendTimer])
 
   // Handle Input Changes
   const handleInputChange = (field: string, value: any) => {
@@ -265,105 +299,93 @@ export function SupplierRegistrationView() {
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
-  // Toggle Category
+  // Toggle Primary Category
   const toggleCategory = (cat: string) => {
     setSelectedCategories((prev) =>
       prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
     )
   }
 
-  const addCustomCategory = () => {
-    if (customCategory.trim() && !selectedCategories.includes(customCategory.trim())) {
-      setSelectedCategories((prev) => [...prev, customCategory.trim()])
-      setCustomCategory("")
-    }
+  // Toggle Gents/Kids Child Item
+  const toggleGentsItem = (item: string) => {
+    setSelectedGentsItems((prev) =>
+      prev.includes(item) ? prev.filter((i) => i !== item) : [...prev, item]
+    )
   }
 
-  // Step 1 completeness check
-  const isStep1Complete = Boolean(
-    formData.firmName.trim() &&
-    formData.contactPerson.trim() &&
-    formData.phone.replace(/\D/g, "").length === 10
-  )
+  // Toggle Ladies Child Item
+  const toggleLadiesItem = (item: string) => {
+    setSelectedLadiesItems((prev) =>
+      prev.includes(item) ? prev.filter((i) => i !== item) : [...prev, item]
+    )
+  }
+
+  // Has Gents or Kids selected
+  const hasGentsOrKids = selectedCategories.includes("Gents") || selectedCategories.includes("Kids")
+  const hasLadies = selectedCategories.includes("Ladies")
 
   // Step Validation
-  const validateCurrentStep = (targetStep?: number, isSkip = false): boolean => {
+  const validateCurrentStep = (targetStep?: number): boolean => {
     setErrorMessage(null)
-    // Mandatory fields check for Step 1
+
+    // Step 1 validation
     if (currentStep === 1 || (targetStep && targetStep > 1)) {
       if (!formData.firmName.trim()) {
-        setErrorMessage("Please enter Mill / Firm Name")
+        triggerValidationError(
+          lang === "hi" ? "कृपया फर्म / दुकान का नाम दर्ज करें (अनिवार्य)" : "Please enter Firm / Shop Name (Mandatory)",
+          "field-supplier-firmName"
+        )
         return false
       }
       if (!formData.contactPerson.trim()) {
-        setErrorMessage("Please enter Contact Person / Proprietor Name")
+        triggerValidationError(
+          lang === "hi" ? "कृपया संपर्क व्यक्ति / संचालक का नाम दर्ज करें (अनिवार्य)" : "Please enter Contact Person Name (Mandatory)",
+          "field-supplier-contactPerson"
+        )
         return false
       }
       const cleanPhone = formData.phone.replace(/\D/g, "")
       if (!cleanPhone || cleanPhone.length < 10) {
-        setErrorMessage("Please enter a valid 10-digit mobile number")
+        triggerValidationError(
+          lang === "hi" ? "कृपया 10 अंकों का मान्य मोबाइल नंबर दर्ज करें (अनिवार्य)" : "Please enter a valid 10-digit mobile number (Mandatory)",
+          "field-supplier-phone"
+        )
         return false
       }
-
-      // Mandatory GSTIN check
-      const cleanGstin = formData.gstin.trim().toUpperCase()
-      if (!cleanGstin) {
-        setErrorMessage("Please enter your 15-character GSTIN number (Mandatory)")
-        return false
-      }
-      if (cleanGstin.length !== 15 || !isValidGstin(cleanGstin)) {
-        setErrorMessage("Please enter a valid 15-character GSTIN (e.g. 24AAAAA0000A1Z5)")
+      if (selectedCategories.length === 0) {
+        triggerValidationError(
+          lang === "hi" ? "कृपया कम से कम एक कैटेगरी चुनें (जैसे Gents, Ladies, Kids, Handloom)" : "Please select at least one Category (e.g. Gents, Ladies, Kids, Handloom)",
+          "category-section"
+        )
         return false
       }
     }
 
-    if (!isSkip && (currentStep === 2 || (targetStep && targetStep > 2 && currentStep > 1))) {
-      if (!formData.address.trim() && !formData.officeAddress.trim()) {
-        setErrorMessage("Please enter Factory / Mill or Office Address")
+    // Step 2 validation
+    if (currentStep === 2 || (targetStep && targetStep > 2)) {
+      const currentMarket = formData.marketArea === "Other / Outside Ahmedabad" || formData.marketArea === "Other / Specify"
+        ? formData.customMarket.trim()
+        : formData.marketArea.trim()
+
+      if (!currentMarket) {
+        triggerValidationError(
+          lang === "hi" ? "कृपया मार्केट का नाम दर्ज करें (अनिवार्य)" : "Please select or specify Market Area (Mandatory)",
+          "field-supplier-marketArea"
+        )
+        return false
+      }
+      if (!formData.officeAddress.trim() && !formData.address.trim()) {
+        triggerValidationError(
+          lang === "hi" ? "कृपया दुकान / ऑफिस का पता दर्ज करें (अनिवार्य)" : "Please enter Shop / Office Address (Mandatory)",
+          "field-supplier-officeAddress"
+        )
         return false
       }
       if (!formData.city.trim()) {
-        setErrorMessage("Please enter City")
-        return false
-      }
-    }
-
-    // Mandatory PAN check (PAN is auto-extracted from GSTIN; allow manual entry)
-    if (currentStep >= 3 || (targetStep && targetStep >= 3)) {
-      if (formData.panNumber.trim().length < 8) {
-        setErrorMessage("Please enter the PAN Card number (Mandatory)")
-        return false
-      }
-    }
-
-    // Mandatory KYC documents check (Step 4 / Skip to Submit)
-    if (currentStep === 4 || (targetStep && targetStep >= 5)) {
-      if (!formData.visitingCardPhotoUri) {
-        setErrorMessage("Please upload the Visiting Card photo (Mandatory)")
-        return false
-      }
-      if (!formData.shopPhotoUri) {
-        setErrorMessage("Please upload the Mill / Factory Front photo (Mandatory)")
-        return false
-      }
-      if (!formData.gstCertPhotoUri) {
-        setErrorMessage("Please upload the GST Certificate (Mandatory)")
-        return false
-      }
-      if (!formData.panPhotoUri) {
-        setErrorMessage("Please upload the PAN Card photo (Mandatory)")
-        return false
-      }
-      if (!formData.idProofPhotoUri) {
-        setErrorMessage("Please upload the ID Proof / Aadhaar (front side) (Mandatory)")
-        return false
-      }
-      if (!formData.idProofBackPhotoUri) {
-        setErrorMessage("Please upload the ID Proof / Aadhaar (back side) (Mandatory)")
-        return false
-      }
-      if (!formData.cancelChequePhotoUri) {
-        setErrorMessage("Please upload a Cancelled Cheque (Mandatory)")
+        triggerValidationError(
+          lang === "hi" ? "कृपया शहर दर्ज करें (अनिवार्य)" : "Please enter City (Mandatory)",
+          "field-supplier-city"
+        )
         return false
       }
     }
@@ -371,16 +393,9 @@ export function SupplierRegistrationView() {
     return true
   }
 
-  const handleSkipToSubmit = () => {
-    if (validateCurrentStep(5, true)) {
-      setCurrentStep(5)
-      window.scrollTo({ top: 0, behavior: "smooth" })
-    }
-  }
-
   const goToNextStep = () => {
     if (validateCurrentStep(currentStep + 1)) {
-      setCurrentStep((prev) => Math.min(prev + 1, 5))
+      setCurrentStep((prev) => Math.min(prev + 1, 3))
       window.scrollTo({ top: 0, behavior: "smooth" })
     }
   }
@@ -391,78 +406,14 @@ export function SupplierRegistrationView() {
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
-  // Firebase Phone Auth - Setup invisible reCAPTCHA
-  const setupRecaptcha = () => {
-    if (!recaptchaVerifierRef.current) {
-      try {
-        recaptchaVerifierRef.current = new RecaptchaVerifier(
-          auth,
-          "supplier-recaptcha-container",
-          {
-            size: "invisible",
-            callback: () => {},
-            "expired-callback": () => {
-              setErrorMessage("reCAPTCHA expired. Please try sending OTP again.")
-            },
-          }
-        )
-      } catch (err: any) {
-        console.error("Recaptcha setup error:", err)
-      }
-    }
-  }
+  // Final Direct Submission (No SMS OTP verification!)
+  const handleSubmitSupplier = async () => {
+    if (!validateCurrentStep(3)) return
 
-  // Send OTP
-  const handleSendOtp = async () => {
+    setIsSubmitting(true)
     setErrorMessage(null)
-    const cleanPhone = formData.phone.replace(/\D/g, "").slice(-10)
-    if (cleanPhone.length !== 10) {
-      setErrorMessage("Please enter a valid 10-digit mobile number")
-      return
-    }
 
-    setIsSendingOtp(true)
     try {
-      setupRecaptcha()
-      const formattedPhone = `+91${cleanPhone}`
-      const appVerifier = recaptchaVerifierRef.current
-      if (!appVerifier) throw new Error("Recaptcha not initialized")
-
-      const confirmation = await signInWithPhoneNumber(auth, formattedPhone, appVerifier)
-      setConfirmationResult(confirmation)
-      setOtpSent(true)
-      setResendTimer(30)
-    } catch (err: any) {
-      console.error("SMS Send Error:", err)
-      if (err.code === "auth/invalid-phone-number") {
-        setErrorMessage("Invalid mobile number format.")
-      } else if (err.code === "auth/too-many-requests") {
-        setErrorMessage("Too many SMS attempts. Please try again later.")
-      } else {
-        setErrorMessage(err.message || "Failed to send OTP. Please check your connection.")
-      }
-    } finally {
-      setIsSendingOtp(false)
-    }
-  }
-
-  // Verify OTP and Submit Form to Firebase RTDB
-  const handleVerifyAndSubmit = async () => {
-    setErrorMessage(null)
-    if (!confirmationResult) {
-      setErrorMessage("Please request an OTP first.")
-      return
-    }
-    if (!otpCode.trim() || otpCode.trim().length < 6) {
-      setErrorMessage("Please enter the 6-digit verification code.")
-      return
-    }
-
-    setIsVerifyingOtp(true)
-    try {
-      const userCredential = await confirmationResult.confirm(otpCode.trim())
-      const verifiedUser = userCredential.user
-
       const cleanGstin = formData.gstin.trim().toUpperCase()
       const cleanPhone = formData.phone.replace(/\D/g, "").slice(-10)
       const primaryKey = cleanGstin || cleanPhone
@@ -470,9 +421,36 @@ export function SupplierRegistrationView() {
       const requestId = cleanGstin ? `req_sup_gst_${cleanGstin}` : `req_sup_phone_${cleanPhone}`
       const reqRef = ref(rtdb, `supplier_registration_requests/${requestId}`)
 
-      const finalMarket = formData.marketArea === "Other / Outside Ahmedabad" && formData.customMarket.trim()
-        ? formData.customMarket.trim()
-        : formData.marketArea
+      const finalMarket =
+        (formData.marketArea === "Other / Outside Ahmedabad" || formData.marketArea === "Other / Specify") && formData.customMarket.trim()
+          ? formData.customMarket.trim()
+          : formData.marketArea
+      const pickedMarket = marketOptions.find((m) => m.name.toLowerCase() === finalMarket.trim().toLowerCase())
+
+      // Combine child items
+      const combinedSubCategories: string[] = []
+      if (hasGentsOrKids) {
+        selectedGentsItems.forEach((it) => {
+          if (it === "Others" && customGentsItem.trim()) {
+            combinedSubCategories.push(customGentsItem.trim())
+          } else if (it !== "Others") {
+            combinedSubCategories.push(it)
+          }
+        })
+      }
+      if (hasLadies) {
+        selectedLadiesItems.forEach((it) => {
+          if (it === "Others" && customLadiesItem.trim()) {
+            combinedSubCategories.push(customLadiesItem.trim())
+          } else if (it !== "Others") {
+            combinedSubCategories.push(it)
+          }
+        })
+      }
+
+      const productsMadeString = combinedSubCategories.length > 0
+        ? combinedSubCategories.join(", ")
+        : selectedCategories.join(", ")
 
       const payload: SupplierRegistrationRequest = {
         id: requestId,
@@ -486,35 +464,31 @@ export function SupplierRegistrationView() {
         phone: `+91${cleanPhone}`,
         phone2: formData.phone2.trim() ? `+91${formData.phone2.replace(/\D/g, "").slice(-10)}` : "",
         email: formData.email.trim(),
-        address: formData.address.trim(),
-        officeAddress: formData.officeAddress.trim() || formData.address.trim(),
+        address: formData.address.trim(), // Factory address (optional)
+        officeAddress: formData.officeAddress.trim() || formData.address.trim(), // Shop / Office Address
         marketArea: finalMarket,
-        city: formData.city.trim() || "Ahmedabad",
+        // Market master link (the approval screen uses it to connect the supplier to the market)
+        marketId: pickedMarket && pickedMarket.id > 0 ? pickedMarket.id : undefined,
+        marketName: finalMarket,
+        city: formData.city.trim(),
         district: formData.district.trim(),
-        state: formData.state.trim() || "Gujarat",
+        state: formData.state.trim(),
         pincode: formData.pincode.trim(),
         mapLink: formData.mapLink.trim(),
-        productsMade: selectedCategories.join(", "),
+        productsMade: productsMadeString,
         categories: selectedCategories.join(", "),
-        priceRange: formData.priceRange.trim(),
+        subCategories: combinedSubCategories.join(", "),
         gstin: cleanGstin,
         panNumber: formData.panNumber.trim().toUpperCase(),
         bankName: formData.bankName.trim(),
         accountNumber: formData.accountNumber.trim(),
         ifscCode: formData.ifscCode.trim().toUpperCase(),
-        visitingCardPhotoUri: formData.visitingCardPhotoUri || "",
         shopPhotoUri: formData.shopPhotoUri || "",
-        gstCertPhotoUri: formData.gstCertPhotoUri || "",
-        panPhotoUri: formData.panPhotoUri || "",
-        idProofPhotoUri: formData.idProofPhotoUri || "",
-        idProofBackPhotoUri: formData.idProofBackPhotoUri || "",
-        aadharPhotoUri: formData.idProofPhotoUri || "",
-        aadharBackPhotoUri: formData.idProofBackPhotoUri || "",
-        cancelChequePhotoUri: formData.cancelChequePhotoUri || "",
+        godownPhotoUri: formData.godownPhotoUri || "",
+        visitingCardPhotoUri: formData.visitingCardPhotoUri || "",
         notes: formData.notes.trim(),
         status: "PENDING",
-        phoneVerified: true,
-        verificationUid: verifiedUser.uid,
+        phoneVerified: false,
         createdAt: Date.now(),
       }
 
@@ -527,14 +501,10 @@ export function SupplierRegistrationView() {
       setSubmittedRequestId(requestId)
       window.scrollTo({ top: 0, behavior: "smooth" })
     } catch (err: any) {
-      console.error("Submission error:", err)
-      if (err.code === "auth/invalid-verification-code") {
-        setErrorMessage("Invalid OTP code. Please re-check the SMS.")
-      } else {
-        setErrorMessage(err.message || "Verification failed. Please try again.")
-      }
+      console.error("Supplier submission error:", err)
+      triggerValidationError(err.message || "Failed to submit registration. Please check connection.")
     } finally {
-      setIsVerifyingOtp(false)
+      setIsSubmitting(false)
     }
   }
 
@@ -542,12 +512,18 @@ export function SupplierRegistrationView() {
   if (submittedRequestId) {
     const cleanGst = formData.gstin.trim().toUpperCase()
     const cleanPhone = formData.phone.replace(/\D/g, "").slice(-10)
-    const primaryKeyDisplay = cleanGst ? `${cleanGst} (GSTIN)` : `+91 ${cleanPhone} (Mobile)`
-    const shareMessage = `Namaste! We have submitted our supplier registration with Himat Textile.%0A%0A*Mill / Firm:* ${encodeURIComponent(formData.firmName)}%0A*Contact:* ${encodeURIComponent(formData.contactPerson)} (+91 ${cleanPhone})%0A${cleanGst ? `*GSTIN:* ${encodeURIComponent(cleanGst)}%0A` : `*Mobile:* +91 ${cleanPhone}%0A`}*Type:* ${formData.type}%0A*Market:* ${encodeURIComponent(formData.marketArea)}%0A*Ref ID:* ${submittedRequestId}`
+    const finalMarket =
+      (formData.marketArea === "Other / Outside Ahmedabad" || formData.marketArea === "Other / Specify") && formData.customMarket.trim()
+        ? formData.customMarket.trim()
+        : formData.marketArea
+
+    const shareMessage = encodeURIComponent(
+      `Namaste Himat Textile!\nWe have submitted our supplier registration online.\n\n📌 Firm Name: ${formData.firmName}\n👤 Contact Person: ${formData.contactPerson}\n📞 Mobile: +91 ${cleanPhone}\n🏢 Type: ${formData.type}\n🏷️ Category: ${selectedCategories.join(", ")}\n📍 Market: ${finalMarket}\n🆔 Ref ID: ${submittedRequestId}\n\nPlease review our application for onboarding. Thank you!`
+    )
 
     return (
       <div className="min-h-screen bg-gradient-to-b from-zinc-50 to-zinc-100 dark:from-zinc-950 dark:to-zinc-900 py-10 px-4 sm:px-6">
-        <div className="max-w-xl mx-auto bg-white dark:bg-zinc-900 rounded-2xl shadow-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden text-center p-8 sm:p-10">
+        <div className="max-w-xl mx-auto bg-white dark:bg-zinc-900 rounded-3xl shadow-xl border border-zinc-200 dark:border-zinc-800 text-center p-8 sm:p-10">
           <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-950/60 rounded-full flex items-center justify-center mx-auto mb-5 text-emerald-600 dark:text-emerald-400 shadow-inner">
             <CheckCircle2 className="w-9 h-9" />
           </div>
@@ -555,32 +531,30 @@ export function SupplierRegistrationView() {
           <h2 className="text-2xl font-black text-zinc-900 dark:text-zinc-50 tracking-tight">
             Registration Submitted Successfully!
           </h2>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-2">
-            Thank you for registering your textile mill / wholesale supply firm with <strong>Himat Textile</strong>. Our admin team will review your business profile and KYC documents.
+          <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 mt-2">
+            Thank you for registering your firm with <strong>Himat Textile</strong>. Our team will review your business profile and proceed with onboarding.
           </p>
 
-          <div className="mt-6 p-4 bg-zinc-50 dark:bg-zinc-800/60 rounded-xl border border-zinc-200 dark:border-zinc-700 text-left space-y-2">
+          <div className="mt-6 p-4 bg-zinc-50 dark:bg-zinc-800/60 rounded-2xl border border-zinc-200 dark:border-zinc-700 text-left space-y-2">
             <div className="flex justify-between text-xs">
-              <span className="text-zinc-500">{formData.gstin ? "GSTIN:" : "Mobile:"}</span>
-              <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">
-                {formData.gstin || `+91 ${formData.phone.replace(/\D/g, "").slice(-10)}`}
-              </span>
+              <span className="text-zinc-500">Request ID:</span>
+              <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">{submittedRequestId}</span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-zinc-500">Reference ID:</span>
-              <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{submittedRequestId}</span>
+              <span className="text-zinc-500">Firm / Shop:</span>
+              <span className="font-bold text-zinc-900 dark:text-zinc-100">{formData.firmName}</span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-zinc-500">Mill / Firm:</span>
-              <span className="font-semibold text-zinc-900 dark:text-zinc-100">{formData.firmName}</span>
+              <span className="text-zinc-500">Contact:</span>
+              <span className="font-medium text-zinc-800 dark:text-zinc-200">{formData.contactPerson} (+91 {cleanPhone})</span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-zinc-500">Contact Person:</span>
-              <span className="font-medium text-zinc-800 dark:text-zinc-200">{formData.contactPerson} ({formData.phone})</span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-zinc-500">Classification:</span>
+              <span className="text-zinc-500">Supplier Type:</span>
               <span className="font-semibold text-emerald-600 dark:text-emerald-400">{formData.type}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-zinc-500">Market Hub:</span>
+              <span className="font-medium text-zinc-800 dark:text-zinc-200">{finalMarket}</span>
             </div>
           </div>
 
@@ -589,7 +563,7 @@ export function SupplierRegistrationView() {
               href={`https://api.whatsapp.com/send?phone=919873938095&text=${shareMessage}`}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-all"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-all"
             >
               <MessageSquare className="w-4 h-4" />
               Inform via WhatsApp
@@ -609,15 +583,12 @@ export function SupplierRegistrationView() {
     )
   }
 
-  // WIZARD VIEW
+  // WIZARD FORM VIEW
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-50 via-zinc-100 to-zinc-200 dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-950 py-8 px-4 sm:px-6">
-      {/* Invisible reCAPTCHA container */}
-      <div id="supplier-recaptcha-container" ref={recaptchaWrapperRef}></div>
-
       <div className="max-w-2xl mx-auto">
         {/* Header with Himat Textile Logo */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <div className="flex items-center justify-center gap-3 mb-2">
             <img
               src={HIMAT_LOGO_DATA_URI}
@@ -625,70 +596,59 @@ export function SupplierRegistrationView() {
               className="h-10 w-auto rounded-lg shadow-sm"
             />
             <h1 className="text-2xl font-black tracking-tight text-zinc-900 dark:text-zinc-50">
-              Himat Textile
+              Himat Textile Ahmedabad
             </h1>
           </div>
 
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-xs font-semibold mb-2">
-            <Factory className="w-3.5 h-3.5" />
-            <span>Fabric Mill & Supplier Onboarding</span>
+            <Store className="w-3.5 h-3.5" />
+            <span>Supplier & Vendor Onboarding</span>
           </div>
 
           <p className="text-xs text-zinc-600 dark:text-zinc-400 max-w-md mx-auto">
-            Register your manufacturing unit, mill, or wholesale agency to supply fabrics and garments to our retail network across India.
+            {lang === "hi"
+              ? "हिम्मत टेक्सटाइल के साथ जुड़ने के लिए अपनी फर्म और गारमेंट निर्माण/ट्रेडिंग विवरण दर्ज करें।"
+              : lang === "gu"
+              ? "હિંમત ટેક્સટાઇલ સાથે જોડાવા માટે તમારી પેઢી અને વ્યવસાયની વિગતો નોંધાવો."
+              : "Register your garment manufacturing, trading, or fabric supply firm to connect with wholesale buyers."}
           </p>
 
           {/* Language Toggle */}
           <div className="mt-4 inline-flex items-center p-1 rounded-xl bg-zinc-200/80 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700">
-            <button
-              type="button"
-              onClick={() => handleLanguageSwitch("en")}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-                lang === "en"
-                  ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
-                  : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900"
-              }`}
-            >
-              English
-            </button>
-            <button
-              type="button"
-              onClick={() => handleLanguageSwitch("hi")}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-                lang === "hi"
-                  ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
-                  : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900"
-              }`}
-            >
-              हिंदी
-            </button>
-            <button
-              type="button"
-              onClick={() => handleLanguageSwitch("gu")}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-                lang === "gu"
-                  ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
-                  : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900"
-              }`}
-            >
-              ગુજરાતી
-            </button>
+            {(["en", "hi", "gu"] as const).map((l) => (
+              <button
+                key={l}
+                type="button"
+                onClick={() => handleLanguageSwitch(l)}
+                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                  lang === l
+                    ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
+                    : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900"
+                }`}
+              >
+                {l === "en" ? "English" : l === "hi" ? "हिंदी" : "ગુજરાતી"}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Wizard Steps Indicator */}
+        {/* Wizard Steps Indicator (3 Steps) */}
         <div className="mb-6 bg-white dark:bg-zinc-900 rounded-xl p-3 border border-zinc-200 dark:border-zinc-800 shadow-sm">
           <div className="flex items-center justify-between">
             {[
-              { num: 1, label: "Profile" },
-              { num: 2, label: "Location" },
-              { num: 3, label: "Fabrics" },
-              { num: 4, label: "Photos" },
-              { num: 5, label: "Verify" },
+              { num: 1, label: "Firm & Category" },
+              { num: 2, label: "Market & Address" },
+              { num: 3, label: "Photos & Submit" },
             ].map((step, idx) => (
               <React.Fragment key={step.num}>
                 <div className="flex flex-col items-center">
-                  <div
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (step.num < currentStep || validateCurrentStep(step.num)) {
+                        setCurrentStep(step.num)
+                      }
+                    }}
                     className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
                       currentStep === step.num
                         ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 ring-2 ring-emerald-500"
@@ -698,14 +658,14 @@ export function SupplierRegistrationView() {
                     }`}
                   >
                     {currentStep > step.num ? <Check className="w-3.5 h-3.5" /> : step.num}
-                  </div>
+                  </button>
                   <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 mt-1 hidden sm:block">
                     {step.label}
                   </span>
                 </div>
-                {idx < 4 && (
+                {idx < 2 && (
                   <div
-                    className={`flex-1 h-0.5 mx-1.5 transition-all ${
+                    className={`flex-1 h-0.5 mx-2 transition-all ${
                       currentStep > idx + 1 ? "bg-emerald-600" : "bg-zinc-200 dark:bg-zinc-800"
                     }`}
                   />
@@ -715,7 +675,7 @@ export function SupplierRegistrationView() {
           </div>
         </div>
 
-        {/* Error Alert */}
+        {/* Global Error Banner */}
         {errorMessage && (
           <div className="mb-6 p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 flex items-start gap-2.5 text-xs text-red-700 dark:text-red-300">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -723,31 +683,122 @@ export function SupplierRegistrationView() {
           </div>
         )}
 
-        {/* Step Card */}
+        {/* Step Card Container */}
         <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-lg border border-zinc-200 dark:border-zinc-800 p-6 sm:p-8">
-          {/* STEP 1: BUSINESS & CONTACT PROFILE */}
+          {/* STEP 1: BUSINESS PROFILE & CATEGORIES */}
           {currentStep === 1 && (
             <div className="space-y-4">
               <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3 mb-4">
                 <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
                   <Building2 className="w-4 h-4 text-emerald-600" />
-                  <span>Step 1: Mill & Contact Profile</span>
+                  <span>Step 1: Firm Profile & Categories</span>
                 </h3>
                 <p className="text-xs text-zinc-500 mt-0.5">
-                  Enter your firm name and primary proprietor/manager details.
+                  Select your supplier type and categories to get started.
                 </p>
               </div>
 
-              {/* GSTIN (Auto-Fetch) */}
+              {/* Supplier Type Selection (Manufacturer, Trading, Distributor, Fabric) */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  Supplier Type <span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {SUPPLIER_TYPES.map((st) => {
+                    const isSelected = formData.type === st
+                    return (
+                      <button
+                        key={st}
+                        type="button"
+                        onClick={() => handleInputChange("type", st)}
+                        className={`h-11 px-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 ${
+                          isSelected
+                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-zinc-900 dark:border-zinc-100 shadow-sm"
+                            : "bg-zinc-50 dark:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100"
+                        }`}
+                      >
+                        {isSelected && <Check className="w-3.5 h-3.5" />}
+                        <span>{st}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Firm / Shop Name */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                  Firm / Shop Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="field-supplier-firmName"
+                  type="text"
+                  value={formData.firmName}
+                  onChange={(e) => handleInputChange("firmName", e.target.value)}
+                  placeholder="e.g. Radhey Textiles, Mahadev Creation"
+                  className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              {/* Contact Person Name */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                  Contact Person / Proprietor Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="field-supplier-contactPerson"
+                  type="text"
+                  value={formData.contactPerson}
+                  onChange={(e) => handleInputChange("contactPerson", e.target.value)}
+                  placeholder="e.g. Rameshbhai Patel"
+                  className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              {/* Mobile Number & WhatsApp */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                    Primary Mobile Number <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-xs text-zinc-500 font-semibold">+91</span>
+                    <input
+                      id="field-supplier-phone"
+                      type="tel"
+                      maxLength={10}
+                      value={formData.phone}
+                      onChange={(e) => handleInputChange("phone", e.target.value.replace(/\D/g, ""))}
+                      placeholder="9825012345"
+                      className="w-full h-10 pl-11 pr-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                    WhatsApp / Alternate Number (Optional)
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-xs text-zinc-500 font-semibold">+91</span>
+                    <input
+                      id="field-supplier-phone2"
+                      type="tel"
+                      maxLength={10}
+                      value={formData.phone2}
+                      onChange={(e) => handleInputChange("phone2", e.target.value.replace(/\D/g, ""))}
+                      placeholder="WhatsApp phone number"
+                      className="w-full h-10 pl-11 pr-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* GSTIN (with auto-lookup) */}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                    {lang === "hi"
-                      ? "जीएसटी नंबर (अनिवार्य)"
-                      : lang === "gu"
-                      ? "GST નંબર (ફરજિયાત)"
-                      : "GSTIN Number (Mandatory)"}
-                    <span className="text-red-500"> *</span>
+                    GSTIN Number (Optional)
                   </label>
                   {formData.gstin && (
                     <button
@@ -755,12 +806,13 @@ export function SupplierRegistrationView() {
                       onClick={handleClearGst}
                       className="text-[11px] text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                     >
-                      {lang === "hi" ? "साफ़ करें" : lang === "gu" ? "સાફ કરો" : "Clear"}
+                      Clear
                     </button>
                   )}
                 </div>
                 <div className="relative">
                   <input
+                    id="field-supplier-gstin"
                     type="text"
                     maxLength={15}
                     placeholder="24AAAAA0000A1Z5"
@@ -770,15 +822,6 @@ export function SupplierRegistrationView() {
                       handleInputChange("gstin", val)
                       if (val.length === 15 && isValidGstin(val)) {
                         handleGstLookup(val)
-                      } else if (val.length === 0) {
-                        setGstFeedback({ type: null, message: "" })
-                      } else if (val.length < 15 && gstFeedback.type) {
-                        setGstFeedback({ type: null, message: "" })
-                      }
-                    }}
-                    onBlur={() => {
-                      if (formData.gstin.length === 15 && isValidGstin(formData.gstin) && !isFetchingGst && !gstFeedback.type) {
-                        handleGstLookup(formData.gstin)
                       }
                     }}
                     className="w-full h-10 px-3.5 pr-10 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 uppercase font-mono"
@@ -792,268 +835,233 @@ export function SupplierRegistrationView() {
                   </div>
                 </div>
                 {gstFeedback.message && (
-                  <p
-                    className={`text-[11px] mt-1 flex items-center gap-1 ${
-                      gstFeedback.type === "success" || gstFeedback.type === "offline"
-                        ? "text-emerald-600 dark:text-emerald-400 font-medium"
-                        : "text-amber-600 dark:text-amber-400"
-                    }`}
-                  >
-                    <span>{gstFeedback.type === "success" ? "✓" : "ℹ"}</span>
-                    <span>{gstFeedback.message}</span>
+                  <p className="text-[11px] mt-1 text-emerald-600 dark:text-emerald-400 font-medium">
+                    {gstFeedback.message}
                   </p>
                 )}
               </div>
 
-              {/* Classification Toggle */}
-              <div>
+              {/* Category Selection (Ladies, Gents, Kids, Handloom) */}
+              <div id="category-section" className="pt-3 border-t border-zinc-100 dark:border-zinc-800">
                 <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1.5">
-                  Supplier Classification <span className="text-red-500">*</span>
+                  Select Categories <span className="text-red-500">*</span>
+                  <span className="block text-[11px] font-normal text-zinc-500">
+                    You can select multiple categories
+                  </span>
                 </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleInputChange("type", "Manufacturer")}
-                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-2 ${
-                      formData.type === "Manufacturer"
-                        ? "border-emerald-600 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 ring-1 ring-emerald-600"
-                        : "border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50"
-                    }`}
-                  >
-                    <Factory className="w-4 h-4" />
-                    <span>Manufacturer / Mill</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleInputChange("type", "Wholesaler")}
-                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-2 ${
-                      formData.type === "Wholesaler"
-                        ? "border-emerald-600 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 ring-1 ring-emerald-600"
-                        : "border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50"
-                    }`}
-                  >
-                    <Store className="w-4 h-4" />
-                    <span>Wholesaler / Stockist</span>
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                  Mill / Firm Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.firmName}
-                  onChange={(e) => handleInputChange("firmName", e.target.value)}
-                  placeholder="e.g. Radheshyam Textile Mills Ltd"
-                  className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                  Contact Person / Proprietor <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.contactPerson}
-                  onChange={(e) => handleInputChange("contactPerson", e.target.value)}
-                  placeholder="e.g. Rajeshbhai Patel"
-                  className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                    Mobile Number (for SMS OTP) <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-xs text-zinc-500 font-semibold">+91</span>
-                    <input
-                      type="tel"
-                      maxLength={10}
-                      value={formData.phone}
-                      onChange={(e) => handleInputChange("phone", e.target.value)}
-                      placeholder="9825012345"
-                      className="w-full h-10 pl-11 pr-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
-                  </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                  {SUPPLIER_CATEGORIES.map((cat) => {
+                    const isSelected = selectedCategories.includes(cat)
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => toggleCategory(cat)}
+                        className={`h-10 px-3 rounded-xl text-xs font-semibold transition-all border flex items-center justify-center gap-1.5 ${
+                          isSelected
+                            ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                            : "bg-zinc-50 dark:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100"
+                        }`}
+                      >
+                        {isSelected && <Check className="w-3.5 h-3.5" />}
+                        <span>{cat}</span>
+                      </button>
+                    )
+                  })}
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                    Brand Name (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.brand}
-                    onChange={(e) => handleInputChange("brand", e.target.value)}
-                    placeholder="e.g. Radhey Silk, RT Cotton"
-                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-              </div>
-
-              {/* WhatsApp Number */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                    WhatsApp Number
-                  </label>
-                  <label className="inline-flex items-center gap-1 text-[11px] text-zinc-500 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formData.sameAsMobile}
-                      onChange={(e) => handleInputChange("sameAsMobile", e.target.checked)}
-                      className="rounded border-zinc-300 text-emerald-600 focus:ring-emerald-500"
-                    />
-                    <span>Same as Mobile</span>
-                  </label>
-                </div>
-                {!formData.sameAsMobile && (
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-xs text-zinc-500 font-semibold">+91</span>
-                    <input
-                      type="tel"
-                      maxLength={10}
-                      value={formData.phone2}
-                      onChange={(e) => handleInputChange("phone2", e.target.value)}
-                      placeholder="WhatsApp phone number"
-                      className="w-full h-10 pl-11 pr-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
+                {/* Child Options for Gents / Kids (shared list, rendered once if either or both selected) */}
+                {hasGentsOrKids && (
+                  <div className="p-3 mb-3 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-200 dark:border-zinc-700">
+                    <label className="block text-xs font-semibold text-zinc-800 dark:text-zinc-200 mb-1.5">
+                      {selectedCategories.includes("Gents") && selectedCategories.includes("Kids")
+                        ? "Gents & Kids Items"
+                        : selectedCategories.includes("Gents")
+                        ? "Gents Items"
+                        : "Kids Items"}
+                      <span className="text-[10px] font-normal text-zinc-500 ml-1.5">(Select items)</span>
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {SUPPLIER_GENTS_CHILD_OPTIONS.map((item) => {
+                        const isSelected = selectedGentsItems.includes(item)
+                        return (
+                          <button
+                            key={item}
+                            type="button"
+                            onClick={() => toggleGentsItem(item)}
+                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                              isSelected
+                                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-xs"
+                                : "bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100"
+                            }`}
+                          >
+                            {isSelected && <Check className="w-3 h-3 inline mr-1" />}
+                            {item}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {selectedGentsItems.includes("Others") && (
+                      <input
+                        type="text"
+                        value={customGentsItem}
+                        onChange={(e) => setCustomGentsItem(e.target.value)}
+                        placeholder="Specify other gents/kids items..."
+                        className="mt-2 w-full h-8 px-3 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs text-zinc-900 dark:text-zinc-100"
+                      />
+                    )}
                   </div>
                 )}
-              </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                  Email Address (Optional)
-                </label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => handleInputChange("email", e.target.value)}
-                  placeholder="e.g. sales@radheytextile.com"
-                  className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
+                {/* Child Options for Ladies */}
+                {hasLadies && (
+                  <div className="p-3 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-200 dark:border-zinc-700">
+                    <label className="block text-xs font-semibold text-zinc-800 dark:text-zinc-200 mb-1.5">
+                      Ladies Items
+                      <span className="text-[10px] font-normal text-zinc-500 ml-1.5">(Select items)</span>
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {SUPPLIER_LADIES_CHILD_OPTIONS.map((item) => {
+                        const isSelected = selectedLadiesItems.includes(item)
+                        return (
+                          <button
+                            key={item}
+                            type="button"
+                            onClick={() => toggleLadiesItem(item)}
+                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                              isSelected
+                                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-xs"
+                                : "bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100"
+                            }`}
+                          >
+                            {isSelected && <Check className="w-3 h-3 inline mr-1" />}
+                            {item}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {selectedLadiesItems.includes("Others") && (
+                      <input
+                        type="text"
+                        value={customLadiesItem}
+                        onChange={(e) => setCustomLadiesItem(e.target.value)}
+                        placeholder="Specify other ladies items..."
+                        className="mt-2 w-full h-8 px-3 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs text-zinc-900 dark:text-zinc-100"
+                      />
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
 
-          {/* STEP 2: LOCATION & MILL DETAILS */}
+          {/* STEP 2: MARKET & ADDRESS */}
           {currentStep === 2 && (
             <div className="space-y-4">
               <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3 mb-4">
                 <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-emerald-600" />
-                  <span>Step 2: Location & Market Cluster</span>
+                  <span>Step 2: Market Hub & Location</span>
                 </h3>
                 <p className="text-xs text-zinc-500 mt-0.5">
-                  Specify your textile market area and manufacturing/office addresses.
+                  Select your market area and provide shop address.
                 </p>
               </div>
 
+              {/* Market Selection Dropdown */}
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                  Ahmedabad Textile Market / Cluster
+                  Textile Market Hub <span className="text-red-500">*</span>
                 </label>
                 <select
+                  id="field-supplier-marketArea"
                   value={formData.marketArea}
                   onChange={(e) => handleInputChange("marketArea", e.target.value)}
                   className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 >
-                  {AHMEDABAD_MARKETS.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
+                  <option value="">-- Select your market --</option>
+                  {marketOptions.map((mkt) => (
+                    <option key={`${mkt.id}-${mkt.name}`} value={mkt.name}>
+                      {mkt.name}
                     </option>
                   ))}
+                  <option value="Other / Specify">Other / Specify...</option>
                 </select>
+
+                {(formData.marketArea === "Other / Outside Ahmedabad" || formData.marketArea === "Other / Specify") && (
+                  <div className="mt-2">
+                    <input
+                      type="text"
+                      value={formData.customMarket}
+                      onChange={(e) => handleInputChange("customMarket", e.target.value)}
+                      placeholder="Please enter your market name / area..."
+                      className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                )}
               </div>
 
-              {formData.marketArea === "Other / Outside Ahmedabad" && (
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                    Custom Market / City Name
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.customMarket}
-                    onChange={(e) => handleInputChange("customMarket", e.target.value)}
-                    placeholder="e.g. Surat Ring Road Market"
-                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                  Mill / Factory Address <span className="text-red-500">*</span>
-                </label>
-                <AutoGrowTextarea
-                  minRows={2}
-                  value={formData.address}
-                  onChange={(val) => handleInputChange("address", val)}
-                  placeholder="Factory plot, GIDC phase, shed number, road..."
-                  className="w-full p-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                  Market Office / Shop Address (Optional)
-                </label>
-                <AutoGrowTextarea
-                  minRows={2}
-                  value={formData.officeAddress}
-                  onChange={(val) => handleInputChange("officeAddress", val)}
-                  placeholder="Market shop number, floor, tower..."
-                  className="w-full p-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* City & District */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
                     City <span className="text-red-500">*</span>
                   </label>
                   <input
+                    id="field-supplier-city"
                     type="text"
                     value={formData.city}
                     onChange={(e) => handleInputChange("city", e.target.value)}
+                    placeholder="e.g. Ahmedabad, Surat, Mumbai"
                     className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                    State
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.state}
-                    onChange={(e) => handleInputChange("state", e.target.value)}
-                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                    Pincode
+                    Pincode (Optional)
                   </label>
                   <input
                     type="text"
                     maxLength={6}
                     value={formData.pincode}
-                    onChange={(e) => handleInputChange("pincode", e.target.value)}
-                    placeholder="380002"
+                    onChange={(e) => handleInputChange("pincode", e.target.value.replace(/\D/g, ""))}
+                    placeholder="e.g. 380002"
                     className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
               </div>
 
+              {/* Shop / Office Address (Mandatory) */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                  Shop / Market Office Address <span className="text-red-500">*</span>
+                </label>
+                <AutoGrowTextarea
+                  minRows={2}
+                  id="field-supplier-officeAddress"
+                  value={formData.officeAddress}
+                  onChange={(val) => handleInputChange("officeAddress", val)}
+                  placeholder="Shop number, building/complex, road, market hub..."
+                  className="w-full p-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              {/* Factory / Work Address (Optional) */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                  Factory / Manufacturing Address (Optional)
+                </label>
+                <AutoGrowTextarea
+                  minRows={2}
+                  value={formData.address}
+                  onChange={(val) => handleInputChange("address", val)}
+                  placeholder="Factory / GIDC / Unit address (optional)..."
+                  className="w-full p-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              {/* Google Maps Link (Optional) */}
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
                   Google Maps Location Link (Optional)
@@ -1069,363 +1077,151 @@ export function SupplierRegistrationView() {
             </div>
           )}
 
-          {/* STEP 3: FABRICS, GARMENTS & COMMERCIALS */}
+          {/* STEP 3: PHOTOS & BANK DETAILS (OPTIONAL) & SUBMISSION */}
           {currentStep === 3 && (
             <div className="space-y-4">
               <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3 mb-4">
                 <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                  <Tag className="w-4 h-4 text-emerald-600" />
-                  <span>Step 3: Fabrics & Commercials</span>
+                  <Store className="w-4 h-4 text-emerald-600" />
+                  <span>Step 3: Shop / Godown Photos & Submit</span>
                 </h3>
                 <p className="text-xs text-zinc-500 mt-0.5">
-                  Select the types of fabrics/garments your unit produces and your commercial terms.
+                  Upload shop and godown photos for fast verification.
                 </p>
               </div>
 
-              {/* Categories Pills */}
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-2">
-                  Fabrics & Products Manufactured (Select all that apply)
-                </label>
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {SUPPLIER_FABRIC_CATEGORIES.map((cat) => {
-                    const isSelected = selectedCategories.includes(cat)
-                    return (
-                      <button
-                        key={cat}
-                        type="button"
-                        onClick={() => toggleCategory(cat)}
-                        className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                          isSelected
-                            ? "bg-emerald-600 text-white shadow-sm"
-                            : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
-                        }`}
-                      >
-                        {isSelected && <Check className="w-3 h-3 inline mr-1" />}
-                        {cat}
-                      </button>
-                    )
-                  })}
-                </div>
-
-                <div className="flex gap-2 mt-2">
-                  <input
-                    type="text"
-                    value={customCategory}
-                    onChange={(e) => setCustomCategory(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault()
-                        addCustomCategory()
-                      }
-                    }}
-                    placeholder="Add other fabric or product..."
-                    className="flex-1 h-9 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={addCustomCategory}
-                    className="px-3 h-9 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-xs font-bold rounded-xl"
-                  >
-                    Add
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                    Price Range / Meter or Piece (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.priceRange}
-                    onChange={(e) => handleInputChange("priceRange", e.target.value)}
-                    placeholder="e.g. ₹95 - ₹220 / meter"
-                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                    GSTIN Number (Mandatory) <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    maxLength={15}
-                    value={formData.gstin}
-                    onChange={(e) => {
-                      const val = e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "")
-                      handleInputChange("gstin", val)
-                      if (val.length === 15 && isValidGstin(val)) {
-                        handleGstLookup(val)
-                      }
-                      if (val.length >= 12 && !formData.panNumber) {
-                        const pan = extractPanFromGstin(val)
-                        if (pan) handleInputChange("panNumber", pan)
-                      }
-                    }}
-                    placeholder="24ABCDE1234F1Z5"
-                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 uppercase font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                    PAN Number (Mandatory) <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    maxLength={10}
-                    value={formData.panNumber}
-                    onChange={(e) => handleInputChange("panNumber", e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, ""))}
-                    placeholder="ABCDE1234F"
-                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 uppercase font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                    Bank Name (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.bankName}
-                    onChange={(e) => handleInputChange("bankName", e.target.value)}
-                    placeholder="e.g. HDFC Bank, SBI"
-                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                  Additional Notes / Supply Capabilities
-                </label>
-                <AutoGrowTextarea
-                  minRows={2}
-                  value={formData.notes}
-                  onChange={(val) => handleInputChange("notes", val)}
-                  placeholder="e.g. Minimum order quantity, ready stock availability, dispatch timeline..."
-                  className="w-full p-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* STEP 4: KYC & PHOTOS */}
-          {currentStep === 4 && (
-            <div className="space-y-4">
-              <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3 mb-4">
-                <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span>Step 4: Verification Photos</span>
-                </h3>
-                <p className="text-xs text-zinc-500 mt-0.5">
-                  All documents marked * are mandatory for verification.
-                </p>
-              </div>
-
+              {/* Photos: Shop Photo & Godown Photo */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <FileUpload
-                    label="Visiting Card Photo"
-                    folder="supplier_requests/visiting_cards"
-                    value={formData.visitingCardPhotoUri}
-                    onChange={(url: string) => handleInputChange("visitingCardPhotoUri", url)}
-                    required
-                  />
-                </div>
-
-                <div>
-                  <FileUpload
-                    label="Mill / Factory Front Photo"
-                    folder="supplier_requests/mill_front"
+                    label="Shop Front / Showroom Photo"
+                    folder="suppliers/shop"
+                    prefix="shop_photo"
                     value={formData.shopPhotoUri}
-                    onChange={(url: string) => handleInputChange("shopPhotoUri", url)}
-                    required
+                    onChange={(url) => handleInputChange("shopPhotoUri", url)}
+                    description="Photo of shop front showing board or banner"
                   />
                 </div>
 
                 <div>
                   <FileUpload
-                    label="GST Certificate"
-                    folder="supplier_requests/gst_certs"
-                    value={formData.gstCertPhotoUri}
-                    onChange={(url: string) => handleInputChange("gstCertPhotoUri", url)}
-                    required
-                  />
-                </div>
-
-                <div>
-                  <FileUpload
-                    label="PAN Card Photo"
-                    folder="supplier_requests/pan_cards"
-                    value={formData.panPhotoUri}
-                    onChange={(url: string) => handleInputChange("panPhotoUri", url)}
-                    required
-                  />
-                </div>
-
-                <div>
-                  <FileUpload
-                    label="ID Proof / Aadhaar (Front Side)"
-                    folder="supplier_requests/id_proofs"
-                    value={formData.idProofPhotoUri}
-                    onChange={(url: string) => handleInputChange("idProofPhotoUri", url)}
-                    description="Owner ID front"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <FileUpload
-                    label="ID Proof / Aadhaar (Back Side)"
-                    folder="supplier_requests/id_proofs"
-                    value={formData.idProofBackPhotoUri}
-                    onChange={(url: string) => handleInputChange("idProofBackPhotoUri", url)}
-                    description="Owner ID back with address"
-                    required
+                    label="Godown / Warehouse Photo"
+                    folder="suppliers/godown"
+                    prefix="godown_photo"
+                    value={formData.godownPhotoUri}
+                    onChange={(url) => handleInputChange("godownPhotoUri", url)}
+                    description="Photo of godown or stock facility"
                   />
                 </div>
 
                 <div className="sm:col-span-2">
                   <FileUpload
-                    label="Cancelled Cheque (Bank Account Proof)"
-                    folder="supplier_requests/cancel_cheques"
-                    value={formData.cancelChequePhotoUri}
-                    onChange={(url: string) => handleInputChange("cancelChequePhotoUri", url)}
-                    description="Cheque with 'CANCELLED' written across it — shows A/C no. & IFSC"
-                    required
+                    label="Visiting Card Photo (Optional)"
+                    folder="suppliers/cards"
+                    prefix="visiting_card"
+                    value={formData.visitingCardPhotoUri}
+                    onChange={(url) => handleInputChange("visitingCardPhotoUri", url)}
+                    description="Optional visiting card for contact records"
                   />
                 </div>
               </div>
-            </div>
-          )}
 
-          {/* STEP 5: PHONE VERIFICATION & SUBMISSION */}
-          {currentStep === 5 && (
-            <div className="space-y-4">
-              <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3 mb-4">
-                <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                  <Phone className="w-4 h-4 text-emerald-600" />
-                  <span>Step 5: Verify Mobile & Submit</span>
-                </h3>
-                <p className="text-xs text-zinc-500 mt-0.5">
-                  Verify your mobile number via 6-digit SMS code to finalize your registration.
-                </p>
-              </div>
-
-              <div className="bg-zinc-50 dark:bg-zinc-800/60 p-4 rounded-xl border border-zinc-200 dark:border-zinc-700 space-y-2">
-                <div className="flex justify-between text-xs">
-                  <span className="text-zinc-500">Firm Name:</span>
-                  <span className="font-bold text-zinc-900 dark:text-zinc-100">{formData.firmName}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-zinc-500">{formData.gstin ? "GSTIN:" : "Mobile:"}</span>
-                  <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">
-                    {formData.gstin || `+91 ${formData.phone.replace(/\D/g, "").slice(-10)}`}
-                  </span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-zinc-500">Classification:</span>
-                  <span className="font-semibold text-emerald-600">{formData.type}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-zinc-500">Contact:</span>
-                  <span className="font-medium text-zinc-800 dark:text-zinc-200">{formData.contactPerson} ({formData.phone})</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-zinc-500">Market / City:</span>
-                  <span className="font-medium text-zinc-800 dark:text-zinc-200">{formData.marketArea}, {formData.city}</span>
-                </div>
-              </div>
-
-              {!otpSent ? (
-                <div className="text-center py-4 space-y-3">
-                  <p className="text-xs text-zinc-600 dark:text-zinc-400">
-                    We will send a one-time password (OTP) via SMS to <strong>+91 {formData.phone}</strong>.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={handleSendOtp}
-                    disabled={isSendingOtp}
-                    className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-all disabled:opacity-50"
-                  >
-                    {isSendingOtp ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>Sending OTP...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Send className="w-4 h-4" />
-                        <span>Send Verification OTP</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-4 pt-2">
+              {/* Bank Details (Optional) */}
+              <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800">
+                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                  Bank Details (Optional)
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                      Enter 6-Digit OTP Code
-                    </label>
                     <input
                       type="text"
-                      maxLength={6}
-                      value={otpCode}
-                      onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
-                      placeholder="123456"
-                      className="w-full h-12 text-center tracking-widest text-lg font-bold rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      value={formData.bankName}
+                      onChange={(e) => handleInputChange("bankName", e.target.value)}
+                      placeholder="Bank Name (Optional)"
+                      className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
                   </div>
-
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-zinc-500">Didn't receive code?</span>
-                    {resendTimer > 0 ? (
-                      <span className="text-zinc-400">Resend in {resendTimer}s</span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={handleSendOtp}
-                        disabled={isSendingOtp}
-                        className="text-emerald-600 hover:underline font-semibold"
-                      >
-                        Resend OTP
-                      </button>
-                    )}
+                  <div>
+                    <input
+                      type="text"
+                      value={formData.accountNumber}
+                      onChange={(e) => handleInputChange("accountNumber", e.target.value)}
+                      placeholder="Account Number (Optional)"
+                      className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                    />
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={handleVerifyAndSubmit}
-                    disabled={isVerifyingOtp || otpCode.length < 6}
-                    className="w-full h-11 rounded-xl font-bold text-xs bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 text-white shadow-md transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    {isVerifyingOtp ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>Verifying & Submitting...</span>
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>Verify & Submit Registration</span>
-                      </>
-                    )}
-                  </button>
+                  <div>
+                    <input
+                      type="text"
+                      value={formData.ifscCode}
+                      onChange={(e) => handleInputChange("ifscCode", e.target.value.toUpperCase())}
+                      placeholder="IFSC Code (Optional)"
+                      className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono uppercase"
+                    />
+                  </div>
                 </div>
-              )}
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                  Additional Notes (Optional)
+                </label>
+                <AutoGrowTextarea
+                  minRows={2}
+                  value={formData.notes}
+                  onChange={(val) => handleInputChange("notes", val)}
+                  placeholder="Any special remarks or product details..."
+                  className="w-full p-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              {/* Summary Card */}
+              <div className="bg-zinc-50 dark:bg-zinc-800/60 p-4 rounded-xl border border-zinc-200 dark:border-zinc-700 space-y-1.5 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Firm / Shop:</span>
+                  <span className="font-bold text-zinc-900 dark:text-zinc-100">{formData.firmName || "—"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Type:</span>
+                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">{formData.type}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Categories:</span>
+                  <span className="font-medium text-zinc-800 dark:text-zinc-200">{selectedCategories.join(", ") || "None"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Market Hub:</span>
+                  <span className="font-medium text-zinc-800 dark:text-zinc-200">{formData.marketArea}</span>
+                </div>
+              </div>
+
+              {/* Direct Submit Button (NO OTP required!) */}
+              <button
+                type="button"
+                onClick={handleSubmitSupplier}
+                disabled={isSubmitting}
+                className="w-full h-12 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50 mt-4"
+              >
+                {isSubmitting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Submitting Registration...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    <span>Submit Supplier Registration</span>
+                  </>
+                )}
+              </button>
             </div>
           )}
 
-          {/* Navigation Buttons */}
+          {/* Navigation Footer */}
           <div className="mt-8 pt-4 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {currentStep > 1 ? (
+            <div>
+              {currentStep > 1 && (
                 <button
                   type="button"
                   onClick={goToPrevStep}
@@ -1434,40 +1230,33 @@ export function SupplierRegistrationView() {
                   <ArrowLeft className="w-3.5 h-3.5" />
                   <span>Back</span>
                 </button>
-              ) : null}
-
-              {currentStep < 5 && isStep1Complete && (
-                <button
-                  type="button"
-                  onClick={handleSkipToSubmit}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-emerald-600 dark:border-emerald-500 bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-xs font-bold transition-all shadow-xs"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                  <span>
-                    {lang === "hi"
-                      ? "सीधे सबमिट करें"
-                      : lang === "gu"
-                      ? "સીધા સબમિટ કરો"
-                      : "Skip to Submit"}
-                  </span>
-                  <ArrowRight className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                </button>
               )}
             </div>
 
-            {currentStep < 5 && (
-              <button
-                type="button"
-                onClick={goToNextStep}
-                className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 text-white text-xs font-bold shadow-md transition-all"
-              >
-                <span>Continue</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            )}
+            <div>
+              {currentStep < 3 && (
+                <button
+                  type="button"
+                  onClick={goToNextStep}
+                  className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 text-white text-xs font-bold shadow-md transition-all"
+                >
+                  <span>Continue</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Floating Toast Notification */}
+      <Toast
+        open={toast.open}
+        message={toast.message}
+        title={toast.title}
+        type={toast.type}
+        onClose={() => setToast((prev) => ({ ...prev, open: false }))}
+      />
     </div>
   )
 }

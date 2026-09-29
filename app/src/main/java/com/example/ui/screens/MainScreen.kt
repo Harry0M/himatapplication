@@ -301,7 +301,7 @@ fun MainScreen(
                         Text(
                             text = "Suppliers (${suppliers.size})",
                             style = MaterialTheme.typography.labelLarge,
-                            fontWeight = if (selectedTab == MainScreenTab.SUPPLIERS) FontWeight.Bold else FontWeight.Medium,
+                            fontWeight = FontWeight.SemiBold,
                             color = if (selectedTab == MainScreenTab.SUPPLIERS) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -323,7 +323,7 @@ fun MainScreen(
                         Text(
                             text = "Order Tracker (${transactions.size})",
                             style = MaterialTheme.typography.labelLarge,
-                            fontWeight = if (selectedTab == MainScreenTab.TRANSACTIONS) FontWeight.Bold else FontWeight.Medium,
+                            fontWeight = FontWeight.SemiBold,
                             color = if (selectedTab == MainScreenTab.TRANSACTIONS) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -613,7 +613,7 @@ fun SuppliersListView(
                                         else -> "All (${suppliers.size})"
                                     },
                                     style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                    fontWeight = FontWeight.SemiBold
                                 )
                             },
                             colors = FilterChipDefaults.filterChipColors(
@@ -1073,7 +1073,7 @@ fun TransactionStatusTrackerView(
                                 Text(
                                     text = "$st ($count)",
                                     style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                    fontWeight = FontWeight.SemiBold
                                 )
                             },
                             colors = FilterChipDefaults.filterChipColors(
@@ -1784,30 +1784,17 @@ fun QuickAddTransactionDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
-                        value = caseSizeText,
-                        onValueChange = { caseSizeText = it },
-                        label = { Text("Case Size") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 54.dp),
-                        singleLine = true
-                    )
-                    OutlinedTextField(
-                        value = transporter,
-                        onValueChange = { transporter = it },
-                        label = { Text("Transporter") },
-                        placeholder = { Text("e.g. VRL") },
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 54.dp),
-                        singleLine = true
-                    )
-                }
+                OutlinedTextField(
+                    value = transporter,
+                    onValueChange = { transporter = it },
+                    label = { Text("Transporter") },
+                    placeholder = { Text("e.g. VRL") },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 54.dp),
+                    singleLine = true
+                )
 
                 if (errorMsg.isNotBlank()) {
                     Spacer(modifier = Modifier.height(8.dp))

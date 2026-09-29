@@ -46,12 +46,17 @@ import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.LocalShipping
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.TextButton
 import com.example.ui.viewmodel.AppScreen
 import com.example.util.PdfGenerator
 import androidx.compose.ui.layout.ContentScale
@@ -96,12 +101,20 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.local.entity.CustomerEntity
+import com.example.data.local.entity.EmployeeEntity
 import com.example.data.local.entity.PurchaseEntryEntity
 import com.example.data.local.entity.SupplierEntity
 import com.example.data.local.entity.VisitEntity
+import com.example.ui.components.CustomersList
 import com.example.ui.components.DeliveryStatusBadge
+import com.example.ui.components.ReferredList
+import com.example.ui.components.SectionHeader
 import com.example.ui.components.SupplierTypeBadge
+import com.example.ui.components.TripsList
 import com.example.ui.viewmodel.HimatViewModel
+import com.example.util.ReferrerTypes
+import com.example.util.RelatedLogic
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -110,19 +123,29 @@ fun SupplierDetailScreen(
     supplier: SupplierEntity,
     onBack: () -> Unit,
     onOpenVisit: (VisitEntity) -> Unit = {},
-    onOpenOrder: (PurchaseEntryEntity) -> Unit = { viewModel.openOrderDetail(it, returnScreen = AppScreen.SUPPLIER_DETAIL) }
+    onOpenOrder: (PurchaseEntryEntity) -> Unit = { viewModel.openOrderDetail(it, returnScreen = AppScreen.SUPPLIER_DETAIL) },
+    onEditSupplier: ((SupplierEntity) -> Unit)? = null,
+    onDeleteSupplier: ((SupplierEntity) -> Unit)? = null,
+    onOpenCustomer: (CustomerEntity) -> Unit = { viewModel.openCustomerDetail(it) },
+    onOpenSupplier: (SupplierEntity) -> Unit = { viewModel.openSupplierDetail(it) },
+    onOpenEmployee: (EmployeeEntity) -> Unit = { viewModel.openEmployeeDetail(it) }
 ) {
     val context = LocalContext.current
     val allEntries by viewModel.allEntries.collectAsStateWithLifecycle()
     val allVisits by viewModel.allVisits.collectAsStateWithLifecycle()
     val allCustomers by viewModel.allCustomers.collectAsStateWithLifecycle()
+    val allSuppliers by viewModel.allSuppliers.collectAsStateWithLifecycle()
+    val allPeople by viewModel.allPeople.collectAsStateWithLifecycle()
 
     var searchQuery by remember { mutableStateOf("") }
     var activeParentFilter by remember { mutableStateOf<String?>("STATUS") }
     var filterStatus by remember { mutableStateOf("All") } // "All", "Pending", "Delivered"
-    var filterDateRange by remember { mutableStateOf("ALL") } // "ALL", "TODAY", "LAST_7", "THIS_MONTH"
+    var filterDateRange by remember { mutableStateOf("ALL") } // "ALL", "TODAY", "LAST_7", "THIS_MONTH", "CUSTOM"
+    var customDateRange by remember { mutableStateOf(com.example.util.DateRangeFilter()) }
+    var showCustomRangePicker by remember { mutableStateOf(false) }
     var filterCustomer by remember { mutableStateOf("All") }
     var filterTransporter by remember { mutableStateOf("All") }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
     val todayStr = remember {
         val cal = java.util.Calendar.getInstance()
@@ -145,11 +168,13 @@ fun SupplierDetailScreen(
     // All purchase entries belonging to this supplier (matched by ID, contact name, firm name, or brand)
     val supplierEntries = remember(allEntries, supplier.id, supplier.name, supplier.firmName, supplier.brand) {
         allEntries.filter {
-            it.supplierId == supplier.id ||
-            (supplier.name.isNotBlank() && it.supplierName.trim().equals(supplier.name.trim(), ignoreCase = true)) ||
-            (supplier.firmName.isNotBlank() && it.supplierName.trim().equals(supplier.firmName.trim(), ignoreCase = true)) ||
-            (supplier.brand.isNotBlank() && it.supplierName.contains(supplier.brand, ignoreCase = true))
-        }.sortedByDescending { it.id }
+            // Name / brand matching only for old orders saved without a supplier id
+            it.supplierId == supplier.id || (it.supplierId <= 0L && (
+                (supplier.name.isNotBlank() && it.supplierName.trim().equals(supplier.name.trim(), ignoreCase = true)) ||
+                (supplier.firmName.isNotBlank() && it.supplierName.trim().equals(supplier.firmName.trim(), ignoreCase = true)) ||
+                (supplier.brand.isNotBlank() && it.supplierName.contains(supplier.brand, ignoreCase = true))
+            ))
+        }.sortedByDescending { it.createdAt }
     }
 
     val distinctCustomers = remember(supplierEntries, visitMap) {
@@ -170,17 +195,18 @@ fun SupplierDetailScreen(
     val deliveredPieces = supplierEntries.filter { it.deliveryStatus == "Delivered" }.sumOf { it.pieces }
 
     // Filtered entries based on date range, status, customer, transporter, and search query
-    val filteredEntries = remember(supplierEntries, searchQuery, filterStatus, filterDateRange, filterCustomer, filterTransporter, visitMap) {
+    val filteredEntries = remember(supplierEntries, searchQuery, filterStatus, filterDateRange, customDateRange, filterCustomer, filterTransporter, visitMap) {
         supplierEntries.filter { entry ->
             val visit = visitMap[entry.visitId]
             val customerName = visit?.customerName ?: ""
-            val visitDate = visit?.date ?: ""
+            val visitDate = entry.orderDate.ifBlank { visit?.date ?: "" }
 
             // 1. Date Range Filter
             val matchesDate = when (filterDateRange) {
                 "TODAY" -> visitDate == todayStr
                 "LAST_7" -> visitDate >= last7DaysCutoff
                 "THIS_MONTH" -> visitDate.startsWith(thisMonthPrefix)
+                "CUSTOM" -> customDateRange.matches(visitDate)
                 else -> true
             }
             if (!matchesDate) return@filter false
@@ -216,6 +242,7 @@ fun SupplierDetailScreen(
     val listState = rememberLazyListState()
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
@@ -240,6 +267,40 @@ fun SupplierDetailScreen(
                     }
                 },
                 actions = {
+                    if (onEditSupplier != null) {
+                        FilledTonalIconButton(
+                            onClick = { onEditSupplier(supplier) },
+                            modifier = Modifier
+                                .size(38.dp)
+                                .minimumInteractiveComponentSize()
+                        ) {
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = "Edit Supplier",
+                                tint = Color(0xFF4338CA),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+
+                    if (onDeleteSupplier != null) {
+                        FilledTonalIconButton(
+                            onClick = { showDeleteConfirmDialog = true },
+                            modifier = Modifier
+                                .size(38.dp)
+                                .minimumInteractiveComponentSize()
+                        ) {
+                            Icon(
+                                Icons.Default.DeleteOutline,
+                                contentDescription = "Delete Supplier",
+                                tint = Color(0xFFDC2626),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+
                     if (supplier.phone.isNotBlank()) {
                         FilledTonalIconButton(
                             onClick = {
@@ -280,7 +341,7 @@ fun SupplierDetailScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFFF6F8FB)
+                    containerColor = MaterialTheme.colorScheme.surface
                 )
             )
         }
@@ -289,7 +350,7 @@ fun SupplierDetailScreen(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFFF6F8FB))
+                .background(MaterialTheme.colorScheme.background)
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp),
             contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp),
@@ -380,20 +441,6 @@ fun SupplierDetailScreen(
                                     fontSize = 10.5.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = Color(0xFF334155),
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                        if (supplier.defaultCaseSize > 0) {
-                            Surface(
-                                color = Color(0xFFF0FDF4),
-                                shape = RoundedCornerShape(4.dp)
-                            ) {
-                                Text(
-                                    text = "Pack: ${supplier.defaultCaseSize} pcs",
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF059669),
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
@@ -585,17 +632,26 @@ fun SupplierDetailScreen(
                 }
             }
 
-            // Extended Details (Office, Markets, Garments)
+            // Extended Details (Office, Factory, Bank, Markets, Garments)
             val officeAddr = supplier.officeAddress.ifBlank { supplier.address }
+            val hasBankDetails = supplier.bankName.isNotBlank() || supplier.accountNumber.isNotBlank() || supplier.ifscCode.isNotBlank()
+            val hasSystemPricing = supplier.systemMrpValue.isNotBlank() ||
+                    supplier.systemMrpPercent.isNotBlank() ||
+                    supplier.systemLessValue.isNotBlank() ||
+                    supplier.systemLessPercent.isNotBlank()
             val hasExtendedDetails = officeAddr.isNotBlank() ||
                     supplier.homeAddress.isNotBlank() ||
+                    supplier.city.isNotBlank() ||
                     supplier.officeLocation.isNotBlank() ||
                     supplier.personalLocation.isNotBlank() ||
                     supplier.shopLocations.isNotBlank() ||
                     supplier.markets.isNotBlank() ||
                     supplier.categories.isNotBlank() ||
+                    supplier.subCategories.isNotBlank() ||
                     supplier.garmentTypes.isNotBlank() ||
-                    supplier.referredBy.isNotBlank()
+                    supplier.referredBy.isNotBlank() ||
+                    hasSystemPricing ||
+                    hasBankDetails
 
             if (hasExtendedDetails) {
                 Surface(
@@ -605,11 +661,11 @@ fun SupplierDetailScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        if (officeAddr.isNotBlank() || supplier.officeLocation.isNotBlank()) {
+                        if (officeAddr.isNotBlank() || supplier.city.isNotBlank()) {
                             Row(verticalAlignment = Alignment.Top) {
-                                Text("Office/Mill: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                Text("Office/Shop: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
                                 Text(
-                                    text = listOfNotNull(officeAddr.takeIf { it.isNotBlank() }, supplier.officeLocation.takeIf { it.isNotBlank() }).joinToString(" • "),
+                                    text = listOfNotNull(officeAddr.takeIf { it.isNotBlank() }, supplier.city.takeIf { it.isNotBlank() }).joinToString(", "),
                                     fontSize = 11.sp,
                                     color = Color(0xFF1E293B)
                                 )
@@ -617,7 +673,7 @@ fun SupplierDetailScreen(
                         }
                         if (supplier.homeAddress.isNotBlank() || supplier.personalLocation.isNotBlank()) {
                             Row(verticalAlignment = Alignment.Top) {
-                                Text("Home/Fact: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                Text("Factory/Unit: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
                                 Text(
                                     text = listOfNotNull(supplier.homeAddress.takeIf { it.isNotBlank() }, supplier.personalLocation.takeIf { it.isNotBlank() }).joinToString(" • "),
                                     fontSize = 11.sp,
@@ -644,6 +700,40 @@ fun SupplierDetailScreen(
                                 Text(cats, fontSize = 11.sp, color = Color(0xFF6366F1), fontWeight = FontWeight.Medium)
                             }
                         }
+                        if (supplier.subCategories.isNotBlank()) {
+                            Row(verticalAlignment = Alignment.Top) {
+                                Text("Items: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                Text(supplier.subCategories, fontSize = 11.sp, color = Color(0xFF0F766E), fontWeight = FontWeight.Medium)
+                            }
+                        }
+                        if (hasSystemPricing) {
+                            Row(verticalAlignment = Alignment.Top) {
+                                Text("System Rates: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                val parts = mutableListOf<String>()
+                                if (supplier.systemMrpValue.isNotBlank() || supplier.systemMrpPercent.isNotBlank()) {
+                                    val name = supplier.systemMrpValue.ifBlank { "MRP" }
+                                    val pct = if (supplier.systemMrpPercent.isNotBlank()) " (${supplier.systemMrpPercent}%)" else ""
+                                    parts.add("$name$pct")
+                                }
+                                if (supplier.systemLessValue.isNotBlank() || supplier.systemLessPercent.isNotBlank()) {
+                                    val name = supplier.systemLessValue.ifBlank { "Less" }
+                                    val pct = if (supplier.systemLessPercent.isNotBlank()) " (-${supplier.systemLessPercent}%)" else ""
+                                    parts.add("$name$pct")
+                                }
+                                Text(parts.joinToString(" • "), fontSize = 11.sp, color = Color(0xFFB45309), fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        if (hasBankDetails) {
+                            Row(verticalAlignment = Alignment.Top) {
+                                Text("Bank A/C: ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                val bankParts = listOfNotNull(
+                                    supplier.bankName.takeIf { it.isNotBlank() },
+                                    supplier.accountNumber.takeIf { it.isNotBlank() }?.let { "A/C: $it" },
+                                    supplier.ifscCode.takeIf { it.isNotBlank() }?.let { "IFSC: $it" }
+                                )
+                                Text(bankParts.joinToString(" • "), fontSize = 11.sp, color = Color(0xFF047857), fontWeight = FontWeight.SemiBold)
+                            }
+                        }
                         if (supplier.referredBy.isNotBlank()) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("Referred by: ", fontSize = 11.sp, color = Color(0xFF64748B))
@@ -657,7 +747,8 @@ fun SupplierDetailScreen(
             // Compact "See KYC Documents" Expandable Option
             val supplierDocs = listOfNotNull(
                 supplier.visitingCardPhotoUri.takeIf { it.isNotBlank() }?.let { "Visiting Card" to it },
-                supplier.shopPhotoUri.takeIf { it.isNotBlank() }?.let { "Shop / Mill Front" to it }
+                supplier.shopPhotoUri.takeIf { it.isNotBlank() }?.let { "Shop Photo" to it },
+                supplier.godownPhotoUri.takeIf { it.isNotBlank() }?.let { "Godown Photo" to it }
             )
 
             if (supplierDocs.isNotEmpty()) {
@@ -781,15 +872,15 @@ fun SupplierDetailScreen(
     // 2. Compact 36dp Pill Search Bar (Fixed / Pinned directly below Hero)
     stickyHeader {
         Surface(
-            color = Color(0xFFF6F8FB),
+            color = MaterialTheme.colorScheme.background,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 4.dp)
         ) {
             Surface(
                 shape = CircleShape,
-                color = Color.White,
-                border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(36.dp)
@@ -856,6 +947,83 @@ fun SupplierDetailScreen(
         }
     }
 
+    // Trips this supplier was part of + parties this supplier referred
+    item {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            val supplierTrips = remember(supplierEntries, visitMap) {
+                supplierEntries.mapNotNull { visitMap[it.visitId] }.distinctBy { it.id }.sortedByDescending { it.date }
+            }
+            var showTrips by remember { mutableStateOf(false) }
+            SectionHeader(
+                title = "Trips with this supplier",
+                count = supplierTrips.size,
+                action = {
+                    if (supplierTrips.isNotEmpty()) {
+                        TextButton(onClick = { showTrips = !showTrips }) { Text(if (showTrips) "Hide" else "Show") }
+                    }
+                }
+            )
+            if (showTrips) {
+                TripsList(
+                    trips = supplierTrips,
+                    entries = supplierEntries,
+                    employees = allPeople,
+                    onOpenVisit = onOpenVisit,
+                    emptyText = "No trips yet"
+                )
+            }
+            // Retailers who bought from this supplier (through the trips above); a Sub Agent only sees theirs
+            val visibleCustomers by viewModel.visibleCustomers.collectAsStateWithLifecycle()
+            val buyers = remember(supplierTrips, allCustomers, visibleCustomers) {
+                val allowed = visibleCustomers.map { it.id }.toSet()
+                supplierTrips.mapNotNull { RelatedLogic.customerOfTrip(it, allCustomers) }
+                    .filter { !it.isDeleted && it.id in allowed }
+                    .distinctBy { it.id }
+                    .sortedBy { it.firmName.ifBlank { it.name }.lowercase() }
+            }
+            var showBuyers by remember { mutableStateOf(false) }
+            SectionHeader(
+                title = "Customers who bought here",
+                count = buyers.size,
+                action = {
+                    if (buyers.isNotEmpty()) {
+                        TextButton(onClick = { showBuyers = !showBuyers }) { Text(if (showBuyers) "Hide" else "Show") }
+                    }
+                }
+            )
+            if (showBuyers) {
+                CustomersList(
+                    customers = buyers,
+                    onOpenCustomer = onOpenCustomer,
+                    emptyText = "No customers yet"
+                )
+            }
+            val referrerNames = listOf(supplier.firmName, supplier.name)
+            val referredCustomers = remember(allCustomers, supplier) {
+                RelatedLogic.referredCustomers(allCustomers, ReferrerTypes.SUPPLIER, supplier.id, referrerNames)
+            }
+            val referredSuppliers = remember(allSuppliers, supplier) {
+                RelatedLogic.referredSuppliers(allSuppliers, ReferrerTypes.SUPPLIER, supplier.id, referrerNames).filter { it.id != supplier.id }
+            }
+            val referredPeople = remember(allPeople, supplier) {
+                RelatedLogic.referredPeople(allPeople, ReferrerTypes.SUPPLIER, supplier.id, referrerNames)
+            }
+            SectionHeader(
+                title = "Referred by this supplier",
+                count = referredCustomers.size + referredSuppliers.size + referredPeople.size
+            )
+            ReferredList(
+                customers = referredCustomers,
+                suppliers = referredSuppliers,
+                people = referredPeople,
+                onOpenCustomer = onOpenCustomer,
+                onOpenSupplier = onOpenSupplier,
+                onOpenEmployee = onOpenEmployee,
+                emptyText = "Nobody has been referred by this supplier yet."
+            )
+        }
+    }
+
     // Cascading Filter Chips
     item {
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -884,7 +1052,7 @@ fun SupplierDetailScreen(
                             Text(
                                 text = if (hasDateFilter) "Date: $filterDateRange" else "Date",
                                 fontSize = 11.5.sp,
-                                fontWeight = if (isDateSelected || hasDateFilter) FontWeight.Bold else FontWeight.Medium,
+                                fontWeight = FontWeight.SemiBold,
                                 color = if (isDateSelected) Color.White else if (hasDateFilter) Color(0xFF1D4ED8) else Color(0xFF334155),
                                 modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
                             )
@@ -904,7 +1072,7 @@ fun SupplierDetailScreen(
                             Text(
                                 text = if (hasStatusFilter) "Status: $filterStatus" else "Status",
                                 fontSize = 11.5.sp,
-                                fontWeight = if (isStatusSelected || hasStatusFilter) FontWeight.Bold else FontWeight.Medium,
+                                fontWeight = FontWeight.SemiBold,
                                 color = if (isStatusSelected) Color.White else if (hasStatusFilter) Color(0xFF1D4ED8) else Color(0xFF334155),
                                 modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
                             )
@@ -924,7 +1092,7 @@ fun SupplierDetailScreen(
                             Text(
                                 text = if (hasCustomerFilter) "Cust: $filterCustomer" else "Customer",
                                 fontSize = 11.5.sp,
-                                fontWeight = if (isCustomerSelected || hasCustomerFilter) FontWeight.Bold else FontWeight.Medium,
+                                fontWeight = FontWeight.SemiBold,
                                 color = if (isCustomerSelected) Color.White else if (hasCustomerFilter) Color(0xFF1D4ED8) else Color(0xFF334155),
                                 modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
                             )
@@ -944,7 +1112,7 @@ fun SupplierDetailScreen(
                             Text(
                                 text = if (hasTransporterFilter) "Trans: $filterTransporter" else "Transporter",
                                 fontSize = 11.5.sp,
-                                fontWeight = if (isTransporterSelected || hasTransporterFilter) FontWeight.Bold else FontWeight.Medium,
+                                fontWeight = FontWeight.SemiBold,
                                 color = if (isTransporterSelected) Color.White else if (hasTransporterFilter) Color(0xFF1D4ED8) else Color(0xFF334155),
                                 modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
                             )
@@ -993,7 +1161,8 @@ fun SupplierDetailScreen(
                                         "ALL" to "All Dates",
                                         "TODAY" to "Today",
                                         "LAST_7" to "Last 7 Days",
-                                        "THIS_MONTH" to "This Month"
+                                        "THIS_MONTH" to "This Month",
+                                        "CUSTOM" to (if (filterDateRange == "CUSTOM" && customDateRange.customLabel.isNotBlank()) customDateRange.customLabel else "Custom range")
                                     ).forEach { (rangeKey, label) ->
                                         val isSelected = filterDateRange == rangeKey
                                         Surface(
@@ -1002,12 +1171,12 @@ fun SupplierDetailScreen(
                                             border = BorderStroke(1.dp, if (isSelected) Color(0xFF2563EB) else Color(0xFFE2E8F0)),
                                             modifier = Modifier
                                                 .clip(CircleShape)
-                                                .clickable { filterDateRange = rangeKey }
+                                                .clickable { if (rangeKey == "CUSTOM") showCustomRangePicker = true else filterDateRange = rangeKey }
                                         ) {
                                             Text(
                                                 text = label,
                                                 fontSize = 11.sp,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                fontWeight = FontWeight.SemiBold,
                                                 color = if (isSelected) Color.White else Color(0xFF334155),
                                                 modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.5.dp)
                                             )
@@ -1032,7 +1201,7 @@ fun SupplierDetailScreen(
                                             Text(
                                                 text = label,
                                                 fontSize = 11.sp,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                fontWeight = FontWeight.SemiBold,
                                                 color = if (isSelected) Color.White else Color(0xFF334155),
                                                 modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.5.dp)
                                             )
@@ -1052,7 +1221,7 @@ fun SupplierDetailScreen(
                                         Text(
                                             text = "All Customers (${distinctCustomers.size})",
                                             fontSize = 11.sp,
-                                            fontWeight = if (isAllSelected) FontWeight.Bold else FontWeight.Medium,
+                                            fontWeight = FontWeight.SemiBold,
                                             color = if (isAllSelected) Color.White else Color(0xFF334155),
                                             modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.5.dp)
                                         )
@@ -1070,7 +1239,7 @@ fun SupplierDetailScreen(
                                             Text(
                                                 text = cust,
                                                 fontSize = 11.sp,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                fontWeight = FontWeight.SemiBold,
                                                 color = if (isSelected) Color.White else Color(0xFF334155),
                                                 modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.5.dp)
                                             )
@@ -1090,7 +1259,7 @@ fun SupplierDetailScreen(
                                         Text(
                                             text = "All Transporters",
                                             fontSize = 11.sp,
-                                            fontWeight = if (isAllSelected) FontWeight.Bold else FontWeight.Medium,
+                                            fontWeight = FontWeight.SemiBold,
                                             color = if (isAllSelected) Color.White else Color(0xFF334155),
                                             modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.5.dp)
                                         )
@@ -1108,7 +1277,7 @@ fun SupplierDetailScreen(
                                             Text(
                                                 text = tr,
                                                 fontSize = 11.sp,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                fontWeight = FontWeight.SemiBold,
                                                 color = if (isSelected) Color.White else Color(0xFF334155),
                                                 modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.5.dp)
                                             )
@@ -1190,6 +1359,48 @@ fun SupplierDetailScreen(
                 }
             }
         }
+    }
+
+    if (showCustomRangePicker) {
+        com.example.ui.dialogs.CustomDateRangePickerDialog(
+            initialStartMillis = customDateRange.customStartMillis,
+            initialEndMillis = customDateRange.customEndMillis,
+            onDismissRequest = { showCustomRangePicker = false },
+            onDateRangeSelected = { start, end, label ->
+                customDateRange = com.example.util.DateRangeFilter(
+                    preset = com.example.util.DatePreset.CUSTOM,
+                    customStartMillis = start,
+                    customEndMillis = end,
+                    customLabel = label
+                )
+                filterDateRange = "CUSTOM"
+                showCustomRangePicker = false
+            }
+        )
+    }
+
+    if (showDeleteConfirmDialog && onDeleteSupplier != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmDialog = false },
+            title = { Text("Delete Supplier?", fontWeight = FontWeight.Bold, color = Color(0xFFDC2626)) },
+            text = { Text("Are you sure you want to permanently delete \"${supplier.firmName.ifBlank { supplier.name }}\"? This action cannot be undone.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirmDialog = false
+                        onDeleteSupplier(supplier)
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFDC2626))
+                ) {
+                    Text("Delete", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 

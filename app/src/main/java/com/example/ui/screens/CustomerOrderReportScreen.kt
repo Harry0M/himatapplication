@@ -88,7 +88,9 @@ import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 import com.example.ui.viewmodel.HimatViewModel
 import com.example.util.PdfGenerator
+import com.example.util.RelatedLogic
 import com.example.util.ShareUtil
+import com.example.util.brandName
 import com.example.util.rememberDialogBottomPadding
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -111,6 +113,7 @@ fun CustomerOrderReportScreen(
     val allVisits by viewModel.allVisits.collectAsStateWithLifecycle()
     val allEntries by viewModel.allEntries.collectAsStateWithLifecycle()
     val allSuppliers by viewModel.allSuppliers.collectAsStateWithLifecycle()
+    val knownCustomerIds = remember(allCustomers) { allCustomers.map { it.id }.toSet() }
 
     var selectedCustomer by remember { mutableStateOf(initialCustomer) }
     var customerSearchQuery by remember { mutableStateOf("") }
@@ -154,7 +157,7 @@ fun CustomerOrderReportScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFFF6F8FB))
+                .background(MaterialTheme.colorScheme.background)
         ) {
             // Flat, borderless, clean header matching VisitsScreen & DeliveriesScreen
             Row(
@@ -165,16 +168,16 @@ fun CustomerOrderReportScreen(
             ) {
                 Surface(
                     shape = CircleShape,
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     shadowElevation = 0.dp,
-                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                     modifier = Modifier.size(38.dp)
                 ) {
                     IconButton(onClick = onBack, modifier = Modifier.size(38.dp)) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = NavyPrimary,
+                            tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -187,13 +190,13 @@ fun CustomerOrderReportScreen(
                         text = "Customer Reports",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = NavyPrimary,
+                        color = MaterialTheme.colorScheme.onSurface,
                         letterSpacing = (-0.2).sp
                     )
                     Text(
                         text = "Select a retailer to view all orders of all time",
                         fontSize = 11.5.sp,
-                        color = TextSecondary
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
@@ -289,8 +292,8 @@ fun CustomerOrderReportScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(filteredCustomers, key = { it.id }) { customer ->
-                        val customerVisits = remember(allVisits, customer.id) {
-                            allVisits.filter { it.customerId == customer.id }
+                        val customerVisits = remember(allVisits, customer, knownCustomerIds) {
+                            RelatedLogic.tripsOfCustomer(allVisits, customer, knownCustomerIds)
                         }
                         val customerVisitIds = remember(customerVisits) { customerVisits.map { it.id }.toSet() }
                         val customerOrdersCount = remember(allEntries, customerVisitIds) {
@@ -374,9 +377,9 @@ fun CustomerOrderReportScreen(
     // =========================================================================
     val customer = selectedCustomer!!
 
-    // Find all visits for this customer
-    val customerVisits = remember(allVisits, customer.id) {
-        allVisits.filter { it.customerId == customer.id }
+    // Find all visits for this customer (also trips saved without / with a stale customer id)
+    val customerVisits = remember(allVisits, customer, knownCustomerIds) {
+        RelatedLogic.tripsOfCustomer(allVisits, customer, knownCustomerIds)
     }
     val customerVisitIds = remember(customerVisits) { customerVisits.map { it.id }.toSet() }
 
@@ -476,7 +479,7 @@ fun CustomerOrderReportScreen(
     }
 
     Scaffold(
-        containerColor = Color(0xFFF6F8FB),
+        containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
             Surface(
                 color = MaterialTheme.colorScheme.surface,
@@ -505,7 +508,7 @@ fun CustomerOrderReportScreen(
                             Text("Prev", fontSize = 11.5.sp)
                         }
 
-                        Text("Page $safePage of $totalPages ($totalOrders orders)", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        Text("Page $safePage of $totalPages ($totalOrders orders)", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
 
                         OutlinedButton(
                             onClick = { if (currentPage < totalPages) currentPage++ },
@@ -543,7 +546,7 @@ fun CustomerOrderReportScreen(
                                             endDate = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date()),
                                             statusFilter = selectedStatus
                                         )
-                                        ShareUtil.sharePdfFile(context, pdfFile, "${customer.firmName} - Order Report")
+                                        ShareUtil.sharePdfFile(context, pdfFile, "${customer.brandName()} - Order Report | Himat Textile")
                                     } catch (e: Exception) {
                                         Toast.makeText(context, "Export error: ${e.message}", Toast.LENGTH_SHORT).show()
                                     } finally {
@@ -574,7 +577,7 @@ fun CustomerOrderReportScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .background(Color(0xFFF6F8FB))
+                .background(MaterialTheme.colorScheme.background)
         ) {
             // Flat, borderless, clean header matching VisitsScreen & DeliveriesScreen
             Row(
@@ -585,16 +588,16 @@ fun CustomerOrderReportScreen(
             ) {
                 Surface(
                     shape = CircleShape,
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     shadowElevation = 0.dp,
-                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                     modifier = Modifier.size(38.dp)
                 ) {
                     IconButton(onClick = { selectedCustomer = null }, modifier = Modifier.size(38.dp)) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = NavyPrimary,
+                            tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -788,7 +791,7 @@ fun CustomerOrderReportScreen(
                             Text(
                                 text = "$status ($count)",
                                 color = if (isSelected) Color.White else TextPrimary,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontWeight = FontWeight.SemiBold,
                                 fontSize = 12.sp,
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                             )
@@ -816,7 +819,7 @@ fun CustomerOrderReportScreen(
                                 Text(
                                     text = selectedSupplierName ?: "All Suppliers",
                                     color = if (isSupplierSelected) Color.White else TextPrimary,
-                                    fontWeight = if (isSupplierSelected) FontWeight.Bold else FontWeight.Medium,
+                                    fontWeight = FontWeight.SemiBold,
                                     fontSize = 12.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
@@ -899,7 +902,7 @@ fun CustomerOrderReportScreen(
                             Text(
                                 text = range,
                                 color = if (isSelected) Color.White else TextPrimary,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontWeight = FontWeight.SemiBold,
                                 fontSize = 12.sp,
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                             )
@@ -933,7 +936,7 @@ fun CustomerOrderReportScreen(
                             Text(
                                 text = if (isCustomSelected && customDateLabel.isNotBlank()) customDateLabel else "Custom 📅",
                                 color = if (isCustomSelected) Color.White else TextPrimary,
-                                fontWeight = if (isCustomSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontWeight = FontWeight.SemiBold,
                                 fontSize = 12.sp
                             )
                             if (isCustomSelected) {

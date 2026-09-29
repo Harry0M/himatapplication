@@ -87,12 +87,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.example.data.local.entity.CustomerEntity
 import com.example.data.local.entity.EmployeeEntity
 import com.example.data.local.entity.PurchaseEntryEntity
+import com.example.data.local.entity.SupplierEntity
 import com.example.data.local.entity.VisitEntity
+import com.example.ui.components.CustomersList
+import com.example.ui.components.DateRangeFilterBar
 import com.example.ui.components.DeliveryStatusBadge
+import com.example.ui.components.ReferredList
 import com.example.ui.components.SupplierTypeBadge
 import com.example.ui.viewmodel.HimatViewModel
+import com.example.util.DateRangeFilter
+import com.example.util.ReferrerTypes
+import com.example.util.RelatedLogic
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -100,36 +108,42 @@ fun EmployeeDetailScreen(
     viewModel: HimatViewModel,
     employee: EmployeeEntity,
     onBack: () -> Unit,
-    onOpenVisit: (VisitEntity) -> Unit
+    onOpenVisit: (VisitEntity) -> Unit,
+    onOpenCustomer: (CustomerEntity) -> Unit = { viewModel.openCustomerDetail(it) },
+    onOpenSupplier: (SupplierEntity) -> Unit = { viewModel.openSupplierDetail(it) },
+    onOpenEmployee: (EmployeeEntity) -> Unit = { viewModel.openEmployeeDetail(it) }
 ) {
     val context = LocalContext.current
     val allVisits by viewModel.allVisits.collectAsStateWithLifecycle()
     val allEntries by viewModel.allEntries.collectAsStateWithLifecycle()
     val allCustomers by viewModel.allCustomers.collectAsStateWithLifecycle()
+    val allSuppliers by viewModel.allSuppliers.collectAsStateWithLifecycle()
+    val allPeople by viewModel.allPeople.collectAsStateWithLifecycle()
+    var dateFilter by remember { mutableStateOf(DateRangeFilter()) }
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedFilterTab by remember { mutableStateOf("ALL") } // "ALL", "PENDING", "CLEARED", "VISITS"
 
     val listState = rememberLazyListState()
 
-    // All visits handled or assisted by this employee/agent
-    val employeeVisits = remember(allVisits, employee.id, employee.name) {
-        allVisits.filter {
-            it.employeeId == employee.id || it.employeeName.equals(employee.name, ignoreCase = true)
-        }.sortedByDescending { it.date }
+    // Every trip this salesman started, co-owned or joined (in the selected date range)
+    val employeeVisits = remember(allVisits, employee, dateFilter) {
+        RelatedLogic.filterTripsByDate(RelatedLogic.tripsOfStaff(allVisits, employee), dateFilter)
+            .sortedByDescending { it.date }
     }
 
-    val employeeVisitMap = remember(employeeVisits) {
-        employeeVisits.associateBy { it.id }
-    }
-    val employeeVisitIds = remember(employeeVisits) {
-        employeeVisits.map { it.id }.toSet()
+    // Lookup for any order (an order can belong to a trip another salesman started)
+    val employeeVisitMap = remember(allVisits) {
+        allVisits.associateBy { it.id }
     }
 
-    // All purchase entries where this employee assisted or contributed
-    val employeeEntries = remember(allEntries, employeeVisitIds) {
-        allEntries.filter { it.visitId in employeeVisitIds }
-            .sortedByDescending { it.id }
+    // Orders credited to this salesman (they are the order's salesman), in the selected date range
+    val employeeEntries = remember(allEntries, employeeVisitMap, employee, dateFilter) {
+        RelatedLogic.filterOrdersByDate(
+            RelatedLogic.ordersOfStaff(allEntries, employeeVisitMap, employee),
+            employeeVisitMap,
+            dateFilter
+        ).sortedByDescending { it.createdAt }
     }
 
     // Key metrics requested by the user:
@@ -176,6 +190,7 @@ fun EmployeeDetailScreen(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
@@ -188,7 +203,7 @@ fun EmployeeDetailScreen(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "Agent Performance, Assisted Orders & Bill Status",
+                            text = "Staff: trips, orders, customers & referrals",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -221,7 +236,7 @@ fun EmployeeDetailScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFFF6F8FB)
+                    containerColor = MaterialTheme.colorScheme.surface
                 )
             )
         }
@@ -230,7 +245,7 @@ fun EmployeeDetailScreen(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFFF6F8FB))
+                .background(MaterialTheme.colorScheme.background)
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp),
             contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp),
@@ -522,15 +537,15 @@ fun EmployeeDetailScreen(
     // 2. Compact 36dp Pill Search Bar (Fixed / Pinned directly below Hero)
     stickyHeader {
         Surface(
-            color = Color(0xFFF6F8FB),
+            color = MaterialTheme.colorScheme.background,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 4.dp)
         ) {
             Surface(
                 shape = CircleShape,
-                color = Color.White,
-                border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(36.dp)
@@ -597,8 +612,20 @@ fun EmployeeDetailScreen(
         }
     }
 
+    // Date range for trips and orders of this salesman
+    item {
+        DateRangeFilterBar(filter = dateFilter, onChange = { dateFilter = it })
+    }
+
     // Unboxed Segment Filter Chips
     item {
+        val addedCustomers = remember(allCustomers, employee) { RelatedLogic.customersAddedBy(allCustomers, employee) }
+        val staffNames = listOf(employee.name)
+        val referredCount = remember(allCustomers, allSuppliers, allPeople, employee) {
+            RelatedLogic.referredCustomers(allCustomers, ReferrerTypes.STAFF, employee.id, staffNames).size +
+                RelatedLogic.referredSuppliers(allSuppliers, ReferrerTypes.STAFF, employee.id, staffNames).size +
+                RelatedLogic.referredPeople(allPeople, ReferrerTypes.STAFF, employee.id, staffNames).size
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -607,10 +634,12 @@ fun EmployeeDetailScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
                     listOf(
-                        "ALL" to "All ($totalEntriesCount)",
-                        "PENDING" to "Pending ($pendingCount)",
-                        "CLEARED" to "Cleared ($clearedCount)",
-                        "VISITS" to "Visits ($totalVisitsCount)"
+                        "ALL" to "Orders ($totalEntriesCount)",
+                        "PENDING" to "Not delivered ($pendingCount)",
+                        "CLEARED" to "Delivered ($clearedCount)",
+                        "VISITS" to "Trips ($totalVisitsCount)",
+                        "CUSTOMERS" to "Customers (${addedCustomers.size})",
+                        "REFERRED" to "Referred ($referredCount)"
                     ).forEach { (tabKey, label) ->
                         val isSelected = selectedFilterTab == tabKey
                         Surface(
@@ -624,7 +653,7 @@ fun EmployeeDetailScreen(
                             Text(
                                 text = label,
                                 fontSize = 11.5.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontWeight = FontWeight.SemiBold,
                                 color = if (isSelected) Color.White else Color(0xFF334155),
                                 modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
                             )
@@ -634,7 +663,29 @@ fun EmployeeDetailScreen(
             }
 
             // View Content depending on Tab
-            if (selectedFilterTab == "VISITS") {
+            if (selectedFilterTab == "CUSTOMERS") {
+                item {
+                    val addedCustomers = remember(allCustomers, employee) { RelatedLogic.customersAddedBy(allCustomers, employee) }
+                    CustomersList(
+                        customers = addedCustomers,
+                        onOpenCustomer = onOpenCustomer,
+                        emptyText = "No customers are linked to ${employee.name} as handling salesman."
+                    )
+                }
+            } else if (selectedFilterTab == "REFERRED") {
+                item {
+                    val staffNames = listOf(employee.name)
+                    ReferredList(
+                        customers = remember(allCustomers, employee) { RelatedLogic.referredCustomers(allCustomers, ReferrerTypes.STAFF, employee.id, staffNames) },
+                        suppliers = remember(allSuppliers, employee) { RelatedLogic.referredSuppliers(allSuppliers, ReferrerTypes.STAFF, employee.id, staffNames) },
+                        people = remember(allPeople, employee) { RelatedLogic.referredPeople(allPeople, ReferrerTypes.STAFF, employee.id, staffNames) },
+                        onOpenCustomer = onOpenCustomer,
+                        onOpenSupplier = onOpenSupplier,
+                        onOpenEmployee = onOpenEmployee,
+                        emptyText = "Nobody has been referred by ${employee.name} yet."
+                    )
+                }
+            } else if (selectedFilterTab == "VISITS") {
                 // List of visits handled by this employee
                 if (employeeVisits.isEmpty()) {
                     item {

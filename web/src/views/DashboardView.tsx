@@ -128,28 +128,6 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
             Real-time live operations tracker across market trips, supplier mills, and sales staff.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="secondary"
-            shape="pill"
-            size="sm"
-            onClick={() => onNavigate("employees")}
-            className="border border-white/20 bg-white/10 text-white backdrop-blur hover:bg-white/20 text-xs"
-          >
-            <UserCheck className="mr-1.5 h-3.5 w-3.5 text-blue-400" />
-            <span>Staff Directory</span>
-          </Button>
-          <Button
-            variant="default"
-            shape="pill"
-            size="sm"
-            onClick={() => onNavigate("pending")}
-            className="bg-white text-zinc-900 hover:bg-zinc-100 text-xs font-semibold shadow-sm"
-          >
-            <AlertCircle className="mr-1.5 h-3.5 w-3.5 text-amber-500" />
-            <span>Pending Hub</span>
-          </Button>
-        </div>
       </div>
 
       {/* Employee Specific Filter Bar */}
@@ -279,10 +257,10 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
           </CardContent>
         </Card>
 
-        {/* Metric 4: Loose Packs Left */}
+        {/* Metric 4: Loose Packs Left (packed with the orders, so it opens the orders not delivered yet) */}
         <Card
           className="cursor-pointer border-zinc-200/80 hover:border-zinc-400 dark:border-zinc-800 dark:hover:border-zinc-700"
-          onClick={() => onNavigate("pending")}
+          onClick={() => onNavigate("deliveries")}
         >
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-xs font-medium text-muted-foreground">

@@ -3,9 +3,16 @@ package com.example
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import android.os.Build
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,26 +34,36 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.components.HimatTopBar
-import com.example.ui.dialogs.CreateVisitDialog
+import com.example.ui.dialogs.NewTripSheet
 import com.example.ui.dialogs.MixedPackDialog
+import com.example.ui.dialogs.CustomerRequestsDialog
+import com.example.ui.dialogs.DeleteImpactDialog
+import com.example.ui.dialogs.PermissionsSheet
 import com.example.ui.dialogs.RegistrationShareBottomSheet
+import com.example.ui.dialogs.RequestsHubSheet
 import com.example.ui.dialogs.RoleSwitcherDialog
+import com.example.ui.dialogs.SupplierRequestsDialog
 import com.example.ui.screens.AddEditMasterScreen
 import com.example.ui.screens.AddStopScreen
 import com.example.ui.screens.ChequePdcScreen
@@ -55,6 +72,7 @@ import com.example.ui.screens.BrandDetailScreen
 import com.example.ui.screens.CustomerReportScreen
 import com.example.ui.screens.CustomerOrderReportScreen
 import com.example.ui.screens.DashboardScreen
+import com.example.ui.screens.DeletionRequestsScreen
 import com.example.ui.screens.DeliveriesScreen
 import com.example.ui.screens.EmployeeDetailScreen
 import com.example.ui.screens.HomeScreen
@@ -98,16 +116,29 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import com.google.firebase.auth.FirebaseUser
 import com.example.ui.viewmodel.HimatViewModel
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.People
+import com.example.data.local.entity.CustomerEntity
+import com.example.ui.screens.MoreScreen
+import com.example.ui.screens.SubAgentDetailScreen
+import com.example.ui.screens.SubAgentFormScreen
+import com.example.ui.screens.SubAgentsScreen
+import com.example.util.AppNotifications
+import com.example.util.Roles
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(
-            statusBarStyle = androidx.activity.SystemBarStyle.light(
+            statusBarStyle = androidx.activity.SystemBarStyle.auto(
                 android.graphics.Color.TRANSPARENT,
                 android.graphics.Color.TRANSPARENT
             ),
-            navigationBarStyle = androidx.activity.SystemBarStyle.light(
+            navigationBarStyle = androidx.activity.SystemBarStyle.auto(
                 android.graphics.Color.TRANSPARENT,
                 android.graphics.Color.TRANSPARENT
             )
@@ -118,6 +149,19 @@ class MainActivity : ComponentActivity() {
                 val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
                 val isAuthorized by viewModel.isAuthorized.collectAsStateWithLifecycle()
                 val authorizationMessage by viewModel.authorizationMessage.collectAsStateWithLifecycle()
+
+                // Android 13+ asks before we may notify about the team's new trips and orders
+                val askNotifications = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestPermission()
+                ) { /* Declined is fine: the app works, it just stays quiet */ }
+                LaunchedEffect(currentUser) {
+                    if (currentUser != null &&
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        !AppNotifications.canPost(this@MainActivity)
+                    ) {
+                        askNotifications.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
 
                 if (currentUser == null) {
                     LoginScreen(
@@ -132,14 +176,117 @@ class MainActivity : ComponentActivity() {
                         onRetry = { viewModel.retryAuthorization() }
                     )
                 } else if (isAuthorized == null) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = androidx.compose.ui.Alignment.Center
-                    ) {
-                        CircularProgressIndicator(color = NavyPrimary)
-                    }
+                    AuthorizingScreen(
+                        onRetry = { viewModel.retryAuthorization() },
+                        onSignOut = { viewModel.signOut(this@MainActivity) }
+                    )
                 } else {
                     HimatApp(viewModel = viewModel)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AuthorizingScreen(
+    onRetry: () -> Unit,
+    onSignOut: () -> Unit
+) {
+    var showRetry by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(4500L)
+        showRetry = true
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFFFFFFFF),
+                        Color(0xFFF8FAFC),
+                        Color(0xFFEEF2F6)
+                    )
+                )
+            ),
+        contentAlignment = androidx.compose.ui.Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(32.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = Color.White,
+                shadowElevation = 6.dp,
+                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                modifier = Modifier.size(80.dp)
+            ) {
+                Box(
+                    contentAlignment = androidx.compose.ui.Alignment.Center,
+                    modifier = Modifier.padding(10.dp)
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.himat_logo),
+                        contentDescription = "Himat Textile Logo",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(28.dp))
+
+            CircularProgressIndicator(
+                color = NavyPrimary,
+                strokeWidth = 3.dp,
+                modifier = Modifier.size(38.dp)
+            )
+
+            Spacer(Modifier.height(20.dp))
+
+            Text(
+                text = "Verifying Access...",
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+                color = NavyPrimary
+            )
+
+            Spacer(Modifier.height(6.dp))
+
+            Text(
+                text = "Connecting to cloud database",
+                fontSize = 12.5.sp,
+                color = Color(0xFF64748B),
+                textAlign = TextAlign.Center
+            )
+
+            if (showRetry) {
+                Spacer(Modifier.height(24.dp))
+                Button(
+                    onClick = onRetry,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = NavyPrimary,
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Retry Connection", fontWeight = FontWeight.SemiBold)
+                }
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = onSignOut) {
+                    Text("Sign Out", color = Color(0xFF64748B), fontWeight = FontWeight.Medium)
                 }
             }
         }
@@ -178,16 +325,38 @@ fun AccessRestrictedScreen(
                 horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
             ) {
                 Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White,
+                    shadowElevation = 2.dp,
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    modifier = Modifier.size(60.dp)
+                ) {
+                    Box(
+                        contentAlignment = androidx.compose.ui.Alignment.Center,
+                        modifier = Modifier.padding(8.dp)
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.himat_logo),
+                            contentDescription = "Himat Textile Logo",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Surface(
                     shape = CircleShape,
                     color = accentColor.copy(alpha = 0.12f),
-                    modifier = Modifier.size(64.dp)
+                    modifier = Modifier.size(54.dp)
                 ) {
                     Box(contentAlignment = androidx.compose.ui.Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.Security,
                             contentDescription = "Restricted",
                             tint = accentColor,
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(28.dp)
                         )
                     }
                 }
@@ -299,7 +468,13 @@ fun AccessRestrictedScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Runs once when a screen has lost the record it needs (e.g. it was deleted): go back. */
+@Composable
+private fun MissingSelection(viewModel: HimatViewModel) {
+    LaunchedEffect(Unit) { viewModel.navigateBack() }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun HimatApp(viewModel: HimatViewModel = viewModel()) {
     val currentScreen by viewModel.currentScreen.collectAsStateWithLifecycle()
@@ -308,12 +483,18 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
     val selectedVisit by viewModel.selectedVisit.collectAsStateWithLifecycle()
     val selectedSupplierForCopy by viewModel.selectedSupplierForCopy.collectAsStateWithLifecycle()
 
-    val customers by viewModel.allCustomers.collectAsStateWithLifecycle()
+    val customers by viewModel.visibleCustomers.collectAsStateWithLifecycle()
+    val allCustomers by viewModel.allCustomers.collectAsStateWithLifecycle()
     val employees by viewModel.allEmployees.collectAsStateWithLifecycle()
+    val people by viewModel.allPeople.collectAsStateWithLifecycle()
     val suppliers by viewModel.allSuppliers.collectAsStateWithLifecycle()
+    val products by viewModel.allProducts.collectAsStateWithLifecycle()
+    val brands by viewModel.allBrands.collectAsStateWithLifecycle()
+    val transporters by viewModel.allTransporters.collectAsStateWithLifecycle()
+    val markets by viewModel.allMarkets.collectAsStateWithLifecycle()
+    val allEntries by viewModel.allEntries.collectAsStateWithLifecycle()
     val visitEntries by viewModel.visitEntries.collectAsStateWithLifecycle()
     val visitPackGroups by viewModel.visitPackGroups.collectAsStateWithLifecycle()
-    val historyItemCodes by viewModel.distinctItemCodes.collectAsStateWithLifecycle()
     val selectedCustomer by viewModel.selectedCustomer.collectAsStateWithLifecycle()
     val selectedSupplier by viewModel.selectedSupplier.collectAsStateWithLifecycle()
     val selectedEmployeeDetail by viewModel.selectedEmployeeDetail.collectAsStateWithLifecycle()
@@ -322,141 +503,60 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
     val selectedTransporter by viewModel.selectedTransporter.collectAsStateWithLifecycle()
     val selectedMarket by viewModel.selectedMarket.collectAsStateWithLifecycle()
     val selectedPurchaseEntry by viewModel.selectedPurchaseEntry.collectAsStateWithLifecycle()
-    val visitDetailReturnScreen by viewModel.visitDetailReturnScreen.collectAsStateWithLifecycle()
-    val orderDetailReturnScreen by viewModel.orderDetailReturnScreen.collectAsStateWithLifecycle()
+    val isCloudSyncing by viewModel.isCloudSyncing.collectAsStateWithLifecycle()
+    val supplierQueue by viewModel.supplierQueue.collectAsStateWithLifecycle()
 
     var showCreateVisitDialog by remember { mutableStateOf(false) }
-    var showRoleSwitcherDialog by remember { mutableStateOf(false) }
+    var createVisitCustomer by remember { mutableStateOf<CustomerEntity?>(null) }
     var showMixedPackDialog by remember { mutableStateOf(false) }
-    var showRegistrationShareSheet by remember { mutableStateOf(false) }
 
-    val isDetailOrDocumentScreen = currentScreen in listOf(
-        AppScreen.VISIT_DETAIL,
-        AppScreen.ADD_STOP,
-        AppScreen.CUSTOMER_REPORT_VIEW,
-        AppScreen.SUPPLIER_COPY_VIEW,
-        AppScreen.CUSTOMER_DETAIL,
-        AppScreen.SUPPLIER_DETAIL,
-        AppScreen.EMPLOYEE_DETAIL,
-        AppScreen.PRODUCT_DETAIL,
-        AppScreen.BRAND_DETAIL,
-        AppScreen.TRANSPORTER_DETAIL,
-        AppScreen.MARKET_DETAIL,
-        AppScreen.ORDER_DETAIL,
-        AppScreen.ANALYTICS_DASHBOARD,
-        AppScreen.ADD_EDIT_MASTER,
-        AppScreen.PAYMENTS,
-        AppScreen.PENDINGS,
-        AppScreen.PROFILE,
-        AppScreen.LEADS,
-        AppScreen.PURCHASE_ORDERS,
-        AppScreen.CUSTOMER_ORDERS_REPORT,
-        AppScreen.CHEQUE_PDC
-    )
+    // Registration inbox opened from the top bar: both databases in one sheet
+    val pendingCustomerRequests by viewModel.pendingRegistrationRequestsCount.collectAsStateWithLifecycle()
+    val pendingSupplierRequests by viewModel.pendingSupplierRegistrationRequestsCount.collectAsStateWithLifecycle()
+    val pendingDelete by viewModel.pendingDelete.collectAsStateWithLifecycle()
+    val syncStatus by viewModel.syncStatus.collectAsStateWithLifecycle()
+    var showAccessSheet by remember { mutableStateOf(false) }
+    var showRequestsHub by remember { mutableStateOf(false) }
+    var showCustomerRequestsFull by remember { mutableStateOf(false) }
+    var showSupplierRequestsFull by remember { mutableStateOf(false) }
+    var showShareLinkSheet by remember { mutableStateOf(false) }
 
-    // Screens that display their own integrated flat header
-    val screensWithOwnHeader = listOf(
-        AppScreen.VISITS,
-        AppScreen.CUSTOMER_MASTER,
-        AppScreen.SUPPLIER_MASTER,
-        AppScreen.EMPLOYEE_MASTER,
-        AppScreen.PRODUCT_MASTER,
-        AppScreen.BRAND_MASTER,
-        AppScreen.TRANSPORTER_MASTER,
-        AppScreen.MARKET_MASTER,
-        AppScreen.VISIT_DETAIL,
-        AppScreen.ADD_STOP,
-        AppScreen.CUSTOMER_REPORT_VIEW,
-        AppScreen.SUPPLIER_COPY_VIEW,
-        AppScreen.CUSTOMER_DETAIL,
-        AppScreen.SUPPLIER_DETAIL,
-        AppScreen.EMPLOYEE_DETAIL,
-        AppScreen.PRODUCT_DETAIL,
-        AppScreen.BRAND_DETAIL,
-        AppScreen.TRANSPORTER_DETAIL,
-        AppScreen.MARKET_DETAIL,
-        AppScreen.ORDER_DETAIL,
-        AppScreen.ANALYTICS_DASHBOARD,
-        AppScreen.ADD_EDIT_MASTER,
-        AppScreen.PAYMENTS,
-        AppScreen.PENDINGS,
-        AppScreen.PROFILE,
-        AppScreen.LEADS,
-        AppScreen.PURCHASE_ORDERS,
-        AppScreen.CUSTOMER_ORDERS_REPORT,
-        AppScreen.CHEQUE_PDC
-    )
+    val isAgent = Roles.isAgent(currentRole)
+    val isTabScreen = currentScreen in AppScreen.ROOT_SCREENS || currentScreen in AppScreen.MASTER_SCREENS
 
-    // Handle Android system back button smoothly
-    BackHandler(enabled = currentScreen != AppScreen.DASHBOARD) {
-        when (currentScreen) {
-            AppScreen.CUSTOMER_REPORT_VIEW,
-            AppScreen.SUPPLIER_COPY_VIEW,
-            AppScreen.ADD_STOP -> {
-                viewModel.navigateTo(AppScreen.VISIT_DETAIL)
-            }
-            AppScreen.VISIT_DETAIL -> {
-                viewModel.navigateTo(visitDetailReturnScreen)
-            }
-            AppScreen.ORDER_DETAIL -> {
-                viewModel.navigateTo(orderDetailReturnScreen)
-            }
-            AppScreen.PRODUCT_DETAIL -> {
-                viewModel.navigateTo(AppScreen.PRODUCT_MASTER)
-            }
-            AppScreen.BRAND_DETAIL -> {
-                viewModel.navigateTo(AppScreen.BRAND_MASTER)
-            }
-            AppScreen.TRANSPORTER_DETAIL -> {
-                viewModel.navigateTo(AppScreen.TRANSPORTER_MASTER)
-            }
-            AppScreen.MARKET_DETAIL -> {
-                viewModel.navigateTo(AppScreen.MARKET_MASTER)
-            }
-            AppScreen.CUSTOMER_DETAIL -> {
-                viewModel.navigateTo(AppScreen.CUSTOMER_MASTER)
-            }
-            AppScreen.SUPPLIER_DETAIL -> {
-                viewModel.navigateTo(AppScreen.SUPPLIER_MASTER)
-            }
-            AppScreen.EMPLOYEE_DETAIL -> {
-                viewModel.navigateTo(AppScreen.EMPLOYEE_MASTER)
-            }
-            AppScreen.ADD_EDIT_MASTER -> {
-                viewModel.navigateTo(AppScreen.CUSTOMER_MASTER)
-            }
-            AppScreen.PURCHASE_ORDERS,
-            AppScreen.CUSTOMER_ORDERS_REPORT,
-            AppScreen.ANALYTICS_DASHBOARD,
-            AppScreen.PROFILE -> {
-                viewModel.navigateTo(AppScreen.DASHBOARD)
-            }
-            else -> {
-                viewModel.navigateTo(AppScreen.DASHBOARD)
-            }
-        }
+    fun startTrip(customer: CustomerEntity? = null) {
+        createVisitCustomer = customer
+        showCreateVisitDialog = true
     }
 
+    // One back behaviour everywhere: return to exactly where the user came from
+    BackHandler(enabled = currentScreen != AppScreen.DASHBOARD) {
+        viewModel.navigateBack()
+    }
+
+    val goBack: () -> Unit = { viewModel.navigateBack() }
+
     Scaffold(
-        containerColor = Color(0xFFF6F8FB),
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            if (currentScreen !in screensWithOwnHeader) {
+            if (currentScreen == AppScreen.DASHBOARD) {
                 HimatTopBar(
                     role = currentRole,
                     salesmanName = currentEmployee?.name,
                     onOpenProfile = { viewModel.navigateTo(AppScreen.PROFILE) },
-                    onOpenShareInvite = { showRegistrationShareSheet = true }
+                    // Sub Agents do not verify registrations, so they do not get the inbox
+                    onOpenRequests = if (isAgent) null else ({ showRequestsHub = true }),
+                    requestsCount = pendingCustomerRequests + pendingSupplierRequests,
+                    syncStatus = syncStatus,
+                    onOpenSyncInfo = { showAccessSheet = true },
+                    showShare = false
                 )
             }
         },
         bottomBar = {
-            // Show bottom bar only on primary top-level tabs
-            if (!isDetailOrDocumentScreen) {
-                Surface(
-                    color = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 0.dp
-                ) {
-                    androidx.compose.foundation.layout.Column {
+            if (isTabScreen) {
+                Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
+                    Column {
                         HorizontalDivider(
                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
                             thickness = 0.6.dp
@@ -466,475 +566,392 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
                             tonalElevation = 0.dp
                         ) {
                             val navItemColors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = NavyPrimary,
-                                selectedTextColor = NavyPrimary,
-                                indicatorColor = NavyPrimary.copy(alpha = 0.12f),
+                                selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
                                 unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                 unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-
                             NavigationBarItem(
                                 selected = currentScreen == AppScreen.DASHBOARD,
                                 onClick = { viewModel.navigateTo(AppScreen.DASHBOARD) },
-                                icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
-                                label = { Text("Home", style = MaterialTheme.typography.labelMedium) },
+                                icon = { Icon(Icons.Default.Home, contentDescription = null) },
+                                label = { Text("Home") },
                                 colors = navItemColors
                             )
-
                             NavigationBarItem(
                                 selected = currentScreen == AppScreen.VISITS,
                                 onClick = { viewModel.navigateTo(AppScreen.VISITS) },
-                                icon = { Icon(Icons.AutoMirrored.Filled.Assignment, contentDescription = "Visits") },
-                                label = { Text("Visits", style = MaterialTheme.typography.labelMedium) },
+                                icon = { Icon(Icons.Default.Map, contentDescription = null) },
+                                label = { Text("Trips") },
                                 colors = navItemColors
                             )
-
                             NavigationBarItem(
-                                selected = currentScreen in listOf(
-                                    AppScreen.CUSTOMER_MASTER,
-                                    AppScreen.SUPPLIER_MASTER,
-                                    AppScreen.EMPLOYEE_MASTER,
-                                    AppScreen.PRODUCT_MASTER,
-                                    AppScreen.BRAND_MASTER,
-                                    AppScreen.TRANSPORTER_MASTER,
-                                    AppScreen.MARKET_MASTER
-                                ),
-                                onClick = { viewModel.navigateTo(AppScreen.CUSTOMER_MASTER) },
-                                icon = { Icon(Icons.Default.Storefront, contentDescription = "Masters") },
-                                label = { Text("Masters", style = MaterialTheme.typography.labelMedium) },
+                                selected = currentScreen == AppScreen.PURCHASE_ORDERS,
+                                onClick = { viewModel.openOrders() },
+                                icon = { Icon(Icons.AutoMirrored.Filled.ReceiptLong, contentDescription = null) },
+                                label = { Text("Orders") },
                                 colors = navItemColors
                             )
-
                             NavigationBarItem(
-                                selected = currentScreen == AppScreen.DELIVERIES,
-                                onClick = { viewModel.navigateTo(AppScreen.DELIVERIES) },
-                                icon = { Icon(Icons.Default.LocalShipping, contentDescription = "Deliveries") },
-                                label = { Text("Deliveries", style = MaterialTheme.typography.labelMedium) },
+                                selected = currentScreen in AppScreen.MASTER_SCREENS,
+                                onClick = {
+                                    if (isAgent) viewModel.openMasterList(com.example.ui.viewmodel.MasterTab.CUSTOMERS)
+                                    else viewModel.navigateTo(AppScreen.MASTERS)
+                                },
+                                icon = { Icon(if (isAgent) Icons.Default.People else Icons.Default.Storefront, contentDescription = null) },
+                                label = { Text(if (isAgent) "Customers" else "Masters") },
                                 colors = navItemColors
                             )
-
                             NavigationBarItem(
-                                selected = currentScreen == AppScreen.REPORTS,
-                                onClick = { viewModel.navigateTo(AppScreen.REPORTS) },
-                                icon = { Icon(Icons.Default.Assessment, contentDescription = "Reports") },
-                                label = { Text("Reports", style = MaterialTheme.typography.labelMedium) },
+                                selected = currentScreen == AppScreen.MORE,
+                                onClick = { viewModel.navigateTo(AppScreen.MORE) },
+                                icon = { Icon(Icons.Default.MoreHoriz, contentDescription = null) },
+                                label = { Text("More") },
                                 colors = navItemColors
                             )
                         }
                     }
                 }
             }
-        },
+        }
     ) { paddingValues ->
-        val isCloudSyncing by viewModel.isCloudSyncing.collectAsStateWithLifecycle()
-        PullToRefreshBox(
-            isRefreshing = isCloudSyncing,
-            onRefresh = { viewModel.refreshAllData() },
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
+        // consumeWindowInsets: screens with their own Scaffold / top bar no longer add the
+        // status and navigation bar space a second time (this caused gaps and cut-off content).
+        val contentModifier = Modifier
+            .fillMaxSize()
+            .padding(paddingValues)
+            .consumeWindowInsets(paddingValues)
+
+        val router: @Composable () -> Unit = {
             when (currentScreen) {
-                AppScreen.DASHBOARD -> {
-                    HomeScreen(
-                        viewModel = viewModel,
-                        onNavigate = { viewModel.navigateTo(it) },
-                        onOpenNewVisit = { showCreateVisitDialog = true },
-                        onOpenVisit = { viewModel.openVisitDetail(it) },
-                        onOpenSupplier = { viewModel.openSupplierDetail(it) },
-                        onOpenMixedPack = { showMixedPackDialog = true },
-                        onSwitchRole = { viewModel.navigateTo(AppScreen.PROFILE) }
-                    )
-                }
+                AppScreen.DASHBOARD -> HomeScreen(
+                    viewModel = viewModel,
+                    onOpenNewVisit = { startTrip() },
+                    onOpenVisit = { viewModel.openVisitDetail(it) },
+                    onOpenOrder = { viewModel.openOrderDetail(it) },
+                    onOpenRequests = { showRequestsHub = true }
+                )
 
-                AppScreen.ANALYTICS_DASHBOARD -> {
-                    DashboardScreen(
-                        viewModel = viewModel,
-                        onNavigate = { viewModel.navigateTo(it) },
-                        onOpenNewVisit = { showCreateVisitDialog = true },
-                        onOpenVisit = { viewModel.openVisitDetail(it) },
-                        onBack = { viewModel.navigateTo(AppScreen.DASHBOARD) }
-                    )
-                }
+                AppScreen.VISITS -> VisitsScreen(
+                    viewModel = viewModel,
+                    onOpenVisit = { viewModel.openVisitDetail(it) },
+                    onOpenNewVisit = { startTrip() }
+                )
 
-                AppScreen.SUPPLIER_HUB -> {
-                    MainScreen(
-                        viewModel = viewModel,
-                        onNavigate = { viewModel.navigateTo(it) },
-                        onOpenNewVisit = { showCreateVisitDialog = true }
-                    )
-                }
+                AppScreen.PURCHASE_ORDERS -> PurchaseOrdersScreen(
+                    viewModel = viewModel,
+                    onBack = null,
+                    onOpenOrder = { viewModel.openOrderDetail(it) },
+                    onOpenVisit = { viewModel.openVisitDetail(it) }
+                )
 
-                AppScreen.VISITS -> {
-                    VisitsScreen(
-                        viewModel = viewModel,
-                        onOpenVisit = { viewModel.openVisitDetail(it) },
-                        onOpenNewVisit = { showCreateVisitDialog = true }
-                    )
-                }
-
-                AppScreen.VISIT_DETAIL -> {
-                    selectedVisit?.let { visit ->
-                        VisitDetailScreen(
-                            viewModel = viewModel,
-                            visit = visit,
-                            onBack = { viewModel.navigateTo(visitDetailReturnScreen) },
-                            onOpenAddEntry = { viewModel.openAddStop(visit) },
-                            onOpenMixedPack = { showMixedPackDialog = true },
-                            onOpenCustomerReport = { viewModel.openCustomerReport(it) },
-                            onOpenSupplierCopy = { v, sup -> viewModel.openSupplierCopy(v, sup) }
-                        )
-                    } ?: run {
-                        viewModel.navigateTo(visitDetailReturnScreen)
-                    }
-                }
-
-                AppScreen.ADD_STOP -> {
-                    selectedVisit?.let { visit ->
-                        AddStopScreen(
-                            viewModel = viewModel,
-                            visit = visit,
-                            onBack = { viewModel.navigateTo(AppScreen.VISIT_DETAIL) },
-                            onSaveSuccess = {
-                                viewModel.navigateTo(AppScreen.VISIT_DETAIL)
-                            },
-                            onOpenMixedPack = {
-                                viewModel.navigateTo(AppScreen.VISIT_DETAIL)
-                                showMixedPackDialog = true
-                            }
-                        )
-                    } ?: run {
-                        viewModel.navigateTo(AppScreen.VISITS)
-                    }
-                }
-
-                AppScreen.CUSTOMER_REPORT_VIEW -> {
-                    selectedVisit?.let { visit ->
-                        CustomerReportScreen(
-                            viewModel = viewModel,
-                            visit = visit,
-                            onBack = { viewModel.navigateTo(AppScreen.VISIT_DETAIL) }
-                        )
-                    } ?: run {
-                        viewModel.navigateTo(AppScreen.VISITS)
-                    }
-                }
-
-                AppScreen.SUPPLIER_COPY_VIEW -> {
-                    val visit = selectedVisit
-                    val supplier = selectedSupplierForCopy
-                    if (visit != null && supplier != null) {
-                        SupplierReportScreen(
-                            viewModel = viewModel,
-                            visit = visit,
-                            initialSupplier = supplier,
-                            onBack = { viewModel.navigateTo(AppScreen.VISIT_DETAIL) }
-                        )
-                    } else {
-                        viewModel.navigateTo(AppScreen.VISITS)
-                    }
-                }
-
+                AppScreen.MASTERS,
                 AppScreen.CUSTOMER_MASTER,
                 AppScreen.SUPPLIER_MASTER,
                 AppScreen.EMPLOYEE_MASTER,
                 AppScreen.PRODUCT_MASTER,
                 AppScreen.BRAND_MASTER,
                 AppScreen.TRANSPORTER_MASTER,
-                AppScreen.MARKET_MASTER -> {
-                    val initialTab = when (currentScreen) {
-                        AppScreen.SUPPLIER_MASTER -> MasterTab.SUPPLIERS
-                        AppScreen.EMPLOYEE_MASTER -> MasterTab.EMPLOYEES
-                        AppScreen.PRODUCT_MASTER -> MasterTab.PRODUCTS
-                        AppScreen.BRAND_MASTER -> MasterTab.BRANDS
-                        AppScreen.TRANSPORTER_MASTER -> MasterTab.TRANSPORTERS
-                        AppScreen.MARKET_MASTER -> MasterTab.MARKETS
-                        else -> null
-                    }
-                    MastersScreen(
-                        viewModel = viewModel,
-                        initialTab = initialTab,
-                        onOpenCustomer = { viewModel.openCustomerDetail(it) },
-                        onOpenSupplier = { viewModel.openSupplierDetail(it) },
-                        onOpenEmployee = { viewModel.openEmployeeDetail(it) },
-                        onOpenProduct = { viewModel.openProductDetail(it) },
-                        onOpenBrand = { viewModel.openBrandDetail(it) },
-                        onOpenTransporter = { viewModel.openTransporterDetail(it) },
-                        onOpenMarket = { viewModel.openMarketDetail(it) }
-                    )
+                AppScreen.MARKET_MASTER -> MastersScreen(
+                    viewModel = viewModel,
+                    onOpenCustomer = { viewModel.openCustomerDetail(it) },
+                    onOpenSupplier = { viewModel.openSupplierDetail(it) },
+                    onOpenEmployee = { viewModel.openEmployeeDetail(it) },
+                    onOpenProduct = { viewModel.openProductDetail(it) },
+                    onOpenBrand = { viewModel.openBrandDetail(it) },
+                    onOpenTransporter = { viewModel.openTransporterDetail(it) },
+                    onOpenMarket = { viewModel.openMarketDetail(it) }
+                )
+
+                AppScreen.SUB_AGENT_MASTER -> SubAgentsScreen(
+                    viewModel = viewModel,
+                    onBack = goBack,
+                    onOpenAgent = { viewModel.openSubAgentDetail(it) },
+                    onAddAgent = { viewModel.openAddSubAgent() }
+                )
+
+                AppScreen.SUB_AGENT_DETAIL -> {
+                    val agent = selectedEmployeeDetail?.let { sel -> people.find { it.id == sel.id } ?: sel }
+                    if (agent != null) {
+                        SubAgentDetailScreen(
+                            viewModel = viewModel,
+                            agent = agent,
+                            onBack = goBack,
+                            onEdit = { viewModel.openEditSubAgent(it) },
+                            onOpenCustomer = { viewModel.openCustomerDetail(it) },
+                            onOpenVisit = { viewModel.openVisitDetail(it) },
+                            onOpenOrder = { viewModel.openOrderDetail(it) },
+                            onOpenSupplier = { viewModel.openSupplierDetail(it) },
+                            onOpenEmployee = { viewModel.openEmployeeDetail(it) }
+                        )
+                    } else MissingSelection(viewModel)
                 }
 
-                AppScreen.ADD_EDIT_MASTER -> {
-                    AddEditMasterScreen(
-                        viewModel = viewModel,
-                        onBack = { viewModel.navigateTo(AppScreen.CUSTOMER_MASTER) }
-                    )
+                AppScreen.SUB_AGENT_FORM -> SubAgentFormScreen(viewModel = viewModel, onBack = goBack)
+
+                AppScreen.MORE -> MoreScreen(viewModel = viewModel)
+
+                AppScreen.VISIT_DETAIL -> {
+                    val visit = selectedVisit
+                    if (visit != null) {
+                        VisitDetailScreen(
+                            viewModel = viewModel,
+                            visit = visit,
+                            onBack = goBack,
+                            onOpenAddEntry = { viewModel.openAddStop(visit) },
+                            onOpenMixedPack = { showMixedPackDialog = true },
+                            onOpenCustomerReport = { viewModel.openCustomerReport(it) },
+                            onOpenSupplierCopy = { v, sup -> viewModel.openSupplierCopy(v, sup) }
+                        )
+                    } else MissingSelection(viewModel)
                 }
+
+                AppScreen.ADD_STOP -> {
+                    val visit = selectedVisit
+                    if (visit != null) {
+                        val activeQueue = supplierQueue?.takeIf { it.tripId == visit.id && !it.finished }
+                        // A phone order starts a fresh, empty form for every supplier
+                        key(visit.id, activeQueue?.index) {
+                            AddStopScreen(
+                                viewModel = viewModel,
+                                visit = visit,
+                                onBack = goBack,
+                                onSaveSuccess = goBack,
+                                onOpenMixedPack = {
+                                    viewModel.navigateBack()
+                                    showMixedPackDialog = true
+                                },
+                                queue = activeQueue
+                            )
+                        }
+                    } else MissingSelection(viewModel)
+                }
+
+                AppScreen.CUSTOMER_REPORT_VIEW -> {
+                    val visit = selectedVisit
+                    if (visit != null) {
+                        CustomerReportScreen(viewModel = viewModel, visit = visit, onBack = goBack)
+                    } else MissingSelection(viewModel)
+                }
+
+                AppScreen.SUPPLIER_COPY_VIEW -> {
+                    val visit = selectedVisit
+                    val supplier = selectedSupplierForCopy
+                    if (visit != null && supplier != null) {
+                        SupplierReportScreen(viewModel = viewModel, visit = visit, initialSupplier = supplier, onBack = goBack)
+                    } else MissingSelection(viewModel)
+                }
+
+                AppScreen.ADD_EDIT_MASTER -> AddEditMasterScreen(viewModel = viewModel, onBack = goBack)
 
                 AppScreen.CUSTOMER_DETAIL -> {
-                    val customer = selectedCustomer
+                    // Always show the latest saved version (e.g. right after editing)
+                    val customer = selectedCustomer?.let { sel -> allCustomers.find { it.id == sel.id } ?: sel }
                     if (customer != null) {
                         CustomerDetailScreen(
                             viewModel = viewModel,
                             customer = customer,
-                            onBack = { viewModel.navigateTo(AppScreen.CUSTOMER_MASTER) },
-                            onCreateVisit = {
-                                showCreateVisitDialog = true
-                            },
-                            onOpenVisit = { visit ->
-                                viewModel.openVisitDetail(visit, returnScreen = AppScreen.CUSTOMER_DETAIL)
+                            onBack = goBack,
+                            onCreateVisit = { startTrip(customer) },
+                            onOpenVisit = { viewModel.openVisitDetail(it) },
+                            onEditCustomer = { viewModel.openEditCustomer(it) },
+                            onDeleteCustomer = {
+                                viewModel.deleteCustomer(it)
+                                viewModel.navigateBack()
                             }
                         )
-                    } else {
-                        viewModel.navigateTo(AppScreen.CUSTOMER_MASTER)
-                    }
+                    } else MissingSelection(viewModel)
                 }
 
                 AppScreen.SUPPLIER_DETAIL -> {
-                    val supplier = selectedSupplier
+                    val supplier = selectedSupplier?.let { sel -> suppliers.find { it.id == sel.id } ?: sel }
                     if (supplier != null) {
                         SupplierDetailScreen(
                             viewModel = viewModel,
                             supplier = supplier,
-                            onBack = { viewModel.navigateTo(AppScreen.SUPPLIER_MASTER) },
-                            onOpenVisit = { visit ->
-                                viewModel.openVisitDetail(visit, returnScreen = AppScreen.SUPPLIER_DETAIL)
-                            },
-                            onOpenOrder = { entry ->
-                                viewModel.openOrderDetail(entry, returnScreen = AppScreen.SUPPLIER_DETAIL)
+                            onBack = goBack,
+                            onOpenVisit = { viewModel.openVisitDetail(it) },
+                            onOpenOrder = { viewModel.openOrderDetail(it) },
+                            onEditSupplier = { viewModel.openEditSupplier(it) },
+                            onDeleteSupplier = {
+                                viewModel.deleteSupplier(it)
+                                viewModel.navigateBack()
                             }
                         )
-                    } else {
-                        viewModel.navigateTo(AppScreen.SUPPLIER_MASTER)
-                    }
+                    } else MissingSelection(viewModel)
                 }
 
                 AppScreen.EMPLOYEE_DETAIL -> {
-                    val employee = selectedEmployeeDetail
+                    val employee = selectedEmployeeDetail?.let { sel -> people.find { it.id == sel.id } ?: sel }
                     if (employee != null) {
                         EmployeeDetailScreen(
                             viewModel = viewModel,
                             employee = employee,
-                            onBack = { viewModel.navigateTo(AppScreen.EMPLOYEE_MASTER) },
-                            onOpenVisit = { visit ->
-                                viewModel.openVisitDetail(visit, returnScreen = AppScreen.EMPLOYEE_DETAIL)
-                            }
+                            onBack = goBack,
+                            onOpenVisit = { viewModel.openVisitDetail(it) }
                         )
-                    } else {
-                        viewModel.navigateTo(AppScreen.EMPLOYEE_MASTER)
-                    }
+                    } else MissingSelection(viewModel)
                 }
 
                 AppScreen.PRODUCT_DETAIL -> {
-                    val product = selectedProduct
+                    val product = selectedProduct?.let { sel -> products.find { it.id == sel.id } ?: sel }
                     if (product != null) {
                         ProductDetailScreen(
                             viewModel = viewModel,
                             product = product,
-                            onBack = { viewModel.navigateTo(AppScreen.PRODUCT_MASTER) },
+                            onBack = goBack,
                             onEdit = { viewModel.openEditProduct(product) },
-                            onOpenOrder = { entry ->
-                                viewModel.openOrderDetail(entry, returnScreen = AppScreen.PRODUCT_DETAIL)
-                            }
+                            onOpenOrder = { viewModel.openOrderDetail(it) }
                         )
-                    } else {
-                        viewModel.navigateTo(AppScreen.PRODUCT_MASTER)
-                    }
+                    } else MissingSelection(viewModel)
                 }
 
                 AppScreen.BRAND_DETAIL -> {
-                    val brand = selectedBrand
+                    val brand = selectedBrand?.let { sel -> brands.find { it.id == sel.id } ?: sel }
                     if (brand != null) {
                         BrandDetailScreen(
                             viewModel = viewModel,
                             brand = brand,
-                            onBack = { viewModel.navigateTo(AppScreen.BRAND_MASTER) },
+                            onBack = goBack,
                             onEdit = { viewModel.openEditBrand(brand) },
                             onOpenProduct = { viewModel.openProductDetail(it) },
-                            onOpenOrder = { entry ->
-                                viewModel.openOrderDetail(entry, returnScreen = AppScreen.BRAND_DETAIL)
-                            }
+                            onOpenOrder = { viewModel.openOrderDetail(it) }
                         )
-                    } else {
-                        viewModel.navigateTo(AppScreen.BRAND_MASTER)
-                    }
+                    } else MissingSelection(viewModel)
                 }
 
                 AppScreen.TRANSPORTER_DETAIL -> {
-                    val transporter = selectedTransporter
+                    val transporter = selectedTransporter?.let { sel -> transporters.find { it.id == sel.id } ?: sel }
                     if (transporter != null) {
                         TransporterDetailScreen(
                             viewModel = viewModel,
                             transporter = transporter,
-                            onBack = { viewModel.navigateTo(AppScreen.TRANSPORTER_MASTER) },
+                            onBack = goBack,
                             onEdit = { viewModel.openEditTransporter(transporter) },
-                            onOpenOrder = { entry ->
-                                viewModel.openOrderDetail(entry, returnScreen = AppScreen.TRANSPORTER_DETAIL)
-                            },
+                            onOpenOrder = { viewModel.openOrderDetail(it) },
                             onOpenCustomer = { viewModel.openCustomerDetail(it) }
                         )
-                    } else {
-                        viewModel.navigateTo(AppScreen.TRANSPORTER_MASTER)
-                    }
+                    } else MissingSelection(viewModel)
                 }
 
                 AppScreen.MARKET_DETAIL -> {
-                    val market = selectedMarket
+                    val market = selectedMarket?.let { sel -> markets.find { it.id == sel.id } ?: sel }
                     if (market != null) {
                         MarketDetailScreen(
                             viewModel = viewModel,
                             market = market,
-                            onBack = { viewModel.navigateTo(AppScreen.MARKET_MASTER) },
+                            onBack = goBack,
                             onEdit = { viewModel.openEditMarket(market) },
                             onOpenCustomer = { viewModel.openCustomerDetail(it) },
                             onOpenSupplier = { viewModel.openSupplierDetail(it) },
-                            onOpenOrder = { entry ->
-                                viewModel.openOrderDetail(entry, returnScreen = AppScreen.MARKET_DETAIL)
-                            },
+                            onOpenOrder = { viewModel.openOrderDetail(it) },
                             onOpenEmployee = { viewModel.openEmployeeDetail(it) }
                         )
-                    } else {
-                        viewModel.navigateTo(AppScreen.MARKET_MASTER)
-                    }
+                    } else MissingSelection(viewModel)
                 }
 
                 AppScreen.ORDER_DETAIL -> {
-                    val entry = selectedPurchaseEntry
+                    val entry = selectedPurchaseEntry?.let { sel -> allEntries.find { it.id == sel.id } ?: sel }
                     if (entry != null) {
                         OrderDetailScreen(
                             viewModel = viewModel,
                             entry = entry,
-                            onBack = { viewModel.navigateTo(orderDetailReturnScreen) },
-                            onOpenVisit = { visit ->
-                                viewModel.openVisitDetail(visit, returnScreen = orderDetailReturnScreen)
-                            }
+                            onBack = goBack,
+                            onOpenVisit = { viewModel.openVisitDetail(it) }
                         )
-                    } else {
-                        viewModel.navigateTo(orderDetailReturnScreen)
-                    }
+                    } else MissingSelection(viewModel)
                 }
 
-                AppScreen.DELIVERIES -> {
-                    DeliveriesScreen(viewModel = viewModel)
-                }
-
-                AppScreen.REPORTS -> {
-                    DashboardScreen(
-                        viewModel = viewModel,
-                        onNavigate = { viewModel.navigateTo(it) },
-                        onOpenNewVisit = { showCreateVisitDialog = true },
-                        onOpenVisit = { viewModel.openVisitDetail(it) },
-                        onBack = { viewModel.navigateTo(AppScreen.DASHBOARD) }
-                    )
-                }
-
-                AppScreen.PAYMENTS -> {
-                    PaymentsScreen(
-                        viewModel = viewModel,
-                        onBack = { viewModel.navigateTo(AppScreen.DASHBOARD) },
-                        onOpenCustomer = { viewModel.openCustomerDetail(it) },
-                        onOpenSupplier = { viewModel.openSupplierDetail(it) },
-                        onOpenVisit = { viewModel.openVisitDetail(it) }
-                    )
-                }
-
-                AppScreen.PENDINGS -> {
-                    PendingScreen(
-                        viewModel = viewModel,
-                        onBack = { viewModel.navigateTo(AppScreen.DASHBOARD) },
-                        onOpenVisit = { viewModel.openVisitDetail(it) },
-                        onOpenCustomer = { viewModel.openCustomerDetail(it) },
-                        onOpenSupplier = { viewModel.openSupplierDetail(it) },
-                        onOpenMixedPack = { showMixedPackDialog = true }
-                    )
-                }
-
-                AppScreen.PROFILE -> {
-                    ProfileScreen(
-                        viewModel = viewModel,
-                        onBack = { viewModel.navigateTo(AppScreen.DASHBOARD) }
-                    )
-                }
-
-                AppScreen.LEADS -> {
-                    LeadsScreen(
-                        viewModel = viewModel,
-                        onBack = { viewModel.navigateTo(AppScreen.DASHBOARD) }
-                    )
-                }
-
-                AppScreen.PURCHASE_ORDERS -> {
-                    PurchaseOrdersScreen(
-                        viewModel = viewModel,
-                        onBack = { viewModel.navigateTo(AppScreen.DASHBOARD) },
-                        onOpenOrder = { entry ->
-                            viewModel.openOrderDetail(entry, returnScreen = AppScreen.PURCHASE_ORDERS)
-                        },
-                        onOpenVisit = { visit ->
-                            viewModel.openVisitDetail(visit, returnScreen = AppScreen.PURCHASE_ORDERS)
+                AppScreen.REPORTS -> DashboardScreen(
+                    viewModel = viewModel,
+                    onNavigate = { target ->
+                        when (target) {
+                            AppScreen.DELIVERIES -> viewModel.openOrders("Not delivered")
+                            AppScreen.PURCHASE_ORDERS -> viewModel.openOrders()
+                            else -> viewModel.navigateTo(target)
                         }
-                    )
-                }
+                    },
+                    onOpenNewVisit = { startTrip() },
+                    onOpenVisit = { viewModel.openVisitDetail(it) },
+                    onBack = goBack
+                )
+
+                AppScreen.PAYMENTS -> PaymentsScreen(
+                    viewModel = viewModel,
+                    onBack = goBack,
+                    onOpenCustomer = { viewModel.openCustomerDetail(it) },
+                    onOpenSupplier = { viewModel.openSupplierDetail(it) },
+                    onOpenVisit = { viewModel.openVisitDetail(it) }
+                )
+
+                AppScreen.PENDINGS -> PendingScreen(
+                    viewModel = viewModel,
+                    onBack = goBack,
+                    onOpenVisit = { viewModel.openVisitDetail(it) },
+                    onOpenCustomer = { viewModel.openCustomerDetail(it) },
+                    onOpenSupplier = { viewModel.openSupplierDetail(it) },
+                    onOpenMixedPack = { showMixedPackDialog = true }
+                )
+
+                AppScreen.PROFILE -> ProfileScreen(viewModel = viewModel, onBack = goBack)
+
+                AppScreen.DELETION_REQUESTS -> DeletionRequestsScreen(viewModel = viewModel, onBack = goBack)
+
+                AppScreen.LEADS -> LeadsScreen(viewModel = viewModel, onBack = goBack)
 
                 AppScreen.CUSTOMER_ORDERS_REPORT -> {
                     val customerForReport by viewModel.selectedCustomerForReport.collectAsStateWithLifecycle()
                     CustomerOrderReportScreen(
                         viewModel = viewModel,
                         initialCustomer = customerForReport,
-                        onBack = { viewModel.navigateTo(AppScreen.DASHBOARD) },
-                        onOpenOrder = { entry ->
-                            viewModel.openOrderDetail(entry, returnScreen = AppScreen.CUSTOMER_ORDERS_REPORT)
-                        }
+                        onBack = goBack,
+                        onOpenOrder = { viewModel.openOrderDetail(it) }
                     )
                 }
 
-                AppScreen.CHEQUE_PDC -> {
-                    ChequePdcScreen(
-                        viewModel = viewModel,
-                        onBack = { viewModel.navigateTo(AppScreen.DASHBOARD) }
-                    )
+                AppScreen.CHEQUE_PDC -> ChequePdcScreen(viewModel = viewModel, onBack = goBack)
+
+                // Delivery updates now live on the Orders tab; kept for old deep links
+                AppScreen.DELIVERIES -> DeliveriesScreen(viewModel = viewModel)
+
+                else -> {
+                    // Retired screens (old analytics / supplier hub) fall back to Home
+                    LaunchedEffect(currentScreen) { viewModel.resetNavigation() }
                 }
             }
         }
+
+        if (isTabScreen) {
+            // Pull to refresh only on the main tabs, so a scroll on a form never triggers a full re-sync
+            PullToRefreshBox(
+                isRefreshing = isCloudSyncing,
+                onRefresh = { viewModel.refreshAllData() },
+                modifier = contentModifier
+            ) { router() }
+        } else {
+            Box(modifier = contentModifier) { router() }
+        }
     }
 
-    // Modal Dialogs
     if (showCreateVisitDialog) {
-        CreateVisitDialog(
+        NewTripSheet(
             customers = customers,
             employees = employees,
-            defaultEmployee = currentEmployee,
+            suppliers = suppliers,
+            defaultEmployee = currentEmployee?.takeIf { !Roles.isAgent(it.role) },
+            initialCustomer = createVisitCustomer,
             onDismiss = { showCreateVisitDialog = false },
-            onSave = { customer, employee, notes ->
-                viewModel.createVisit(customer, employee, notes) {
+            onStartMarketTrip = { customer, employee, others, notes ->
+                viewModel.createVisit(customer, employee, notes, extraMembers = others) {
                     showCreateVisitDialog = false
                 }
             },
-            onQuickCreateCustomer = { newCust ->
-                viewModel.saveCustomer(newCust)
-            }
-        )
-    }
-
-    if (showRoleSwitcherDialog) {
-        val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
-        val isSuperAdmin by viewModel.isSuperAdmin.collectAsStateWithLifecycle()
-        val context = LocalContext.current
-        RoleSwitcherDialog(
-            currentRole = currentRole,
-            currentEmployee = currentEmployee,
-            employees = employees,
-            currentUser = currentUser,
-            isSuperAdmin = isSuperAdmin,
-            onDismiss = { showRoleSwitcherDialog = false },
-            onSelectRole = { role, employee ->
-                viewModel.setRole(role, employee)
-                showRoleSwitcherDialog = false
+            onStartPhoneOrder = { customer, salesman, others, pickedSuppliers, notes ->
+                showCreateVisitDialog = false
+                viewModel.startPhoneOrder(customer, salesman, others, pickedSuppliers, notes)
             },
-            onSignOut = {
-                viewModel.signOut(context)
-                showRoleSwitcherDialog = false
-            }
+            onQuickCreateCustomer = { newCust -> viewModel.saveCustomer(newCust) }
         )
     }
 
@@ -954,18 +971,58 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
                         visitId = visit.id,
                         selectedEntries = selected,
                         targetCaseSize = targetCaseSize,
-                        onSuccess = {
-                            showMixedPackDialog = false
-                        }
+                        onSuccess = { showMixedPackDialog = false }
                     )
                 }
-            )
-        }
+            ) 
+        } ?: run { showMixedPackDialog = false }
     }
 
-    if (showRegistrationShareSheet) {
-        RegistrationShareBottomSheet(
-            onDismiss = { showRegistrationShareSheet = false }
+    // Registration inbox: the sheet is the summary, the full screens do the approving
+    if (showRequestsHub) {
+        RequestsHubSheet(
+            viewModel = viewModel,
+            onDismiss = { showRequestsHub = false },
+            onOpenCustomerRequests = {
+                showRequestsHub = false
+                showCustomerRequestsFull = true
+            },
+            onOpenSupplierRequests = {
+                showRequestsHub = false
+                showSupplierRequestsFull = true
+            },
+            onShareLink = {
+                showRequestsHub = false
+                showShareLinkSheet = true
+            },
+            onOpenDeleteRequests = {
+                showRequestsHub = false
+                viewModel.navigateTo(AppScreen.DELETION_REQUESTS)
+            }
+        )
+    }
+    if (showCustomerRequestsFull) {
+        CustomerRequestsDialog(viewModel = viewModel, onDismiss = { showCustomerRequestsFull = false })
+    }
+    if (showSupplierRequestsFull) {
+        SupplierRequestsDialog(viewModel = viewModel, onDismiss = { showSupplierRequestsFull = false })
+    }
+    if (showShareLinkSheet) {
+        RegistrationShareBottomSheet(onDismiss = { showShareLinkSheet = false })
+    }
+
+    if (showAccessSheet) {
+        PermissionsSheet(viewModel = viewModel, onDismiss = { showAccessSheet = false })
+    }
+
+    // Every delete in the app passes through here first, so nothing is ever removed without the
+    // user seeing what else is attached to it.
+    pendingDelete?.let { pending ->
+        DeleteImpactDialog(
+            impact = pending.impact,
+            hardDelete = pending.hardDelete,
+            onCancel = { viewModel.dismissPendingDelete() },
+            onConfirm = { alsoRemoveLinked -> viewModel.confirmPendingDelete(alsoRemoveLinked) }
         )
     }
 }

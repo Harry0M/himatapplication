@@ -11,7 +11,9 @@ import {
   Info,
   Eye
 } from "lucide-react"
-import { useData } from "../context/DataContext"
+import { useData, STANDARD_MARKET_NAMES } from "../context/DataContext"
+import { useAuth } from "../context/AuthContext"
+import { newId } from "../lib/domain"
 import { Card } from "../components/ui/Card"
 import { Button } from "../components/ui/Button"
 import { Badge } from "../components/ui/Badge"
@@ -23,7 +25,8 @@ import { getMasterDraft, saveMasterDraft, clearMasterDraft } from "../lib/master
 import { MarketDetailView } from "./MarketDetailView"
 
 export function MarketsView() {
-  const { markets, suppliers, saveMarket, deleteMarket } = useData()
+  const { markets, suppliers, saveMarket, deleteMarket, seedStandardMarkets } = useData()
+  const { isAdmin } = useAuth()
   const [search, setSearch] = useState("")
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedMarketId, setSelectedMarketId] = useState<number | null>(null)
@@ -39,20 +42,24 @@ export function MarketsView() {
   const [marketType, setMarketType] = useState("Readymade Garments & Wholesale")
   const [description, setDescription] = useState("")
 
+  // Standard Ahmedabad markets (the old hard-coded supplier-form list) that are not in the master yet
+  const missingStandardMarkets = React.useMemo(() => {
+    const have = new Set(markets.map((m) => (m.marketName || "").toLowerCase().replace(/[^a-z0-9]/g, "")))
+    return STANDARD_MARKET_NAMES.filter((n) => !have.has(n.toLowerCase().replace(/[^a-z0-9]/g, "")))
+  }, [markets])
+  const [seeding, setSeeding] = useState(false)
+  const [seedMessage, setSeedMessage] = useState<string | null>(null)
+
   const handleSeedMarkets = async () => {
-    const topMarkets = AHMEDABAD_TEXTILE_MARKETS.slice(0, 10)
-    for (let i = 0; i < topMarkets.length; i++) {
-      const name = topMarkets[i]
-      if (name.includes("Other")) continue
-      await saveMarket({
-        id: Date.now() + i,
-        marketName: name,
-        city: name.includes("Surat") ? "Surat" : "Ahmedabad",
-        area: name.includes("(") ? name.substring(name.indexOf("(") + 1, name.indexOf(")")) : "",
-        pincode: "380002",
-        marketType: "Wholesale Textile Cluster",
-        createdAt: Date.now(),
-      })
+    setSeeding(true)
+    setSeedMessage(null)
+    try {
+      const added = await seedStandardMarkets()
+      setSeedMessage(added > 0 ? `${added} markets added to the master.` : "All standard markets are already in the master.")
+    } catch (e: any) {
+      setSeedMessage(e?.message || "Could not add markets. Please try again.")
+    } finally {
+      setSeeding(false)
     }
   }
 
@@ -127,7 +134,9 @@ export function MarketsView() {
     if (!marketName.trim()) return
 
     const payload: Market = {
-      id: editingMarket?.id || Date.now(),
+      // Keep fields this form does not show
+      ...(editingMarket || {}),
+      id: editingMarket?.id || newId(),
       marketName: marketName.trim(),
       city: city.trim(),
       area: area.trim(),
@@ -217,6 +226,30 @@ export function MarketsView() {
         </div>
       </div>
 
+      {/* Standard markets used by the supplier registration form */}
+      {isAdmin && missingStandardMarkets.length > 0 && (
+        <Card className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
+              {missingStandardMarkets.length} standard Ahmedabad markets are not in the master yet
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              The supplier registration form lists markets from this master. Missing: {missingStandardMarkets.slice(0, 6).join(", ")}
+              {missingStandardMarkets.length > 6 ? "…" : ""}
+            </p>
+          </div>
+          <Button onClick={handleSeedMarkets} disabled={seeding} variant="secondary" className="h-8 text-xs gap-1.5 shrink-0">
+            <Sparkles className="h-3.5 w-3.5 text-amber-500" aria-hidden="true" />
+            {seeding ? "Adding..." : "Add them"}
+          </Button>
+        </Card>
+      )}
+      {seedMessage && (
+        <p className="rounded-xl bg-emerald-50 px-3.5 py-2 text-xs text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300" role="status">
+          {seedMessage}
+        </p>
+      )}
+
       {/* Markets Master List Table */}
       {filteredMarkets.length === 0 ? (
         <Card className="flex flex-col items-center justify-center p-12 text-center border-dashed">
@@ -232,10 +265,10 @@ export function MarketsView() {
               <Plus className="h-3.5 w-3.5" />
               Register First Market
             </Button>
-            {!search && (
-              <Button onClick={handleSeedMarkets} variant="secondary" className="h-8 text-xs gap-1.5">
+            {!search && isAdmin && (
+              <Button onClick={handleSeedMarkets} disabled={seeding} variant="secondary" className="h-8 text-xs gap-1.5">
                 <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-                Import Common Markets
+                Import Standard Markets
               </Button>
             )}
           </div>

@@ -85,13 +85,13 @@ class AuthRepository(
 
     private fun parseCredentialError(e: GetCredentialException, sha1List: List<String>): String {
         val msg = e.localizedMessage ?: e.message ?: ""
+        val activeSha1 = sha1List.firstOrNull() ?: "Unknown"
         return when {
             e is androidx.credentials.exceptions.NoCredentialException || msg.contains("No credentials available", ignoreCase = true) -> {
-                "No Google account found on device or account selection was cancelled. Please ensure a Google account is signed in under device Settings."
+                "No credentials available. Please ensure your signing SHA-1 ($activeSha1) is added to Firebase Console under com.aistudio.himattextile.sourcemgmt and a Google account is active on the phone."
             }
             msg.contains("GetCredentialResponse error returned from framework", ignoreCase = true) ||
             msg.contains("10:", ignoreCase = true) || msg.contains("DEVELOPER_ERROR", ignoreCase = true) -> {
-                val activeSha1 = sha1List.firstOrNull() ?: "Unknown"
                 "Google Sign-in configuration error (Developer Error 10). Verify that your device build's SHA-1 fingerprint ($activeSha1) is registered in Firebase/Google Cloud Console for package com.aistudio.himattextile.sourcemgmt."
             }
             else -> {

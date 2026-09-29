@@ -46,24 +46,36 @@ import { Input } from "../components/ui/Input"
 import { ReferrerSelectModal } from "../components/ui/ReferrerSelectModal"
 import { ImageLightboxModal } from "../components/ui/ImageLightboxModal"
 import { Tabs } from "../components/ui/Tabs"
-import { Customer, CustomerContact, CustomerOutlet, Visit, CustomerRegistrationRequest } from "../types"
-import { GARMENT_CATEGORIES } from "../lib/constants"
+import { Customer, CustomerContact, CustomerOutlet, Visit, CustomerRegistrationRequest, CustomerSecurityCheque } from "../types"
+import { GARMENT_CATEGORIES, CUSTOMER_GARMENT_CATEGORIES, CUSTOMER_WORKING_MARKETS } from "../lib/constants"
 import { ReportViewerModal } from "../components/ui/ReportViewerModal"
+import { EnvelopePrintModal } from "../components/ui/EnvelopePrintModal"
+import { createCustomerEnvelopeData } from "../lib/envelopePrint"
 import {
   generateCustomerDayReportHtml,
   buildCustomerReportWhatsAppText,
 } from "../lib/pdfReports"
 import { generateCustomersTallyXml, downloadXmlFile } from "../lib/tallyExport"
 import { FileUpload } from "../components/ui/FileUpload"
+import { StationSearchInput } from "../components/ui/StationSearchInput"
 import { CustomerDetailView } from "./CustomerDetailView"
+import { SubAgentFormDialog } from "./SubAgentsView"
+import { displayCode, newId, toNumericId } from "../lib/domain"
 
-export function CustomersView() {
-  const { user } = useAuth()
+interface CustomersViewProps {
+  onNavigate?: (tab: string) => void
+  /** Open straight on the registration requests list (used by the Registration Requests inbox) */
+  initialViewMode?: "customers" | "requests"
+}
+
+export function CustomersView({ onNavigate, initialViewMode = "customers" }: CustomersViewProps = {}) {
+  const { user, employee: currentEmployee, isAdmin } = useAuth()
   const {
     customers,
     visits,
     entries,
     employees,
+    subAgents,
     packGroups,
     transporters,
     suppliers,
@@ -74,10 +86,11 @@ export function CustomersView() {
     approveRegistrationRequest,
     rejectRegistrationRequest,
     deleteRegistrationRequest,
+    chequesPdc,
   } = useData()
 
-  // Top-level View Mode: Active Customers Master vs Registration Requests Hub
-  const [viewMode, setViewMode] = useState<"customers" | "requests">("customers")
+  // Top-level View Mode: the Customers master, or (inside the Registration Requests inbox) the requests
+  const [viewMode, setViewMode] = useState<"customers" | "requests">(initialViewMode)
   const [isShareLinkModalOpen, setIsShareLinkModalOpen] = useState<boolean>(false)
   const [copiedLink, setCopiedLink] = useState<boolean>(false)
   const [directSharePhone, setDirectSharePhone] = useState<string>("")
@@ -92,6 +105,7 @@ export function CustomersView() {
   const [requestFilterStatus, setRequestFilterStatus] = useState<"ALL" | "PENDING" | "APPROVED" | "REJECTED">("PENDING")
   const [selectedRequestForApproval, setSelectedRequestForApproval] = useState<CustomerRegistrationRequest | null>(null)
   const [approvalAssignedAgentId, setApprovalAssignedAgentId] = useState<number | string>("")
+  const [approvalSubAgentId, setApprovalSubAgentId] = useState<number>(0)
   const [approvalAssignedAgentName, setApprovalAssignedAgentName] = useState<string>("")
   const [approvalCreditType, setApprovalCreditType] = useState<"Cash" | "Credit">("Cash")
   const [approvalCreditDays, setApprovalCreditDays] = useState<number>(30)
@@ -123,9 +137,17 @@ export function CustomersView() {
 
   const [search, setSearch] = useState<string>("")
   const [showSearch, setShowSearch] = useState<boolean>(false)
+  const [garmentFilter, setGarmentFilter] = useState<string>("all")
+  const [workingMarketFilter, setWorkingMarketFilter] = useState<string>("all")
+  const [creditTypeFilter, setCreditTypeFilter] = useState<string>("all")
 
   // Master Detail Full Page State
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null)
+
+  // Inside the Registration Requests inbox: closing a customer opened after an approval returns to the requests
+  useEffect(() => {
+    if (initialViewMode === "requests" && selectedCustomerId === null) setViewMode("requests")
+  }, [initialViewMode, selectedCustomerId])
 
   // Modal States
   const [isDialogOpen, setIsDialogOpen] = useState<boolean>(false)
@@ -143,6 +165,10 @@ export function CustomersView() {
     html: "",
     whatsAppText: "",
   })
+
+  // 24cm x 10.5cm Envelope Print Modal State
+  const [isEnvelopeModalOpen, setIsEnvelopeModalOpen] = useState<boolean>(false)
+  const [selectedCustomerForEnvelope, setSelectedCustomerForEnvelope] = useState<Customer | null>(null)
 
   const handleGenerateCustomerReport = (c: Customer) => {
     const custVisits = visits.filter(
@@ -217,8 +243,16 @@ export function CustomersView() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   const [customCategory, setCustomCategory] = useState<string>("")
   const [referredBy, setReferredBy] = useState<string>("")
+  // Structured referrer (type + id) so "Referred" lists work even after names change
+  const [referredByType, setReferredByType] = useState<string>("")
+  const [referredById, setReferredById] = useState<number>(0)
   const [addedByAgentName, setAddedByAgentName] = useState<string>("")
+  // Sub Agent who brought this customer
+  const [subAgentId, setSubAgentId] = useState<number>(0)
+  // "New Sub Agent" opened from inside the customer form
+  const [isQuickSubAgentOpen, setIsQuickSubAgentOpen] = useState<boolean>(false)
   const [preferredTransporterName, setPreferredTransporterName] = useState<string>("")
+  const [transportPreference, setTransportPreference] = useState<string>("")
   const [dob, setDob] = useState<string>("")
   const [religion, setReligion] = useState<string>("")
   const [notes, setNotes] = useState<string>("")
@@ -231,6 +265,36 @@ export function CustomersView() {
   const [shopPhotoUri, setShopPhotoUri] = useState<string>("")
   const [purchaserPhotoUri, setPurchaserPhotoUri] = useState<string>("")
   const [cancelChequePhotoUri, setCancelChequePhotoUri] = useState<string>("")
+
+  // Security Cheques State
+  const [securityCheques, setSecurityCheques] = useState<CustomerSecurityCheque[]>([])
+
+  const handleAddSecurityCheque = () => {
+    setSecurityCheques((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        chequeNo: "",
+        bankName: "",
+        amount: 0,
+        chequeDate: new Date().toISOString().split("T")[0],
+        accountNumber: "",
+        branchName: "",
+        notes: "",
+        status: "Pending",
+      },
+    ])
+  }
+
+  const handleRemoveSecurityCheque = (index: number) => {
+    setSecurityCheques((prev) => prev.filter((_, idx) => idx !== index))
+  }
+
+  const handleUpdateSecurityCheque = (index: number, field: keyof CustomerSecurityCheque, value: any) => {
+    setSecurityCheques((prev) =>
+      prev.map((c, idx) => (idx === index ? { ...c, [field]: value } : c))
+    )
+  }
 
   // Draft state (strictly local browser storage)
   const [hasDraft, setHasDraft] = useState<boolean>(false)
@@ -257,11 +321,17 @@ export function CustomersView() {
       setSelectedCategories(draft.selectedCategories || [])
       setCustomCategory("")
       setReferredBy(draft.referredBy || "")
-      setAddedByAgentName(user?.displayName || employees[0]?.name || "Himat Staff")
+      setReferredByType(draft.referredByType || "")
+      setReferredById(Number(draft.referredById) || 0)
+      setSubAgentId(Number(draft.subAgentId) || 0)
+      // No staff picker any more: the person saving the customer is recorded as its owner
+      setAddedByAgentName(currentEmployee?.name || user?.displayName || "Himat Staff")
       setPreferredTransporterName(draft.preferredTransporterName || "")
+      setTransportPreference(draft.transportPreference || "")
       setDob(draft.dob || "")
       setReligion(draft.religion || "")
       setNotes(draft.notes || "")
+      setSecurityCheques(draft.securityCheques && draft.securityCheques.length > 0 ? draft.securityCheques : [])
       setHasDraft(true)
     } else {
       setCustomerId(`CUST-${Math.floor(100 + Math.random() * 900)}`)
@@ -281,11 +351,17 @@ export function CustomersView() {
       setSelectedCategories([])
       setCustomCategory("")
       setReferredBy("")
-      setAddedByAgentName(user?.displayName || employees[0]?.name || "Himat Staff")
+      setReferredByType("")
+      setReferredById(0)
+      setSubAgentId(0)
+      // No staff picker any more: the person saving the customer is recorded as its owner
+      setAddedByAgentName(currentEmployee?.name || user?.displayName || "Himat Staff")
       setPreferredTransporterName("")
+      setTransportPreference("")
       setDob("")
       setReligion("")
       setNotes("")
+      setSecurityCheques([])
       setHasDraft(false)
     }
     setAadharPhotoUri("")
@@ -319,10 +395,15 @@ export function CustomersView() {
     setSelectedCategories([])
     setCustomCategory("")
     setReferredBy("")
+    setReferredByType("")
+    setReferredById(0)
+    setSubAgentId(0)
     setPreferredTransporterName("")
+    setTransportPreference("")
     setDob("")
     setReligion("")
     setNotes("")
+    setSecurityCheques([])
   }
 
   // Auto-save local draft
@@ -346,7 +427,11 @@ export function CustomersView() {
         outlets,
         selectedCategories,
         referredBy,
+        referredByType,
+        referredById,
+        subAgentId,
         preferredTransporterName,
+        transportPreference,
         dob,
         religion,
         notes,
@@ -371,7 +456,11 @@ export function CustomersView() {
     outlets,
     selectedCategories,
     referredBy,
+    referredByType,
+    referredById,
+    subAgentId,
     preferredTransporterName,
+    transportPreference,
     dob,
     religion,
     notes,
@@ -433,8 +522,13 @@ export function CustomersView() {
     setSelectedCategories(cats)
     setCustomCategory("")
     setReferredBy(c.referredBy || "")
-    setAddedByAgentName(c.addedByAgentName || user?.displayName || employees[0]?.name || "Staff")
-    setPreferredTransporterName(c.preferredTransporterName || c.transportPreference || "")
+    setReferredByType(c.referredByType || "")
+    setReferredById(toNumericId(c.referredById))
+    setSubAgentId(toNumericId(c.subAgentId))
+    // Editing keeps the original owner; only legacy records without one get the current user
+    setAddedByAgentName(c.addedByAgentName || currentEmployee?.name || user?.displayName || "Staff")
+    setPreferredTransporterName(c.preferredTransporterName || "")
+    setTransportPreference(c.transportPreference || "")
     setDob(c.dob || "")
     setReligion(c.religion || "")
     setNotes(c.notes || "")
@@ -446,6 +540,36 @@ export function CustomersView() {
     setShopPhotoUri(c.shopPhotoUri || "")
     setPurchaserPhotoUri(c.purchaserPhotoUri || "")
     setCancelChequePhotoUri(c.cancelChequePhotoUri || "")
+
+    // Initialize security cheques from customer or chequesPdc
+    const fromCust: CustomerSecurityCheque[] = c.securityCheques ? [...c.securityCheques] : []
+    const linkedCheques = chequesPdc.filter(
+      (cq) =>
+        cq.partyType === "Customer" &&
+        Number(cq.partyId) === c.id &&
+        (cq.isSecurityCheque || (cq.notes && cq.notes.toLowerCase().includes("security")))
+    )
+    linkedCheques.forEach((lq) => {
+      const matchIdx = fromCust.findIndex(
+        (sq) => Number(sq.pdcChequeId || sq.id) === lq.id || sq.chequeNo === lq.chequeNo
+      )
+      if (matchIdx < 0) {
+        fromCust.push({
+          id: lq.id,
+          pdcChequeId: lq.id,
+          chequeNo: lq.chequeNo,
+          bankName: lq.bankName,
+          amount: lq.amount,
+          chequeDate: lq.chequeDate,
+          accountNumber: lq.accountNumber || "",
+          branchName: lq.branchName || "",
+          notes: lq.notes?.replace("[Security Cheque]", "").trim() || "",
+          status: lq.status,
+          createdAt: lq.createdAt,
+        })
+      }
+    })
+    setSecurityCheques(fromCust)
 
     setActiveFormTab("basic")
     setIsDialogOpen(true)
@@ -465,7 +589,11 @@ export function CustomersView() {
     const finalOwnerName = name.trim() || firmName.trim()
     if (!finalFirmName) return
 
-    const id = editingId || Date.now()
+    // Globally unique id (Date.now() / max + 1 collided with records saved from phones)
+    const id = editingId || newId()
+    // Start from the stored record so fields this form does not show (bank, sub agent, KYC status,
+    // balances, fields written by the Android app) are kept instead of being wiped by set()
+    const existing = editingId ? customers.find((c) => Number(c.id) === Number(editingId)) : undefined
     const validContacts = contacts.filter((ct) => ct.phone.trim() || ct.name?.trim())
     const primaryPhone = validContacts[0]?.phone.trim() || ""
     const primaryEmail = validContacts[0]?.email?.trim() || ""
@@ -475,9 +603,19 @@ export function CustomersView() {
       allCats.push(customCategory.trim())
     }
 
+    // New customers belong to whoever saves them; edits keep the stored owner
+    const ownerEmployee =
+      (!existing && currentEmployee
+        ? employees.find((e) => Number(e.id) === Number(currentEmployee.id))
+        : undefined) ||
+      employees.find((e) => (e.name || "").trim().toLowerCase() === addedByAgentName.trim().toLowerCase())
+    const pickedSubAgent = subAgentId ? subAgents.find((a) => Number(a.id) === subAgentId) : undefined
+    const referrer = referredBy.trim()
+
     const newCustomer: Customer = {
+      ...(existing || {}),
       id,
-      customerId: customerId.trim() || `CUST-${id % 10000}`,
+      customerId: customerId.trim() || displayCode("CUST"),
       name: finalOwnerName,
       firmName: finalFirmName,
       phone: primaryPhone,
@@ -508,10 +646,16 @@ export function CustomersView() {
       creditLimit: creditLimit ? parseFloat(creditLimit) : 0,
       garmentTypes: allCats.join(", "),
       preferredCategories: allCats.join(", "),
-      referredBy: referredBy.trim(),
+      referredBy: referrer,
+      // Structured link only when it still matches the text (a typed-over value becomes free text)
+      referredByType: referrer ? referredByType || undefined : undefined,
+      referredById: referrer && referredById > 0 ? referredById : undefined,
       addedByAgentName: addedByAgentName.trim(),
+      addedByAgentId: ownerEmployee ? Number(ownerEmployee.id) : existing?.addedByAgentId,
+      subAgentId: pickedSubAgent ? Number(pickedSubAgent.id) : undefined,
+      subAgentName: pickedSubAgent ? pickedSubAgent.name : undefined,
       preferredTransporterName: preferredTransporterName.trim(),
-      transportPreference: preferredTransporterName.trim(),
+      transportPreference: transportPreference.trim(),
       dob: dob.trim(),
       religion: religion.trim(),
       notes: notes.trim(),
@@ -522,6 +666,20 @@ export function CustomersView() {
       shopPhotoUri: shopPhotoUri.trim(),
       purchaserPhotoUri: purchaserPhotoUri.trim(),
       cancelChequePhotoUri: cancelChequePhotoUri.trim(),
+      securityCheques: securityCheques
+        .filter((sc) => sc.chequeNo?.trim())
+        .map((sc) => ({
+          ...sc,
+          id: sc.pdcChequeId || sc.id || Date.now(),
+          chequeNo: sc.chequeNo.trim(),
+          bankName: sc.bankName?.trim() || "",
+          amount: Number(sc.amount || 0),
+          chequeDate: sc.chequeDate?.trim() || new Date().toISOString().split("T")[0],
+          accountNumber: sc.accountNumber?.trim() || "",
+          branchName: sc.branchName?.trim() || "",
+          notes: sc.notes?.trim() || "",
+          status: sc.status || "Pending",
+        })),
       createdAt: editingId ? (customers.find((c) => c.id === editingId)?.createdAt || Date.now()) : Date.now(),
     }
 
@@ -546,24 +704,62 @@ export function CustomersView() {
     downloadXmlFile(xml, `Himat_Customers_Tally_Import_${today}.xml`)
   }
 
-  // Search filter
+  // Multi-criteria filter: search query, garment category, working market, credit type
   const q = search.trim().toLowerCase()
-  const filteredCustomers = customers.filter(
-    (c) =>
-      !q ||
-      c.name?.toLowerCase().includes(q) ||
-      c.firmName?.toLowerCase().includes(q) ||
-      c.phone?.includes(q) ||
-      c.phone2?.includes(q) ||
-      c.gstNumber?.toLowerCase().includes(q) ||
-      c.gstin?.toLowerCase().includes(q) ||
-      c.customerId?.toLowerCase().includes(q) ||
-      c.city?.toLowerCase().includes(q) ||
-      c.state?.toLowerCase().includes(q) ||
-      c.preferredCategories?.toLowerCase().includes(q) ||
-      c.garmentTypes?.toLowerCase().includes(q) ||
-      c.referredBy?.toLowerCase().includes(q)
-  )
+  const filteredCustomers = customers.filter((c) => {
+    if (q) {
+      const matchQuery =
+        c.name?.toLowerCase().includes(q) ||
+        c.firmName?.toLowerCase().includes(q) ||
+        c.phone?.includes(q) ||
+        c.phone2?.includes(q) ||
+        c.gstNumber?.toLowerCase().includes(q) ||
+        c.gstin?.toLowerCase().includes(q) ||
+        c.customerId?.toLowerCase().includes(q) ||
+        c.city?.toLowerCase().includes(q) ||
+        c.district?.toLowerCase().includes(q) ||
+        c.state?.toLowerCase().includes(q) ||
+        c.preferredCategories?.toLowerCase().includes(q) ||
+        c.garmentTypes?.toLowerCase().includes(q) ||
+        c.workingMarkets?.toLowerCase().includes(q) ||
+        c.marketArea?.toLowerCase().includes(q) ||
+        c.bankName?.toLowerCase().includes(q) ||
+        c.referredBy?.toLowerCase().includes(q)
+      if (!matchQuery) return false
+    }
+
+    if (garmentFilter !== "all") {
+      const gf = garmentFilter.toLowerCase()
+      const cats = ((c.preferredCategories || "") + " " + (c.garmentTypes || "")).toLowerCase()
+      if (!cats.includes(gf)) return false
+    }
+
+    if (workingMarketFilter !== "all") {
+      const wmf = workingMarketFilter.toLowerCase()
+      const wms = ((c.workingMarkets || "") + " " + (c.notes || "")).toLowerCase()
+      if (!wms.includes(wmf)) return false
+    }
+
+    if (creditTypeFilter !== "all") {
+      const cType = (c.customerType || "Cash").toLowerCase()
+      if (cType !== creditTypeFilter.toLowerCase()) return false
+    }
+
+    return true
+  })
+
+  // Pending orders count per customer (for master list badge)
+  const pendingByCustomer: Record<number, number> = {}
+  visits.forEach((v) => {
+    const custId = Number(v.customerId)
+    if (!custId) return
+    entries.forEach((e) => {
+      if (e.visitId !== v.id) return
+      if ((e.deliveryStatus || "Pending") !== "Delivered") {
+        pendingByCustomer[custId] = (pendingByCustomer[custId] || 0) + 1
+      }
+    })
+  })
 
   // Filter Registration Requests (User Requests)
   const filteredRequests = registrationRequests.filter((req) => {
@@ -585,9 +781,13 @@ export function CustomersView() {
   const handleOpenApprovalDialog = (req: CustomerRegistrationRequest) => {
     setSelectedRequestForApproval(req)
     const activeEmps = employees.filter((e) => !e.isBlocked && !e.isDeleted)
-    const firstEmp = activeEmps[0] || employees[0]
-    setApprovalAssignedAgentId(firstEmp ? firstEmp.id : "")
+    // Default owner: the signed-in staff member, else the first active salesman
+    const me = currentEmployee ? activeEmps.find((e) => Number(e.id) === Number(currentEmployee.id)) : undefined
+    const firstEmp = me || activeEmps[0] || employees[0]
+    setApprovalAssignedAgentId(firstEmp ? Number(firstEmp.id) : "")
     setApprovalAssignedAgentName(firstEmp ? firstEmp.name : "")
+    // Sub Agent from the registration link (?agent=<id>), if any
+    setApprovalSubAgentId(toNumericId(req.subAgentId))
     setApprovalCreditType((req.creditType as "Cash" | "Credit") || "Cash")
     setApprovalCreditDays(req.creditDays || 30)
     setApprovalCreditLimit(req.creditLimit || 0)
@@ -603,7 +803,7 @@ export function CustomersView() {
 
   const buildRegistrationInviteMessage = () => {
     const regUrl = getPublicRegistrationUrl()
-    return `Hello!\nTo open a new business trade account with Himat Textile, please click the link below to submit your business details:\n\n${regUrl}\n\nThank you!\nHimat Textile, Ahmedabad`
+    return `HIMAT TEXTILE AHMEDABAD\nYour Garment Guide Across India\n\nHello,\n\nThank you for choosing Himat Textile Ahmedabad.\n\nTo open your New Customer Trade Account, please complete your business and contact details using the link below:\n\n🔗 Customer Registration:\n${regUrl}\n\nImportant: After submitting the registration form, you will receive an SMS OTP on your registered mobile number for verification.\n\nOnce your registration is completed, our team will review your details and proceed with the account-opening process.\n\nThank you for connecting with us.\nHimat Textile Ahmedabad\nYour Garment Guide Across India`
   }
 
   const buildApprovalWelcomeMessage = (
@@ -611,9 +811,12 @@ export function CustomersView() {
     createdId?: number,
     agentName?: string
   ) => {
-    const custCode = createdId || req.createdCustomerId || ""
+    const createdNumericId = Number(createdId || req.createdCustomerId || 0)
+    // Show the readable code (CUST-yyMMdd-NNN), not the long internal id
+    const createdCustomer = createdNumericId ? customers.find((c) => Number(c.id) === createdNumericId) : undefined
+    const custCode = createdCustomer?.customerId || (createdNumericId ? `CUST-${createdNumericId}` : "")
     const salesman = agentName || req.assignedAgentName || "Himat Textile Team"
-    return `Dear ${req.name} (${req.firmName}),\nCongratulations! Your trade account with Himat Textile has been successfully approved.\n\n🆔 Customer ID: #CUST-${custCode}\n🤵 Assigned Sales Agent: ${salesman}\n📦 Account Type: ${req.creditType || "Cash"} ${req.creditDays ? `(${req.creditDays} days)` : ""}\n\nFor any orders or inquiries, please feel free to reach out to your sales agent or our office.\n\nWarm regards,\nHimat Textile, Ahmedabad`
+    return `Dear ${req.name} (${req.firmName}),\nCongratulations! Your trade account with Himat Textile has been successfully approved.\n\n🆔 Customer ID: ${custCode}\n🤵 Assigned Sales Agent: ${salesman}\n📦 Account Type: ${req.creditType || "Cash"} ${req.creditDays ? `(${req.creditDays} days)` : ""}\n\nFor any orders or inquiries, please feel free to reach out to your sales agent or our office.\n\nWarm regards,\nHimat Textile, Ahmedabad`
   }
 
   const buildRejectionMessage = (req: CustomerRegistrationRequest) => {
@@ -626,9 +829,12 @@ export function CustomersView() {
     try {
       const currentReq = selectedRequestForApproval
       const currentAgentName = approvalAssignedAgentName
+      const pickedSubAgent = approvalSubAgentId ? subAgents.find((a) => Number(a.id) === approvalSubAgentId) : undefined
       const createdId = await approveRegistrationRequest(selectedRequestForApproval.id, {
-        assignedAgentId: approvalAssignedAgentId,
+        assignedAgentId: toNumericId(approvalAssignedAgentId),
         assignedAgentName: approvalAssignedAgentName,
+        subAgentId: approvalSubAgentId || null,
+        subAgentName: pickedSubAgent?.name || currentReq.subAgentName || "",
         creditType: approvalCreditType,
         creditDays: approvalCreditDays,
         creditLimit: approvalCreditLimit,
@@ -688,11 +894,14 @@ export function CustomersView() {
           customerId={selectedCustomerId}
           onBack={() => setSelectedCustomerId(null)}
           onEdit={(cust) => handleOpenEdit(cust)}
+          onDelete={(cust) => handleDelete(cust.id)}
+          onNavigate={onNavigate}
         />
       ) : (
         <>
           {/* Top Header */}
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          {initialViewMode === "customers" && (
+<div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
@@ -744,6 +953,20 @@ export function CustomersView() {
               </Button>
 
               <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSelectedCustomerForEnvelope(null)
+                  setIsEnvelopeModalOpen(true)
+                }}
+                className="h-8 px-3 text-xs gap-1.5 border-blue-500/40 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/40 font-semibold"
+                title="Print 24cm x 10.5cm Envelopes for Customers"
+              >
+                <Mail className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                <span>Print Envelope</span>
+              </Button>
+
+              <Button
                 size="sm"
                 onClick={handleOpenAdd}
                 className="h-8 px-3 text-xs font-semibold shadow-sm bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 gap-1"
@@ -753,47 +976,19 @@ export function CustomersView() {
               </Button>
             </div>
           </div>
+          )}
 
-          {/* Navigation Tabs: Customers vs User Requests */}
-          <div className="flex items-center gap-2 border-b border-zinc-200 dark:border-zinc-800">
-            <button
-              type="button"
-              onClick={() => setViewMode("customers")}
-              className={`flex items-center gap-2 py-2.5 px-3 border-b-2 font-medium text-xs transition-all ${
-                viewMode === "customers"
-                  ? "border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-100 font-bold"
-                  : "border-transparent text-muted-foreground hover:text-zinc-900 dark:hover:text-zinc-100"
-              }`}
-            >
-              <Store className="h-3.5 w-3.5" />
-              <span>Active Retailers</span>
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
-                {customers.length}
-              </Badge>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setViewMode("requests")}
-              className={`flex items-center gap-2 py-2.5 px-3 border-b-2 font-medium text-xs transition-all ${
-                viewMode === "requests"
-                  ? "border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-300 font-bold"
-                  : "border-transparent text-muted-foreground hover:text-indigo-600 dark:hover:text-indigo-400"
-              }`}
-            >
-              <User className="h-3.5 w-3.5" />
-              <span>User Requests</span>
-              {pendingRegistrationRequestsCount > 0 ? (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-white animate-pulse">
-                  {pendingRegistrationRequestsCount} Pending
-                </span>
-              ) : (
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
-                  {registrationRequests.length}
-                </Badge>
-              )}
-            </button>
-          </div>
+          {/* One home per feature: approvals live in the Registration Requests inbox */}
+          {initialViewMode === "customers" && isAdmin && pendingRegistrationRequestsCount > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
+              <span>
+                <strong>{pendingRegistrationRequestsCount}</strong> new customer registration{pendingRegistrationRequestsCount === 1 ? "" : "s"} waiting for approval
+              </span>
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => (window.location.hash = "#/app/requests")}>
+                Open Registration Requests
+              </Button>
+            </div>
+          )}
 
           {/* Search Input Bar */}
           {showSearch && (
@@ -821,7 +1016,77 @@ export function CustomersView() {
 
           {viewMode === "customers" ? (
             /* Active Customers Master List View */
-            filteredCustomers.length === 0 ? (
+            <div className="space-y-3">
+              {/* Filter Bar */}
+              <div className="flex flex-wrap items-center gap-2.5 pb-1">
+                {/* Garments Dealt In Filter */}
+                <div className="flex items-center gap-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-2.5 py-1 text-xs shadow-xs">
+                  <span className="text-[11px] font-semibold text-muted-foreground">Garments:</span>
+                  <select
+                    value={garmentFilter}
+                    onChange={(e) => setGarmentFilter(e.target.value)}
+                    className="bg-transparent font-medium text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none cursor-pointer"
+                  >
+                    <option value="all">All Garments</option>
+                    {CUSTOMER_GARMENT_CATEGORIES.map((g) => (
+                      <option key={g} value={g}>{g}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Working Markets Filter */}
+                <div className="flex items-center gap-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-2.5 py-1 text-xs shadow-xs">
+                  <span className="text-[11px] font-semibold text-muted-foreground">Market:</span>
+                  <select
+                    value={workingMarketFilter}
+                    onChange={(e) => setWorkingMarketFilter(e.target.value)}
+                    className="bg-transparent font-medium text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none cursor-pointer"
+                  >
+                    <option value="all">All Working Markets</option>
+                    {CUSTOMER_WORKING_MARKETS.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Credit Terms Filter */}
+                <div className="flex items-center gap-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-2.5 py-1 text-xs shadow-xs">
+                  <span className="text-[11px] font-semibold text-muted-foreground">Terms:</span>
+                  <select
+                    value={creditTypeFilter}
+                    onChange={(e) => setCreditTypeFilter(e.target.value)}
+                    className="bg-transparent font-medium text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none cursor-pointer"
+                  >
+                    <option value="all">All Terms</option>
+                    <option value="Cash">Cash Basis</option>
+                    <option value="Credit">Credit Facility</option>
+                  </select>
+                </div>
+
+                {/* Reset Filters */}
+                {(garmentFilter !== "all" || workingMarketFilter !== "all" || creditTypeFilter !== "all" || search) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setGarmentFilter("all")
+                      setWorkingMarketFilter("all")
+                      setCreditTypeFilter("all")
+                      setSearch("")
+                    }}
+                    className="h-7 px-2 text-xs text-muted-foreground hover:text-zinc-900 dark:hover:text-zinc-100 gap-1"
+                  >
+                    <X className="h-3 w-3" />
+                    <span>Reset Filters</span>
+                  </Button>
+                )}
+
+                <span className="text-[11px] text-muted-foreground ml-auto">
+                  Showing {filteredCustomers.length} of {customers.length} retailers
+                </span>
+              </div>
+
+              {filteredCustomers.length === 0 ? (
               <div className="p-12 text-center border border-dashed rounded-2xl bg-white dark:bg-zinc-900/40">
                 <Store className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-60" />
                 <h3 className="font-semibold text-sm">No customer records found</h3>
@@ -865,9 +1130,16 @@ export function CustomersView() {
                                   {(cust.firmName || cust.name || "C")[0].toUpperCase()}
                                 </div>
                                 <div className="min-w-0">
-                                  <p className="font-bold text-sm text-zinc-900 dark:text-zinc-50 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate">
-                                    {cust.firmName || cust.name}
-                                  </p>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <p className="font-bold text-sm text-zinc-900 dark:text-zinc-50 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate">
+                                      {cust.firmName || cust.name}
+                                    </p>
+                                    {(pendingByCustomer[cust.id] || 0) > 0 && (
+                                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-700 border border-amber-300 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700 whitespace-nowrap">
+                                        ⏳ {pendingByCustomer[cust.id]} Pending
+                                      </span>
+                                    )}
+                                  </div>
                                   <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 truncate">
                                     <User className="h-3 w-3 shrink-0" />
                                     <span>{cust.name || "Proprietor"}</span>
@@ -916,13 +1188,21 @@ export function CustomersView() {
                             </td>
 
                             <td className="py-3 px-4 whitespace-nowrap">
-                              <Badge
-                                variant={cust.customerType === "Credit" ? "warning" : "default"}
-                                className="text-[10px] uppercase font-bold"
-                              >
-                                {cust.customerType || "Cash"}
-                                {cust.creditDays ? ` (${cust.creditDays}d)` : ""}
-                              </Badge>
+                              <div className="flex flex-col gap-1 items-start">
+                                <Badge
+                                  variant={cust.customerType === "Credit" ? "warning" : "default"}
+                                  className="text-[10px] uppercase font-bold"
+                                >
+                                  {cust.customerType || "Cash"}
+                                  {cust.creditDays ? ` (${cust.creditDays}d)` : ""}
+                                </Badge>
+                                {cust.securityCheques && cust.securityCheques.length > 0 && (
+                                  <span className="inline-flex items-center gap-1 text-[10px] bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800 font-semibold" title={`${cust.securityCheques.length} Security Cheque(s) on file`}>
+                                    <ShieldCheck className="h-3 w-3 text-amber-600" />
+                                    <span>{cust.securityCheques.length} Sec CHQ</span>
+                                  </span>
+                                )}
+                              </div>
                             </td>
 
                             <td className="py-3 px-4 whitespace-nowrap">
@@ -949,6 +1229,20 @@ export function CustomersView() {
                                 >
                                   <Printer className="h-3 w-3 mr-1" />
                                   Report
+                                </Button>
+
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setSelectedCustomerForEnvelope(cust)
+                                    setIsEnvelopeModalOpen(true)
+                                  }}
+                                  className="h-7 text-xs px-2 text-blue-600 dark:text-blue-400 font-medium"
+                                  title="Print 24cm x 10.5cm Postal Envelope"
+                                >
+                                  <Mail className="h-3 w-3 mr-1" />
+                                  Envelope
                                 </Button>
 
                                 <Button
@@ -989,8 +1283,9 @@ export function CustomersView() {
                   </table>
                 </div>
               </div>
-            )
-          ) : (
+            )}
+          </div>
+        ) : (
             /* Registration Requests (User Requests) Master List View */
             <div className="space-y-4">
               {/* Sub-status filters */}
@@ -1597,6 +1892,21 @@ export function CustomersView() {
                               <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 block truncate">Cancel Cheque</span>
                             </div>
                           )}
+
+                          {activeDetailRequest.purchaserPhotoUri && (
+                            <div className="space-y-1 text-center">
+                              <div
+                                onClick={() => setLightbox({ open: true, url: activeDetailRequest.purchaserPhotoUri!, title: `${activeDetailRequest.firmName} - Purchaser Selfie` })}
+                                className="group relative aspect-square rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-zinc-100 dark:bg-zinc-800 cursor-pointer shadow-xs hover:ring-2 hover:ring-indigo-500 transition-all"
+                              >
+                                <img src={activeDetailRequest.purchaserPhotoUri} alt="Purchaser Selfie" className="h-full w-full object-cover group-hover:scale-105 transition-transform" />
+                                <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-xs font-semibold">
+                                  <Eye className="h-4 w-4 mr-1" /> View
+                                </div>
+                              </div>
+                              <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 block truncate">Purchaser Selfie</span>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1762,7 +2072,8 @@ export function CustomersView() {
               { value: "contacts", label: "2. Contacts (Up to 5)" },
               { value: "outlets", label: "3. Outlets & Addresses" },
               { value: "crm", label: "4. Garments & Preferences" },
-              { value: "kyc", label: "5. KYC & Photos" },
+              { value: "security", label: `5. Security Cheques ${securityCheques.length > 0 ? `(${securityCheques.length})` : ""}` },
+              { value: "kyc", label: "6. KYC & Photos" },
             ]}
           />
 
@@ -2188,35 +2499,76 @@ export function CustomersView() {
                 </div>
 
                 <div>
+                  <StationSearchInput
+                    label="Booking / Delivery Station"
+                    value={transportPreference}
+                    onChange={setTransportPreference}
+                    placeholder="Search railway station..."
+                  />
+                </div>
+
+                <div>
                   <ReferrerSelectModal
                     value={referredBy}
                     onChange={setReferredBy}
+                    onSelect={(sel) => {
+                      setReferredByType(sel?.referredByType || "")
+                      setReferredById(sel?.referredById || 0)
+                    }}
+                    selectedType={referredByType}
+                    selectedId={referredById}
                     employees={employees}
+                    subAgents={subAgents}
                     customers={customers}
                     suppliers={suppliers}
-                    label="Referred By (Entity Link)"
+                    excludeType="Customer"
+                    excludeId={editingId || undefined}
+                    label="Referred By"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                    Added / Creator Agent
-                  </label>
+              {/* Sub Agent only: the staff member saving the customer is recorded automatically */}
+              <div>
+                <label htmlFor="customer-sub-agent" className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                  Sub Agent (who brought this customer)
+                </label>
+                <div className="mt-1 flex items-center gap-2">
                   <select
-                    value={addedByAgentName}
-                    onChange={(e) => setAddedByAgentName(e.target.value)}
-                    className="mt-1 w-full h-8 rounded-md border border-zinc-300 bg-white px-2.5 text-xs text-zinc-900 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                    id="customer-sub-agent"
+                    value={subAgentId ? String(subAgentId) : ""}
+                    onChange={(e) => setSubAgentId(Number(e.target.value) || 0)}
+                    className="min-w-0 flex-1 h-8 rounded-md border border-zinc-300 bg-white px-2.5 text-xs text-zinc-900 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
                   >
-                    <option value={user?.displayName || "Admin"}>{user?.displayName || "Current Logged-in User"}</option>
-                    {employees.map((e) => (
-                      <option key={e.id} value={e.name}>
-                        {e.name} ({e.role})
-                      </option>
-                    ))}
+                    <option value="">-- No Sub Agent --</option>
+                    {subAgents
+                      .filter((a) => !a.isDeleted || Number(a.id) === subAgentId)
+                      .map((a) => (
+                        <option key={a.id} value={String(a.id)}>
+                          {a.name}
+                          {a.firmName ? ` (${a.firmName})` : ""}
+                          {a.isDeleted ? " - deactivated" : ""}
+                        </option>
+                      ))}
                   </select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={() => setIsQuickSubAgentOpen(true)}
+                  >
+                    <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                    New Sub Agent
+                  </Button>
                 </div>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  {subAgents.length === 0 ? "No Sub Agents yet. Create one here with New Sub Agent. " : ""}
+                  Saved by {addedByAgentName || "you"} (recorded automatically).
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
                     Date of Birth (DOB)
@@ -2256,7 +2608,169 @@ export function CustomersView() {
             </div>
           )}
 
-          {/* TAB 5: KYC & Documents */}
+          {/* TAB 5: Security Cheques (Text Data & PDC Link) */}
+          {activeFormTab === "security" && (
+            <div className="space-y-4 text-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-amber-50/70 border border-amber-200/80 rounded-lg dark:bg-amber-950/20 dark:border-amber-900/40">
+                <div>
+                  <div className="flex items-center gap-2 font-semibold text-amber-900 dark:text-amber-200">
+                    <ShieldCheck className="h-4 w-4 text-amber-600" />
+                    <span>Customer Security & Guarantee Cheques</span>
+                  </div>
+                  <p className="text-[11px] text-amber-700/80 dark:text-amber-300/70 mt-0.5">
+                    Record post-dated guarantee/security cheques provided by the customer. When a cheque's due date arrives, it will automatically enter the Post-Dated Cheque (PDC) collection register.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleAddSecurityCheque}
+                  className="shrink-0 gap-1.5 bg-amber-600 hover:bg-amber-700 text-white font-medium shadow-xs"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add Cheque
+                </Button>
+              </div>
+
+              {securityCheques.length === 0 ? (
+                <div className="border border-dashed border-zinc-200 dark:border-zinc-800 rounded-lg p-8 text-center bg-zinc-50/50 dark:bg-zinc-900/20">
+                  <Landmark className="h-8 w-8 text-zinc-300 dark:text-zinc-600 mx-auto mb-2" />
+                  <p className="font-semibold text-zinc-700 dark:text-zinc-300 text-xs">No Security Cheques Added</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5 max-w-sm mx-auto">
+                    If this customer provided security cheques for credit guarantee, click "Add Cheque" to record their cheque number, bank, amount, and maturity date.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAddSecurityCheque}
+                    className="mt-3 gap-1.5 text-xs text-amber-700 border-amber-300 hover:bg-amber-50 dark:text-amber-300"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> + Add First Security Cheque
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {securityCheques.map((sc, idx) => (
+                    <div
+                      key={sc.id || idx}
+                      className="p-3.5 border border-zinc-200 dark:border-zinc-800 rounded-lg bg-zinc-50/40 dark:bg-zinc-900/30 space-y-3"
+                    >
+                      <div className="flex items-center justify-between pb-2 border-b border-zinc-200/60 dark:border-zinc-800">
+                        <div className="flex items-center gap-2">
+                          <span className="flex items-center justify-center h-5 w-5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200 text-[10px] font-bold">
+                            {idx + 1}
+                          </span>
+                          <span className="font-bold text-zinc-800 dark:text-zinc-200">
+                            Security Cheque #{idx + 1}
+                          </span>
+                          {Number(sc.amount) > 0 && (
+                            <Badge variant="outline" className="bg-white dark:bg-zinc-900 text-emerald-700 border-emerald-300 font-bold text-[10px]">
+                              ₹{formatInr(Number(sc.amount))}
+                            </Badge>
+                          )}
+                          {sc.chequeDate && (
+                            <span className="text-[11px] text-muted-foreground">
+                              (Due: {sc.chequeDate})
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSecurityCheque(idx)}
+                          className="p-1 rounded text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                          title="Remove this cheque"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                        <div>
+                          <label className="text-[11px] font-semibold text-zinc-700 dark:text-zinc-300">
+                            Cheque Number (CH N) <span className="text-red-500">*</span>
+                          </label>
+                          <Input
+                            value={sc.chequeNo}
+                            onChange={(e) => handleUpdateSecurityCheque(idx, "chequeNo", e.target.value)}
+                            placeholder="e.g. 049281"
+                            className="mt-1 h-8 text-xs font-mono font-bold"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-semibold text-zinc-700 dark:text-zinc-300">
+                            Bank Name <span className="text-red-500">*</span>
+                          </label>
+                          <Input
+                            value={sc.bankName}
+                            onChange={(e) => handleUpdateSecurityCheque(idx, "bankName", e.target.value)}
+                            placeholder="e.g. HDFC Bank, SBI, ICICI"
+                            className="mt-1 h-8 text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-semibold text-zinc-700 dark:text-zinc-300">
+                            Cheque Amount (₹) <span className="text-red-500">*</span>
+                          </label>
+                          <Input
+                            type="number"
+                            value={sc.amount || ""}
+                            onChange={(e) => handleUpdateSecurityCheque(idx, "amount", e.target.value)}
+                            placeholder="e.g. 50000"
+                            className="mt-1 h-8 text-xs font-bold text-emerald-600"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-semibold text-zinc-700 dark:text-zinc-300">
+                            Cheque Date (PDC / Maturity) <span className="text-red-500">*</span>
+                          </label>
+                          <Input
+                            type="date"
+                            value={sc.chequeDate}
+                            onChange={(e) => handleUpdateSecurityCheque(idx, "chequeDate", e.target.value)}
+                            className="mt-1 h-8 text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-semibold text-zinc-700 dark:text-zinc-300">
+                            A/C No. / Branch (Optional)
+                          </label>
+                          <Input
+                            value={sc.accountNumber || ""}
+                            onChange={(e) => handleUpdateSecurityCheque(idx, "accountNumber", e.target.value)}
+                            placeholder="Optional Account Number"
+                            className="mt-1 h-8 text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-semibold text-zinc-700 dark:text-zinc-300">
+                            Purpose / Notes (Optional)
+                          </label>
+                          <Input
+                            value={sc.notes || ""}
+                            onChange={(e) => handleUpdateSecurityCheque(idx, "notes", e.target.value)}
+                            placeholder="e.g. Security for 30-day credit"
+                            className="mt-1 h-8 text-xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAddSecurityCheque}
+                    className="w-full gap-1.5 text-xs border-dashed text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Add Another Security Cheque
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 6: KYC & Documents */}
           {activeFormTab === "kyc" && (
             <div className="space-y-3.5 text-xs">
               <p className="text-[11px] text-muted-foreground">
@@ -2346,6 +2860,14 @@ export function CustomersView() {
           </div>
         </div>
       </Dialog>
+
+      {/* New Sub Agent from the customer form; rendered after it so it stacks on top */}
+      <SubAgentFormDialog
+        open={isQuickSubAgentOpen}
+        onOpenChange={setIsQuickSubAgentOpen}
+        editing={null}
+        onSaved={(agent) => setSubAgentId(Number(agent.id))}
+      />
 
       {/* 1. Share Customer Registration Link Modal */}
       <Dialog
@@ -2521,7 +3043,7 @@ export function CustomersView() {
                   value={approvalAssignedAgentId}
                   onChange={(e) => {
                     const id = e.target.value
-                    setApprovalAssignedAgentId(id)
+                    setApprovalAssignedAgentId(id ? Number(id) : "")
                     const found = employees.find((emp) => String(emp.id) === String(id))
                     setApprovalAssignedAgentName(found ? found.name : "")
                   }}
@@ -2532,13 +3054,41 @@ export function CustomersView() {
                     .filter((e) => !e.isBlocked && !e.isDeleted)
                     .map((emp) => (
                       <option key={emp.id} value={emp.id}>
-                        {emp.name} ({emp.role})
+                        {emp.name} ({emp.role === "Salesman" ? "Staff" : emp.role})
                       </option>
                     ))}
                 </select>
                 <p className="text-[10px] text-muted-foreground">
                   The customer will be managed under this salesman's portfolio.
                 </p>
+              </div>
+
+              {/* Sub Agent who brought the customer (pre-filled from their personal link) */}
+              <div className="space-y-1">
+                <label htmlFor="approval-sub-agent" className="font-semibold text-zinc-800 dark:text-zinc-200">
+                  Sub Agent
+                </label>
+                <select
+                  id="approval-sub-agent"
+                  value={approvalSubAgentId ? String(approvalSubAgentId) : ""}
+                  onChange={(e) => setApprovalSubAgentId(Number(e.target.value) || 0)}
+                  className="w-full h-9 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                >
+                  <option value="">-- No Sub Agent --</option>
+                  {subAgents
+                    .filter((a) => !a.isDeleted || Number(a.id) === approvalSubAgentId)
+                    .map((a) => (
+                      <option key={a.id} value={String(a.id)}>
+                        {a.name}
+                        {a.firmName ? ` (${a.firmName})` : ""}
+                      </option>
+                    ))}
+                </select>
+                {selectedRequestForApproval?.subAgentId ? (
+                  <p className="text-[10px] text-emerald-700 dark:text-emerald-400">
+                    Registered through {selectedRequestForApproval.subAgentName || "a Sub Agent"}'s link.
+                  </p>
+                ) : null}
               </div>
 
               {/* Billing / Credit Terms */}
@@ -2787,6 +3337,14 @@ export function CustomersView() {
         onClose={() => setLightbox((prev) => ({ ...prev, open: false }))}
         imageUrl={lightbox.url}
         title={lightbox.title}
+      />
+
+      {/* 24cm x 10.5cm Envelope Print Modal */}
+      <EnvelopePrintModal
+        open={isEnvelopeModalOpen}
+        onOpenChange={setIsEnvelopeModalOpen}
+        initialRecipient={selectedCustomerForEnvelope ? createCustomerEnvelopeData(selectedCustomerForEnvelope) : null}
+        defaultType="Customer"
       />
     </div>
   )

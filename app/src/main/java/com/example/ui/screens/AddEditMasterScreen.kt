@@ -45,9 +45,11 @@ import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 import com.example.ui.viewmodel.HimatViewModel
 import com.example.ui.viewmodel.MasterTab
+import com.example.util.IdGenerator
 import com.example.util.MasterConstants
 import com.example.util.MasterDraftManager
 import com.example.util.RecordValidator
+import com.example.util.Roles
 import com.example.util.ValidationResult
 import org.json.JSONArray
 import org.json.JSONObject
@@ -59,14 +61,19 @@ import org.json.JSONObject
 data class MasterContact(
     val name: String = "",
     val phone: String = "",
-    val designation: String = ""
+    val designation: String = "",
+    // Entered on the web admin; kept so an Android save does not drop it
+    val email: String = ""
 )
 
 data class MasterLocation(
     val name: String = "",
     val address: String = "",
     val city: String = "",
-    val mapLink: String = ""
+    val mapLink: String = "",
+    // Entered on the web admin; kept so an Android save does not drop them
+    val pincode: String = "",
+    val phone: String = ""
 )
 
 private fun parseContactsJson(json: String, fallbackPhones: List<String>): List<MasterContact> {
@@ -80,7 +87,8 @@ private fun parseContactsJson(json: String, fallbackPhones: List<String>): List<
                     MasterContact(
                         name = obj.optString("name", ""),
                         phone = obj.optString("phone", ""),
-                        designation = obj.optString("designation", "")
+                        designation = obj.optString("designation", ""),
+                        email = obj.optString("email", "")
                     )
                 )
             }
@@ -108,6 +116,7 @@ private fun contactsToJson(list: List<MasterContact>): String {
             obj.put("name", c.name)
             obj.put("phone", c.phone)
             obj.put("designation", c.designation)
+            if (c.email.isNotBlank()) obj.put("email", c.email)
             arr.put(obj)
         }
     }
@@ -126,7 +135,9 @@ private fun parseLocationsJson(json: String, fallbackName: String, fallbackAddre
                         name = obj.optString("name", ""),
                         address = obj.optString("address", ""),
                         city = obj.optString("city", ""),
-                        mapLink = obj.optString("mapLink", "")
+                        mapLink = obj.optString("mapLink", ""),
+                        pincode = obj.optString("pincode", ""),
+                        phone = obj.optString("phone", "")
                     )
                 )
             }
@@ -148,6 +159,8 @@ private fun locationsToJson(list: List<MasterLocation>): String {
             obj.put("address", loc.address)
             obj.put("city", loc.city)
             obj.put("mapLink", loc.mapLink)
+            if (loc.pincode.isNotBlank()) obj.put("pincode", loc.pincode)
+            if (loc.phone.isNotBlank()) obj.put("phone", loc.phone)
             arr.put(obj)
         }
     }
@@ -179,6 +192,7 @@ fun AddEditMasterScreen(
     val transporters by viewModel.allTransporters.collectAsStateWithLifecycle()
     val markets by viewModel.allMarkets.collectAsStateWithLifecycle()
     val employees by viewModel.allEmployees.collectAsStateWithLifecycle()
+    val subAgents by viewModel.subAgents.collectAsStateWithLifecycle()
     val currentEmployee by viewModel.currentEmployee.collectAsStateWithLifecycle()
     val isSuperAdmin by viewModel.isSuperAdmin.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -274,12 +288,18 @@ fun AddEditMasterScreen(
 
     // Referred By & Creator Agent
     var custReferredBy by remember(editingCustomer) { mutableStateOf(editingCustomer?.referredBy ?: custDraft?.get("referredBy")?.toString() ?: "") }
+    var custReferredByType by remember(editingCustomer) { mutableStateOf(editingCustomer?.referredByType ?: "") }
+    var custReferredById by remember(editingCustomer) { mutableStateOf(editingCustomer?.referredById) }
+    var custSubAgentId by remember(editingCustomer) { mutableStateOf(editingCustomer?.subAgentId) }
+    var custSubAgentName by remember(editingCustomer) { mutableStateOf(editingCustomer?.subAgentName ?: "") }
     var custAddedByAgentId by remember(editingCustomer, currentEmployee) {
         mutableStateOf(editingCustomer?.addedByAgentId ?: currentEmployee?.id)
     }
+    // No picker any more: a new customer is credited to the staff member who saves it; edits keep the owner
     var custAddedByAgentName by remember(editingCustomer, currentEmployee) {
-        mutableStateOf(editingCustomer?.addedByAgentName ?: custDraft?.get("addedByAgentName")?.toString() ?: currentEmployee?.name ?: "Sales Agent")
+        mutableStateOf(editingCustomer?.addedByAgentName ?: currentEmployee?.name.orEmpty())
     }
+    var showQuickAddSubAgent by remember { mutableStateOf(false) }
 
     // Preferred Transporter
     var custPreferredTransporterId by remember(editingCustomer) { mutableStateOf(editingCustomer?.preferredTransporterId) }
@@ -381,6 +401,8 @@ fun AddEditMasterScreen(
     var supEmail by remember(editingSupplier) { mutableStateOf(editingSupplier?.email ?: supDraft?.get("email")?.toString() ?: "") }
     var supEmail2 by remember(editingSupplier) { mutableStateOf(editingSupplier?.email2 ?: supDraft?.get("email2")?.toString() ?: "") }
     var supReferredBy by remember(editingSupplier) { mutableStateOf(editingSupplier?.referredBy ?: supDraft?.get("referredBy")?.toString() ?: "") }
+    var supReferredByType by remember(editingSupplier) { mutableStateOf(editingSupplier?.referredByType ?: "") }
+    var supReferredById by remember(editingSupplier) { mutableStateOf(editingSupplier?.referredById) }
     var supNotes by remember(editingSupplier) { mutableStateOf(editingSupplier?.notes ?: supDraft?.get("notes")?.toString() ?: "") }
 
     // =========================================================================
@@ -465,6 +487,8 @@ fun AddEditMasterScreen(
     var empEmergencyContactName by remember(editingEmployee) { mutableStateOf(editingEmployee?.emergencyContactName ?: "") }
     var empEmergencyContactPhone by remember(editingEmployee) { mutableStateOf(editingEmployee?.emergencyContactPhone ?: "") }
     var empReferredBy by remember(editingEmployee) { mutableStateOf(editingEmployee?.referredBy ?: empDraft?.get("referredBy")?.toString() ?: "") }
+    var empReferredByType by remember(editingEmployee) { mutableStateOf(editingEmployee?.referredByType ?: "") }
+    var empReferredById by remember(editingEmployee) { mutableStateOf(editingEmployee?.referredById) }
     var empSelectedMarkets by remember(editingEmployee) {
         val m = editingEmployee?.assignedMarkets?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
         mutableStateOf(m.toSet())
@@ -650,7 +674,8 @@ fun AddEditMasterScreen(
                 val primaryContactPhone = custContacts.firstOrNull { it.phone.isNotBlank() }?.phone?.trim() ?: ""
                 val primaryOutlet = custOutlets.firstOrNull()
 
-                val candidate = CustomerEntity(
+                // copy() keeps fields this form does not show (bank details, KYC from registration, ...)
+                val candidate = (editingCustomer ?: CustomerEntity()).copy(
                     id = editingCustomer?.id ?: 0L,
                     customerId = custId.trim(),
                     name = effectiveOwnerName.ifBlank { effectiveFirmName },
@@ -669,8 +694,14 @@ fun AddEditMasterScreen(
                     personalLocation = custPersonalLocation.trim(),
                     shopCount = maxOf(1, custOutlets.size),
                     shopLocations = custOutlets.joinToString("; ") { "${it.name}: ${it.address}" },
-                    marketArea = custCity.trim(), // NO customer market selection!
-                    markets = "",                  // NO customer market selection!
+                    // The form has no market field: keep the market that came from registration / the web admin
+                    marketArea = editingCustomer?.marketArea?.takeIf { it.isNotBlank() } ?: custCity.trim(),
+                    markets = editingCustomer?.markets ?: "",
+                    workingMarkets = editingCustomer?.workingMarkets ?: "",
+                    subAgentId = custSubAgentId,
+                    subAgentName = if (custSubAgentId != null) custSubAgentName.trim() else "",
+                    referredByType = if (custReferredBy.isBlank()) "" else custReferredByType,
+                    referredById = if (custReferredBy.isBlank()) null else custReferredById,
                     city = custCity.trim(),
                     district = custDistrict.trim(),
                     state = custState.trim(),
@@ -718,8 +749,11 @@ fun AddEditMasterScreen(
                 val primaryOutlet = supOutlets.firstOrNull()
                 val allCategories = (supCategories + listOfNotNull(supCustomCategory.trim().takeIf { it.isNotBlank() })).joinToString(", ")
 
-                val candidate = SupplierEntity(
+                // copy() keeps fields this form does not show (bank details, MRP / less system, sub categories, ...)
+                val candidate = (editingSupplier ?: SupplierEntity()).copy(
                     id = editingSupplier?.id ?: 0L,
+                    referredByType = if (supReferredBy.isBlank()) "" else supReferredByType,
+                    referredById = if (supReferredBy.isBlank()) null else supReferredById,
                     supplierId = supId.trim(),
                     name = supContactPerson.trim().ifBlank { effectiveFirmName },
                     firmName = effectiveFirmName,
@@ -891,8 +925,11 @@ fun AddEditMasterScreen(
                     validationErrors = listOf("Employee name is required.")
                     return
                 }
-                val candidate = EmployeeEntity(
+                // copy() keeps status / suspension, photo and other fields this form does not show
+                val candidate = (editingEmployee ?: EmployeeEntity()).copy(
                     id = editingEmployee?.id ?: 0L,
+                    referredByType = if (empReferredBy.isBlank()) "" else empReferredByType,
+                    referredById = if (empReferredBy.isBlank()) null else empReferredById,
                     employeeId = empId.trim(),
                     name = empName.trim(),
                     phone = empPhone.trim(),
@@ -925,8 +962,10 @@ fun AddEditMasterScreen(
         InlineMarketDialog(
             onDismiss = { showInlineMarketDialog = false },
             onSave = { newMkt ->
-                viewModel.saveMarket(newMkt) {
-                    supMarketName = newMkt.marketName
+                viewModel.saveMarket(newMkt) { saved ->
+                    supMarketName = saved.marketName
+                    // Link by id, so the supplier shows in the new market's detail
+                    supMarketId = saved.id
                 }
                 showInlineMarketDialog = false
             }
@@ -947,10 +986,10 @@ fun AddEditMasterScreen(
     }
 
     Scaffold(
-        containerColor = Color(0xFFF6F8FB),
+        containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
             Surface(
-                color = Color.White,
+                color = MaterialTheme.colorScheme.surface,
                 shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
                 shadowElevation = 8.dp,
                 modifier = Modifier.fillMaxWidth()
@@ -965,7 +1004,7 @@ fun AddEditMasterScreen(
                     OutlinedButton(
                         onClick = onBack,
                         shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                         modifier = Modifier
                             .weight(1f)
                             .defaultMinSize(minHeight = 42.dp)
@@ -973,7 +1012,7 @@ fun AddEditMasterScreen(
                         Text(
                             text = "Cancel",
                             fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = TextSecondary
                         )
                     }
@@ -983,8 +1022,8 @@ fun AddEditMasterScreen(
                         enabled = activeTab != MasterTab.EMPLOYEES || isSuperAdmin,
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = NavyPrimary,
-                            disabledContainerColor = Color(0xFF94A3B8)
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
                         ),
                         modifier = Modifier
                             .weight(1.5f)
@@ -996,8 +1035,8 @@ fun AddEditMasterScreen(
                         Text(
                             text = if (isEdit) "Update Master" else "Save Master",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = GoldAccent
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onPrimary
                         )
                     }
                 }
@@ -1007,7 +1046,7 @@ fun AddEditMasterScreen(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFFF6F8FB))
+                .background(MaterialTheme.colorScheme.background)
                 .padding(paddingValues)
         ) {
             Column(
@@ -1043,14 +1082,14 @@ fun AddEditMasterScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = screenTitle,
-                            fontSize = 18.sp,
+                            style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = NavyPrimary,
                             letterSpacing = (-0.2).sp
                         )
                         Text(
                             text = screenSubtitle,
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             color = TextSecondary,
                             maxLines = 1
                         )
@@ -1077,7 +1116,7 @@ fun AddEditMasterScreen(
                                 Text(
                                     text = "Please resolve issues below:",
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 12.5.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = Color(0xFF991B1B)
                                 )
                             }
@@ -1085,7 +1124,7 @@ fun AddEditMasterScreen(
                             validationErrors.forEach { err ->
                                 Text(
                                     text = "• $err",
-                                    fontSize = 12.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = Color(0xFF991B1B)
                                 )
                             }
@@ -1130,7 +1169,7 @@ fun AddEditMasterScreen(
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     text = "Resumed from your local draft",
-                                    fontSize = 12.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     fontWeight = FontWeight.Medium,
                                     color = Color(0xFF166534)
                                 )
@@ -1145,7 +1184,7 @@ fun AddEditMasterScreen(
                             ) {
                                 Text(
                                     text = "Discard Draft",
-                                    fontSize = 11.5.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = Color(0xFFDC2626),
                                     fontWeight = FontWeight.SemiBold
                                 )
@@ -1194,11 +1233,6 @@ fun AddEditMasterScreen(
                             onCustomGarmentTypeChange = { custCustomGarmentType = it },
                             referredBy = custReferredBy,
                             onReferredByChange = { custReferredBy = it },
-                            addedByAgentName = custAddedByAgentName,
-                            onAddedByAgentChange = { name, id ->
-                                custAddedByAgentName = name
-                                custAddedByAgentId = id
-                            },
                             preferredTransporterName = custPreferredTransporterName,
                             onPreferredTransporterChange = { name, id ->
                                 custPreferredTransporterName = name
@@ -1239,8 +1273,48 @@ fun AddEditMasterScreen(
                             customersList = customers,
                             suppliersList = suppliers,
                             employeesList = employees,
-                            transportersList = transporters
+                            transportersList = transporters,
+                            subAgentsList = subAgents.filter { !it.status.equals("Deactivated", true) || it.id == custSubAgentId },
+                            subAgentName = custSubAgentName,
+                            onSubAgentChange = { name, id ->
+                                custSubAgentName = name
+                                custSubAgentId = id
+                            },
+                            onAddSubAgent = { showQuickAddSubAgent = true },
+                            referredByType = custReferredByType,
+                            referredById = custReferredById,
+                            onReferredByLinkChange = { value, type, id ->
+                                custReferredBy = value
+                                custReferredByType = type
+                                custReferredById = id
+                            },
+                            excludeReferrerKey = editingCustomer?.let { "Customer:${it.id}" }
                         )
+
+                        if (showQuickAddSubAgent) {
+                            QuickAddSubAgentDialog(
+                                onDismiss = { showQuickAddSubAgent = false },
+                                onSave = { name, phone, firm, city ->
+                                    viewModel.saveSubAgent(
+                                        EmployeeEntity(
+                                            id = IdGenerator.newId(),
+                                            employeeId = "AGT-${(100..999).random()}",
+                                            name = name,
+                                            phone = phone,
+                                            firmName = firm,
+                                            city = city,
+                                            role = Roles.AGENT,
+                                            status = "Active"
+                                        )
+                                    ) { saved ->
+                                        // Pick the new agent for this customer straight away
+                                        custSubAgentId = saved.id
+                                        custSubAgentName = saved.name
+                                    }
+                                    showQuickAddSubAgent = false
+                                }
+                            )
+                        }
                     }
 
                     MasterTab.SUPPLIERS -> {
@@ -1307,7 +1381,16 @@ fun AddEditMasterScreen(
                             brandsList = brands,
                             customersList = customers,
                             suppliersList = suppliers,
-                            employeesList = employees
+                            employeesList = employees,
+                            subAgentsList = subAgents,
+                            referredByType = supReferredByType,
+                            referredById = supReferredById,
+                            onReferredByLinkChange = { value, type, id ->
+                                supReferredBy = value
+                                supReferredByType = type
+                                supReferredById = id
+                            },
+                            excludeReferrerKey = editingSupplier?.let { "Supplier:${it.id}" }
                         )
                     }
 
@@ -1416,13 +1499,13 @@ fun AddEditMasterScreen(
                                     Text(
                                         text = "Admin Access Only",
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 15.sp,
+                                        style = MaterialTheme.typography.titleSmall,
                                         color = Color(0xFF991B1B)
                                     )
                                     Spacer(modifier = Modifier.height(6.dp))
                                     Text(
                                         text = "Only Administrators can add or edit staff members.",
-                                        fontSize = 13.sp,
+                                        style = MaterialTheme.typography.bodyMedium,
                                         color = Color(0xFF7F1D1D)
                                     )
                                 }
@@ -1473,7 +1556,21 @@ fun AddEditMasterScreen(
                                 },
                                 customersList = customers,
                                 suppliersList = suppliers,
-                                employeesList = employees
+                                employeesList = employees,
+                                subAgentsList = subAgents,
+                                referredByType = empReferredByType,
+                                referredById = empReferredById,
+                                onReferredByLinkChange = { value, type, id ->
+                                    empReferredBy = value
+                                    empReferredByType = type
+                                    empReferredById = id
+                                },
+                                excludeReferrerKey = editingEmployee?.let { "Staff:${it.id}" },
+                                marketOptions = markets.filter { !it.isDeleted }
+                                    .map { it.marketName.trim() }
+                                    .filter { it.isNotBlank() }
+                                    .distinct()
+                                    .ifEmpty { MasterConstants.AHMEDABAD_TEXTILE_MARKETS }
                             )
                         }
                     }
@@ -1522,8 +1619,6 @@ private fun CustomerMasterForm(
     onCustomGarmentTypeChange: (String) -> Unit,
     referredBy: String,
     onReferredByChange: (String) -> Unit,
-    addedByAgentName: String,
-    onAddedByAgentChange: (String, Long?) -> Unit,
     preferredTransporterName: String,
     onPreferredTransporterChange: (String, Long?) -> Unit,
     transportPreference: String,
@@ -1561,7 +1656,16 @@ private fun CustomerMasterForm(
     customersList: List<CustomerEntity>,
     suppliersList: List<SupplierEntity>,
     employeesList: List<EmployeeEntity>,
-    transportersList: List<TransporterEntity>
+    transportersList: List<TransporterEntity>,
+    subAgentsList: List<EmployeeEntity> = emptyList(),
+    subAgentName: String = "",
+    onSubAgentChange: (String, Long?) -> Unit = { _, _ -> },
+    /** Create a new Sub Agent right from the customer form */
+    onAddSubAgent: (() -> Unit)? = null,
+    referredByType: String = "",
+    referredById: Long? = null,
+    onReferredByLinkChange: (String, String, Long?) -> Unit = { _, _, _ -> },
+    excludeReferrerKey: String? = null
 ) {
     var selectedFormTab by remember { mutableStateOf(0) }
 
@@ -1591,8 +1695,8 @@ private fun CustomerMasterForm(
                 ) {
                     Text(
                         text = label,
-                        fontSize = 11.5.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
                         color = if (isSelected) GoldAccent else TextPrimary,
                         modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
                     )
@@ -1614,7 +1718,7 @@ private fun CustomerMasterForm(
                     Text(
                         text = "Firm Identity & Type",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = NavyPrimary
                     )
 
@@ -1650,7 +1754,7 @@ private fun CustomerMasterForm(
                                         text = "$type Customer",
                                         color = if (isSelected) Color.White else TextPrimary,
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 11.5.sp
+                                        style = MaterialTheme.typography.bodySmall
                                     )
                                 }
                             }
@@ -1660,9 +1764,9 @@ private fun CustomerMasterForm(
                     OutlinedTextField(
                         value = firmName,
                         onValueChange = onFirmNameChange,
-                        label = { Text("Shop / Firm Name *", fontSize = 11.5.sp) },
-                        placeholder = { Text("e.g. Radhe Krishna Fashion Hub", fontSize = 11.5.sp) },
-                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                        label = { Text("Shop / Firm Name *", style = MaterialTheme.typography.bodySmall) },
+                        placeholder = { Text("e.g. Radhe Krishna Fashion Hub", style = MaterialTheme.typography.bodySmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
@@ -1673,9 +1777,9 @@ private fun CustomerMasterForm(
                         OutlinedTextField(
                             value = ownerName,
                             onValueChange = onOwnerNameChange,
-                            label = { Text("Proprietor / Owner Name", fontSize = 11.5.sp) },
-                            placeholder = { Text("e.g. Ramesh Patel", fontSize = 11.5.sp) },
-                            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                            label = { Text("Proprietor / Owner Name", style = MaterialTheme.typography.bodySmall) },
+                            placeholder = { Text("e.g. Ramesh Patel", style = MaterialTheme.typography.bodySmall) },
+                            textStyle = MaterialTheme.typography.bodyLarge,
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.weight(1.2f),
                             singleLine = true,
@@ -1685,8 +1789,8 @@ private fun CustomerMasterForm(
                         OutlinedTextField(
                             value = customerId,
                             onValueChange = onCustomerIdChange,
-                            label = { Text("Customer ID", fontSize = 11.5.sp) },
-                            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                            label = { Text("Customer ID", style = MaterialTheme.typography.bodySmall) },
+                            textStyle = MaterialTheme.typography.bodyLarge,
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.weight(0.8f),
                             singleLine = true,
@@ -1707,7 +1811,7 @@ private fun CustomerMasterForm(
                     Text(
                         text = "City & Location Hub",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = NavyPrimary
                     )
 
@@ -1715,9 +1819,9 @@ private fun CustomerMasterForm(
                         OutlinedTextField(
                             value = city,
                             onValueChange = onCityChange,
-                            label = { Text("City *", fontSize = 11.5.sp) },
-                            placeholder = { Text("e.g. Surat / Ahmedabad", fontSize = 11.5.sp) },
-                            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                            label = { Text("City *", style = MaterialTheme.typography.bodySmall) },
+                            placeholder = { Text("e.g. Surat / Ahmedabad", style = MaterialTheme.typography.bodySmall) },
+                            textStyle = MaterialTheme.typography.bodyLarge,
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.weight(1f),
                             singleLine = true,
@@ -1727,9 +1831,9 @@ private fun CustomerMasterForm(
                         OutlinedTextField(
                             value = district,
                             onValueChange = onDistrictChange,
-                            label = { Text("District", fontSize = 11.5.sp) },
-                            placeholder = { Text("e.g. Surat", fontSize = 11.5.sp) },
-                            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                            label = { Text("District", style = MaterialTheme.typography.bodySmall) },
+                            placeholder = { Text("e.g. Surat", style = MaterialTheme.typography.bodySmall) },
+                            textStyle = MaterialTheme.typography.bodyLarge,
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.weight(1f),
                             singleLine = true,
@@ -1741,9 +1845,9 @@ private fun CustomerMasterForm(
                         OutlinedTextField(
                             value = state,
                             onValueChange = onStateChange,
-                            label = { Text("State", fontSize = 11.5.sp) },
-                            placeholder = { Text("Gujarat", fontSize = 11.5.sp) },
-                            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                            label = { Text("State", style = MaterialTheme.typography.bodySmall) },
+                            placeholder = { Text("Gujarat", style = MaterialTheme.typography.bodySmall) },
+                            textStyle = MaterialTheme.typography.bodyLarge,
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.weight(1f),
                             singleLine = true,
@@ -1753,9 +1857,9 @@ private fun CustomerMasterForm(
                         OutlinedTextField(
                             value = pincode,
                             onValueChange = onPincodeChange,
-                            label = { Text("Pincode", fontSize = 11.5.sp) },
-                            placeholder = { Text("380002", fontSize = 11.5.sp) },
-                            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                            label = { Text("Pincode", style = MaterialTheme.typography.bodySmall) },
+                            placeholder = { Text("380002", style = MaterialTheme.typography.bodySmall) },
+                            textStyle = MaterialTheme.typography.bodyLarge,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.weight(1f),
@@ -1777,7 +1881,7 @@ private fun CustomerMasterForm(
                     colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
                 ) {
-                    Text("Next: Contacts & Outlets →", fontSize = 11.5.sp, color = GoldAccent, fontWeight = FontWeight.Bold)
+                    Text("Next: Contacts & Outlets →", style = MaterialTheme.typography.bodySmall, color = GoldAccent, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -1802,7 +1906,7 @@ private fun CustomerMasterForm(
                         Text(
                             text = "Contacts (${contacts.size}/5)",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = NavyPrimary
                         )
                         if (contacts.size < 5) {
@@ -1814,7 +1918,7 @@ private fun CustomerMasterForm(
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp), tint = NavyPrimary)
                                 Spacer(modifier = Modifier.width(3.dp))
-                                Text("+ Add Line", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = NavyPrimary)
+                                Text("+ Add Line", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = NavyPrimary)
                             }
                         }
                     }
@@ -1835,7 +1939,7 @@ private fun CustomerMasterForm(
                                     Text(
                                         text = if (index == 0) "Primary WhatsApp / Phone *" else "Line #${index + 1}",
                                         fontWeight = FontWeight.SemiBold,
-                                        fontSize = 10.5.sp,
+                                        style = MaterialTheme.typography.labelSmall,
                                         color = NavyPrimary
                                     )
                                     if (contacts.size > 1) {
@@ -1860,9 +1964,9 @@ private fun CustomerMasterForm(
                                             updated[index] = contact.copy(name = newName)
                                             onContactsChange(updated)
                                         },
-                                        label = { Text("Person / Role", fontSize = 11.sp) },
-                                        placeholder = { Text("e.g. Ramesh Bhai", fontSize = 11.sp) },
-                                        textStyle = LocalTextStyle.current.copy(fontSize = 11.5.sp),
+                                        label = { Text("Person / Role", style = MaterialTheme.typography.labelSmall) },
+                                        placeholder = { Text("e.g. Ramesh Bhai", style = MaterialTheme.typography.labelSmall) },
+                                        textStyle = MaterialTheme.typography.bodyLarge,
                                         shape = RoundedCornerShape(6.dp),
                                         modifier = Modifier.weight(1f),
                                         singleLine = true,
@@ -1876,9 +1980,9 @@ private fun CustomerMasterForm(
                                             updated[index] = contact.copy(phone = newPhone)
                                             onContactsChange(updated)
                                         },
-                                        label = { Text("Phone Number", fontSize = 11.sp) },
-                                        placeholder = { Text("98250XXXXX", fontSize = 11.sp) },
-                                        textStyle = LocalTextStyle.current.copy(fontSize = 11.5.sp),
+                                        label = { Text("Phone Number", style = MaterialTheme.typography.labelSmall) },
+                                        placeholder = { Text("98250XXXXX", style = MaterialTheme.typography.labelSmall) },
+                                        textStyle = MaterialTheme.typography.bodyLarge,
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                                         shape = RoundedCornerShape(6.dp),
                                         modifier = Modifier.weight(1f),
@@ -1908,7 +2012,7 @@ private fun CustomerMasterForm(
                         Text(
                             text = "Shop Outlets & Google Maps (${outlets.size}/5)",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = NavyPrimary
                         )
                         if (outlets.size < 5) {
@@ -1920,7 +2024,7 @@ private fun CustomerMasterForm(
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp), tint = NavyPrimary)
                                 Spacer(modifier = Modifier.width(3.dp))
-                                Text("+ Add Outlet", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = NavyPrimary)
+                                Text("+ Add Outlet", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = NavyPrimary)
                             }
                         }
                     }
@@ -1941,7 +2045,7 @@ private fun CustomerMasterForm(
                                     Text(
                                         text = if (index == 0) "Main Outlet / Flagship Shop" else "Branch #${index + 1}",
                                         fontWeight = FontWeight.SemiBold,
-                                        fontSize = 10.5.sp,
+                                        style = MaterialTheme.typography.labelSmall,
                                         color = NavyPrimary
                                     )
                                     if (outlets.size > 1) {
@@ -1965,9 +2069,9 @@ private fun CustomerMasterForm(
                                         updated[index] = outlet.copy(name = newName)
                                         onOutletsChange(updated)
                                     },
-                                    label = { Text("Shop / Branch Title", fontSize = 11.sp) },
-                                    placeholder = { Text("e.g. Ring Road Branch", fontSize = 11.sp) },
-                                    textStyle = LocalTextStyle.current.copy(fontSize = 11.5.sp),
+                                    label = { Text("Shop / Branch Title", style = MaterialTheme.typography.labelSmall) },
+                                    placeholder = { Text("e.g. Ring Road Branch", style = MaterialTheme.typography.labelSmall) },
+                                    textStyle = MaterialTheme.typography.bodyLarge,
                                     shape = RoundedCornerShape(6.dp),
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true,
@@ -1981,9 +2085,9 @@ private fun CustomerMasterForm(
                                         updated[index] = outlet.copy(address = newAddr)
                                         onOutletsChange(updated)
                                     },
-                                    label = { Text("Full Shop Address", fontSize = 11.sp) },
-                                    placeholder = { Text("e.g. Shop 104, City Center Mall", fontSize = 11.sp) },
-                                    textStyle = LocalTextStyle.current.copy(fontSize = 11.5.sp),
+                                    label = { Text("Full Shop Address", style = MaterialTheme.typography.labelSmall) },
+                                    placeholder = { Text("e.g. Shop 104, City Center Mall", style = MaterialTheme.typography.labelSmall) },
+                                    textStyle = MaterialTheme.typography.bodyLarge,
                                     shape = RoundedCornerShape(6.dp),
                                     modifier = Modifier.fillMaxWidth(),
                                     minLines = 2,
@@ -1997,9 +2101,9 @@ private fun CustomerMasterForm(
                                         updated[index] = outlet.copy(mapLink = newMap)
                                         onOutletsChange(updated)
                                     },
-                                    label = { Text("Google Maps Link / Direction GPS", fontSize = 11.sp) },
-                                    placeholder = { Text("https://maps.app.goo.gl/...", fontSize = 11.sp) },
-                                    textStyle = LocalTextStyle.current.copy(fontSize = 11.5.sp),
+                                    label = { Text("Google Maps Link / Direction GPS", style = MaterialTheme.typography.labelSmall) },
+                                    placeholder = { Text("https://maps.app.goo.gl/...", style = MaterialTheme.typography.labelSmall) },
+                                    textStyle = MaterialTheme.typography.bodyLarge,
                                     shape = RoundedCornerShape(6.dp),
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true,
@@ -2021,7 +2125,7 @@ private fun CustomerMasterForm(
                     shape = RoundedCornerShape(8.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    Text("← Previous", fontSize = 11.5.sp)
+                    Text("← Previous", style = MaterialTheme.typography.bodySmall)
                 }
                 Button(
                     onClick = { selectedFormTab = 2 },
@@ -2029,7 +2133,7 @@ private fun CustomerMasterForm(
                     colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
                 ) {
-                    Text("Next: Business & Terms →", fontSize = 11.5.sp, color = GoldAccent, fontWeight = FontWeight.Bold)
+                    Text("Next: Business & Terms →", style = MaterialTheme.typography.bodySmall, color = GoldAccent, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -2049,7 +2153,7 @@ private fun CustomerMasterForm(
                     Text(
                         text = "Tax & Registration",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = NavyPrimary
                     )
 
@@ -2057,9 +2161,9 @@ private fun CustomerMasterForm(
                         OutlinedTextField(
                             value = gstin,
                             onValueChange = { onGstinChange(it.uppercase()) },
-                            label = { Text("GSTIN", fontSize = 11.5.sp) },
-                            placeholder = { Text("24AAAAA0000A1Z5", fontSize = 11.5.sp) },
-                            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                            label = { Text("GSTIN", style = MaterialTheme.typography.bodySmall) },
+                            placeholder = { Text("24AAAAA0000A1Z5", style = MaterialTheme.typography.bodySmall) },
+                            textStyle = MaterialTheme.typography.bodyLarge,
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.weight(1.1f),
                             singleLine = true,
@@ -2069,9 +2173,9 @@ private fun CustomerMasterForm(
                         OutlinedTextField(
                             value = panNumber,
                             onValueChange = { onPanNumberChange(it.uppercase()) },
-                            label = { Text("PAN Number", fontSize = 11.5.sp) },
-                            placeholder = { Text("ABCDE1234F", fontSize = 11.5.sp) },
-                            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                            label = { Text("PAN Number", style = MaterialTheme.typography.bodySmall) },
+                            placeholder = { Text("ABCDE1234F", style = MaterialTheme.typography.bodySmall) },
+                            textStyle = MaterialTheme.typography.bodyLarge,
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.weight(0.9f),
                             singleLine = true,
@@ -2092,7 +2196,7 @@ private fun CustomerMasterForm(
                     Text(
                         text = "Garments Dealt With Mostly",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = NavyPrimary
                     )
 
@@ -2118,8 +2222,8 @@ private fun CustomerMasterForm(
                             ) {
                                 Text(
                                     text = if (isSelected) "✓ $g" else "+ $g",
-                                    fontSize = 10.5.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
                                     color = if (isSelected) Color.White else TextPrimary,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                 )
@@ -2130,9 +2234,9 @@ private fun CustomerMasterForm(
                     OutlinedTextField(
                         value = customGarmentType,
                         onValueChange = onCustomGarmentTypeChange,
-                        label = { Text("+ Custom Garment Category", fontSize = 11.sp) },
-                        placeholder = { Text("e.g. Nightwear / Rayon Print", fontSize = 11.sp) },
-                        textStyle = LocalTextStyle.current.copy(fontSize = 11.5.sp),
+                        label = { Text("+ Custom Garment Category", style = MaterialTheme.typography.labelSmall) },
+                        placeholder = { Text("e.g. Nightwear / Rayon Print", style = MaterialTheme.typography.labelSmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
@@ -2152,8 +2256,40 @@ private fun CustomerMasterForm(
                     Text(
                         text = "References, Agent & Transporter",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = NavyPrimary
+                    )
+
+                    // Sub Agent: the outside agent who brought this customer (shown on reports & agent login)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            MasterDropdownField(
+                                label = "Sub Agent (who brought this customer)",
+                                selectedValue = subAgentName,
+                                items = subAgentsList.map { agent ->
+                                    (if (agent.firmName.isNotBlank()) "${agent.name} (${agent.firmName})" else agent.name) to agent.id
+                                },
+                                onSelect = { _, id ->
+                                    val agent = subAgentsList.find { it.id == id }
+                                    onSubAgentChange(agent?.name ?: "", id)
+                                },
+                                placeholder = if (subAgentsList.isEmpty()) "No sub agents yet - tap + New" else "None (direct customer)"
+                            )
+                        }
+                        if (subAgentName.isNotBlank()) {
+                            TextButton(onClick = { onSubAgentChange("", null) }) {
+                                Text("Clear", style = MaterialTheme.typography.bodySmall, color = Color(0xFFDC2626))
+                            }
+                        } else if (onAddSubAgent != null) {
+                            TextButton(onClick = onAddSubAgent) {
+                                Text("+ New", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = NavyPrimary)
+                            }
+                        }
+                    }
+                    Text(
+                        text = "The staff member who saves this customer is recorded automatically.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary
                     )
 
                     ReferredBySelectorField(
@@ -2162,15 +2298,12 @@ private fun CustomerMasterForm(
                         customersList = customersList,
                         suppliersList = suppliersList,
                         employeesList = employeesList,
-                        label = "Referred By (Entity Link)"
-                    )
-
-                    MasterDropdownField(
-                        label = "Added By / Handling Agent *",
-                        selectedValue = addedByAgentName,
-                        items = employeesList.map { it.name to it.id },
-                        onSelect = { name, id -> onAddedByAgentChange(name, id) },
-                        placeholder = "Select sales agent / staff"
+                        agentsList = subAgentsList,
+                        referredByType = referredByType,
+                        referredById = referredById,
+                        excludeKey = excludeReferrerKey,
+                        onLinkChange = onReferredByLinkChange,
+                        label = "Referred By"
                     )
 
                     MasterDropdownField(
@@ -2181,16 +2314,12 @@ private fun CustomerMasterForm(
                         placeholder = "Select preferred courier / transport"
                     )
 
-                    OutlinedTextField(
+                    com.example.ui.components.StationPickerField(
                         value = transportPreference,
                         onValueChange = onTransportPreferenceChange,
-                        label = { Text("Special Transport Instructions", fontSize = 11.5.sp) },
-                        placeholder = { Text("e.g. Booking via Kalupur Godown / Paid LR", fontSize = 11.5.sp) },
-                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
-                        shape = RoundedCornerShape(8.dp),
+                        label = "Booking Station / Delivery Station",
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        colors = defaultTextFieldColors()
+                        shape = RoundedCornerShape(8.dp)
                     )
                 }
             }
@@ -2206,7 +2335,7 @@ private fun CustomerMasterForm(
                     Text(
                         text = "Credit Terms & Remarks",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = NavyPrimary
                     )
 
@@ -2215,8 +2344,8 @@ private fun CustomerMasterForm(
                             OutlinedTextField(
                                 value = creditDays,
                                 onValueChange = onCreditDaysChange,
-                                label = { Text("Credit Days", fontSize = 11.5.sp) },
-                                textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                                label = { Text("Credit Days", style = MaterialTheme.typography.bodySmall) },
+                                textStyle = MaterialTheme.typography.bodyLarge,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.weight(1f),
@@ -2227,8 +2356,8 @@ private fun CustomerMasterForm(
                             OutlinedTextField(
                                 value = creditLimit,
                                 onValueChange = onCreditLimitChange,
-                                label = { Text("Credit Limit (₹)", fontSize = 11.5.sp) },
-                                textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                                label = { Text("Credit Limit (₹)", style = MaterialTheme.typography.bodySmall) },
+                                textStyle = MaterialTheme.typography.bodyLarge,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.weight(1f),
@@ -2241,8 +2370,8 @@ private fun CustomerMasterForm(
                     OutlinedTextField(
                         value = email,
                         onValueChange = onEmailChange,
-                        label = { Text("Email Address", fontSize = 11.5.sp) },
-                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                        label = { Text("Email Address", style = MaterialTheme.typography.bodySmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth(),
@@ -2253,9 +2382,9 @@ private fun CustomerMasterForm(
                     OutlinedTextField(
                         value = notes,
                         onValueChange = onNotesChange,
-                        label = { Text("Additional Remarks", fontSize = 11.5.sp) },
-                        placeholder = { Text("Payment history, preferences...", fontSize = 11.5.sp) },
-                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                        label = { Text("Additional Remarks", style = MaterialTheme.typography.bodySmall) },
+                        placeholder = { Text("Payment history, preferences...", style = MaterialTheme.typography.bodySmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 2,
@@ -2274,7 +2403,7 @@ private fun CustomerMasterForm(
                     shape = RoundedCornerShape(8.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    Text("← Previous", fontSize = 11.5.sp)
+                    Text("← Previous", style = MaterialTheme.typography.bodySmall)
                 }
                 Button(
                     onClick = { selectedFormTab = 3 },
@@ -2282,7 +2411,7 @@ private fun CustomerMasterForm(
                     colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
                 ) {
-                    Text("Next: KYC & Photos →", fontSize = 11.5.sp, color = GoldAccent, fontWeight = FontWeight.Bold)
+                    Text("Next: KYC & Photos →", style = MaterialTheme.typography.bodySmall, color = GoldAccent, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -2301,7 +2430,7 @@ private fun CustomerMasterForm(
                     Text(
                         text = "Personal Profile & Residence",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = NavyPrimary
                     )
 
@@ -2309,9 +2438,9 @@ private fun CustomerMasterForm(
                         OutlinedTextField(
                             value = dob,
                             onValueChange = onDobChange,
-                            label = { Text("Date of Birth", fontSize = 11.5.sp) },
-                            placeholder = { Text("DD/MM/YYYY", fontSize = 11.5.sp) },
-                            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                            label = { Text("Date of Birth", style = MaterialTheme.typography.bodySmall) },
+                            placeholder = { Text("DD/MM/YYYY", style = MaterialTheme.typography.bodySmall) },
+                            textStyle = MaterialTheme.typography.bodyLarge,
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.weight(1f),
                             singleLine = true,
@@ -2321,9 +2450,9 @@ private fun CustomerMasterForm(
                         OutlinedTextField(
                             value = religion,
                             onValueChange = onReligionChange,
-                            label = { Text("Religion / Community", fontSize = 11.5.sp) },
-                            placeholder = { Text("e.g. Hindu / Jain", fontSize = 11.5.sp) },
-                            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                            label = { Text("Religion / Community", style = MaterialTheme.typography.bodySmall) },
+                            placeholder = { Text("e.g. Hindu / Jain", style = MaterialTheme.typography.bodySmall) },
+                            textStyle = MaterialTheme.typography.bodyLarge,
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.weight(1f),
                             singleLine = true,
@@ -2334,9 +2463,9 @@ private fun CustomerMasterForm(
                     OutlinedTextField(
                         value = homeAddress,
                         onValueChange = onHomeAddressChange,
-                        label = { Text("Residence / Home Address", fontSize = 11.5.sp) },
-                        placeholder = { Text("e.g. 12, Shanti Nagar, Paldi", fontSize = 11.5.sp) },
-                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                        label = { Text("Residence / Home Address", style = MaterialTheme.typography.bodySmall) },
+                        placeholder = { Text("e.g. 12, Shanti Nagar, Paldi", style = MaterialTheme.typography.bodySmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
@@ -2346,9 +2475,9 @@ private fun CustomerMasterForm(
                     OutlinedTextField(
                         value = personalLocation,
                         onValueChange = onPersonalLocationChange,
-                        label = { Text("Native Town / Landmark", fontSize = 11.5.sp) },
-                        placeholder = { Text("e.g. Paldi / Mehsana", fontSize = 11.5.sp) },
-                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                        label = { Text("Native Town / Landmark", style = MaterialTheme.typography.bodySmall) },
+                        placeholder = { Text("e.g. Paldi / Mehsana", style = MaterialTheme.typography.bodySmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
@@ -2367,7 +2496,7 @@ private fun CustomerMasterForm(
                     Text(
                         text = "KYC Documents & Verification Photos",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = NavyPrimary
                     )
 
@@ -2448,7 +2577,7 @@ private fun CustomerMasterForm(
                     shape = RoundedCornerShape(8.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    Text("← Previous", fontSize = 11.5.sp)
+                    Text("← Previous", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -2512,7 +2641,12 @@ private fun SupplierMasterForm(
     brandsList: List<BrandEntity>,
     customersList: List<CustomerEntity>,
     suppliersList: List<SupplierEntity>,
-    employeesList: List<EmployeeEntity>
+    employeesList: List<EmployeeEntity>,
+    subAgentsList: List<EmployeeEntity> = emptyList(),
+    referredByType: String = "",
+    referredById: Long? = null,
+    onReferredByLinkChange: (String, String, Long?) -> Unit = { _, _, _ -> },
+    excludeReferrerKey: String? = null
 ) {
     var selectedFormTab by remember { mutableStateOf(0) }
 
@@ -2542,8 +2676,8 @@ private fun SupplierMasterForm(
                 ) {
                     Text(
                         text = label,
-                        fontSize = 11.5.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
                         color = if (isSelected) GoldAccent else TextPrimary,
                         modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
                     )
@@ -2565,7 +2699,7 @@ private fun SupplierMasterForm(
                     Text(
                         text = "Supplier Nature & Profile",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = NavyPrimary
                     )
 
@@ -2594,7 +2728,7 @@ private fun SupplierMasterForm(
                                         text = t,
                                         color = if (isSelected) Color.White else TextPrimary,
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 11.5.sp
+                                        style = MaterialTheme.typography.bodySmall
                                     )
                                 }
                             }
@@ -2604,9 +2738,9 @@ private fun SupplierMasterForm(
                     OutlinedTextField(
                         value = firmName,
                         onValueChange = onFirmNameChange,
-                        label = { Text("Firm / Mill Name *", fontSize = 11.5.sp) },
-                        placeholder = { Text("e.g. Radheshyam Textile Mills Pvt Ltd", fontSize = 11.5.sp) },
-                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                        label = { Text("Firm / Mill Name *", style = MaterialTheme.typography.bodySmall) },
+                        placeholder = { Text("e.g. Radheshyam Textile Mills Pvt Ltd", style = MaterialTheme.typography.bodySmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
@@ -2617,9 +2751,9 @@ private fun SupplierMasterForm(
                         OutlinedTextField(
                             value = contactPerson,
                             onValueChange = onContactPersonChange,
-                            label = { Text("Key Contact Person", fontSize = 11.5.sp) },
-                            placeholder = { Text("e.g. Arvind Bhai", fontSize = 11.5.sp) },
-                            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                            label = { Text("Key Contact Person", style = MaterialTheme.typography.bodySmall) },
+                            placeholder = { Text("e.g. Arvind Bhai", style = MaterialTheme.typography.bodySmall) },
+                            textStyle = MaterialTheme.typography.bodyLarge,
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.weight(1.2f),
                             singleLine = true,
@@ -2629,8 +2763,8 @@ private fun SupplierMasterForm(
                         OutlinedTextField(
                             value = supplierId,
                             onValueChange = onSupplierIdChange,
-                            label = { Text("Supplier ID", fontSize = 11.5.sp) },
-                            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                            label = { Text("Supplier ID", style = MaterialTheme.typography.bodySmall) },
+                            textStyle = MaterialTheme.typography.bodyLarge,
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.weight(0.8f),
                             singleLine = true,
@@ -2642,9 +2776,9 @@ private fun SupplierMasterForm(
                         OutlinedTextField(
                             value = gstin,
                             onValueChange = { onGstinChange(it.uppercase()) },
-                            label = { Text("GSTIN", fontSize = 11.5.sp) },
-                            placeholder = { Text("24AAAAA0000A1Z5", fontSize = 11.5.sp) },
-                            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                            label = { Text("GSTIN", style = MaterialTheme.typography.bodySmall) },
+                            placeholder = { Text("24AAAAA0000A1Z5", style = MaterialTheme.typography.bodySmall) },
+                            textStyle = MaterialTheme.typography.bodyLarge,
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.weight(1.1f),
                             singleLine = true,
@@ -2654,9 +2788,9 @@ private fun SupplierMasterForm(
                         OutlinedTextField(
                             value = panNumber,
                             onValueChange = { onPanNumberChange(it.uppercase()) },
-                            label = { Text("PAN Number", fontSize = 11.5.sp) },
-                            placeholder = { Text("ABCDE1234F", fontSize = 11.5.sp) },
-                            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                            label = { Text("PAN Number", style = MaterialTheme.typography.bodySmall) },
+                            placeholder = { Text("ABCDE1234F", style = MaterialTheme.typography.bodySmall) },
+                            textStyle = MaterialTheme.typography.bodyLarge,
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.weight(0.9f),
                             singleLine = true,
@@ -2677,16 +2811,16 @@ private fun SupplierMasterForm(
                     Text(
                         text = "City & Location Hub",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = NavyPrimary
                     )
 
                     OutlinedTextField(
                         value = city,
                         onValueChange = onCityChange,
-                        label = { Text("City / Textile Hub *", fontSize = 11.5.sp) },
-                        placeholder = { Text("e.g. Ahmedabad / Surat / Mumbai", fontSize = 11.5.sp) },
-                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                        label = { Text("City / Textile Hub *", style = MaterialTheme.typography.bodySmall) },
+                        placeholder = { Text("e.g. Ahmedabad / Surat / Mumbai", style = MaterialTheme.typography.bodySmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
@@ -2716,7 +2850,7 @@ private fun SupplierMasterForm(
                         Text(
                             text = "Direct Contact Lines (${contacts.size}/5)",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = NavyPrimary
                         )
                         if (contacts.size < 5) {
@@ -2728,7 +2862,7 @@ private fun SupplierMasterForm(
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(15.dp), tint = NavyPrimary)
                                 Spacer(modifier = Modifier.width(3.dp))
-                                Text("+ Add Line", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = NavyPrimary)
+                                Text("+ Add Line", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = NavyPrimary)
                             }
                         }
                     }
@@ -2749,7 +2883,7 @@ private fun SupplierMasterForm(
                                     Text(
                                         text = if (index == 0) "Primary Order Desk / WhatsApp *" else "Contact Line #${index + 1}",
                                         fontWeight = FontWeight.SemiBold,
-                                        fontSize = 11.sp,
+                                        style = MaterialTheme.typography.labelSmall,
                                         color = NavyPrimary
                                     )
                                     if (contacts.size > 1) {
@@ -2774,9 +2908,9 @@ private fun SupplierMasterForm(
                                             updated[index] = contact.copy(name = newName)
                                             onContactsChange(updated)
                                         },
-                                        label = { Text("Person / Department", fontSize = 11.sp) },
-                                        placeholder = { Text("Sales Desk", fontSize = 11.sp) },
-                                        textStyle = LocalTextStyle.current.copy(fontSize = 11.5.sp),
+                                        label = { Text("Person / Department", style = MaterialTheme.typography.labelSmall) },
+                                        placeholder = { Text("Sales Desk", style = MaterialTheme.typography.labelSmall) },
+                                        textStyle = MaterialTheme.typography.bodyLarge,
                                         shape = RoundedCornerShape(8.dp),
                                         modifier = Modifier.weight(1f),
                                         singleLine = true,
@@ -2790,9 +2924,9 @@ private fun SupplierMasterForm(
                                             updated[index] = contact.copy(phone = newPhone)
                                             onContactsChange(updated)
                                         },
-                                        label = { Text("Phone Number", fontSize = 11.sp) },
-                                        placeholder = { Text("98250XXXXX", fontSize = 11.sp) },
-                                        textStyle = LocalTextStyle.current.copy(fontSize = 11.5.sp),
+                                        label = { Text("Phone Number", style = MaterialTheme.typography.labelSmall) },
+                                        placeholder = { Text("98250XXXXX", style = MaterialTheme.typography.labelSmall) },
+                                        textStyle = MaterialTheme.typography.bodyLarge,
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                                         shape = RoundedCornerShape(8.dp),
                                         modifier = Modifier.weight(1f),
@@ -2822,7 +2956,7 @@ private fun SupplierMasterForm(
                         Text(
                             text = "Factory / Manufacturing Units (${factories.size}/5)",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = NavyPrimary
                         )
                         if (factories.size < 5) {
@@ -2834,7 +2968,7 @@ private fun SupplierMasterForm(
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(15.dp), tint = NavyPrimary)
                                 Spacer(modifier = Modifier.width(3.dp))
-                                Text("+ Add Unit", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = NavyPrimary)
+                                Text("+ Add Unit", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = NavyPrimary)
                             }
                         }
                     }
@@ -2855,7 +2989,7 @@ private fun SupplierMasterForm(
                                     Text(
                                         text = if (index == 0) "Main Mill / Manufacturing Unit" else "Factory Unit #${index + 1}",
                                         fontWeight = FontWeight.SemiBold,
-                                        fontSize = 11.sp,
+                                        style = MaterialTheme.typography.labelSmall,
                                         color = NavyPrimary
                                     )
                                     if (factories.size > 1) {
@@ -2879,9 +3013,9 @@ private fun SupplierMasterForm(
                                         updated[index] = fac.copy(name = newName)
                                         onFactoriesChange(updated)
                                     },
-                                    label = { Text("Unit Title", fontSize = 11.sp) },
-                                    placeholder = { Text("e.g. Narol GIDC Dyeing Unit", fontSize = 11.sp) },
-                                    textStyle = LocalTextStyle.current.copy(fontSize = 11.5.sp),
+                                    label = { Text("Unit Title", style = MaterialTheme.typography.labelSmall) },
+                                    placeholder = { Text("e.g. Narol GIDC Dyeing Unit", style = MaterialTheme.typography.labelSmall) },
+                                    textStyle = MaterialTheme.typography.bodyLarge,
                                     shape = RoundedCornerShape(8.dp),
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true,
@@ -2895,9 +3029,9 @@ private fun SupplierMasterForm(
                                         updated[index] = fac.copy(address = newAddr)
                                         onFactoriesChange(updated)
                                     },
-                                    label = { Text("Factory Physical Address", fontSize = 11.sp) },
-                                    placeholder = { Text("Plot 24, Narol GIDC Phase 2, Ahmedabad", fontSize = 11.sp) },
-                                    textStyle = LocalTextStyle.current.copy(fontSize = 11.5.sp),
+                                    label = { Text("Factory Physical Address", style = MaterialTheme.typography.labelSmall) },
+                                    placeholder = { Text("Plot 24, Narol GIDC Phase 2, Ahmedabad", style = MaterialTheme.typography.labelSmall) },
+                                    textStyle = MaterialTheme.typography.bodyLarge,
                                     shape = RoundedCornerShape(8.dp),
                                     modifier = Modifier.fillMaxWidth(),
                                     minLines = 2,
@@ -2925,7 +3059,7 @@ private fun SupplierMasterForm(
                         Text(
                             text = "Outlets & Showrooms (${outlets.size}/5)",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = NavyPrimary
                         )
                         if (outlets.size < 5) {
@@ -2937,7 +3071,7 @@ private fun SupplierMasterForm(
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(15.dp), tint = NavyPrimary)
                                 Spacer(modifier = Modifier.width(3.dp))
-                                Text("+ Add Outlet", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = NavyPrimary)
+                                Text("+ Add Outlet", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = NavyPrimary)
                             }
                         }
                     }
@@ -2958,7 +3092,7 @@ private fun SupplierMasterForm(
                                     Text(
                                         text = if (index == 0) "Main Sales Gaddi / Showroom" else "Branch / Outlet #${index + 1}",
                                         fontWeight = FontWeight.SemiBold,
-                                        fontSize = 11.sp,
+                                        style = MaterialTheme.typography.labelSmall,
                                         color = NavyPrimary
                                     )
                                     if (outlets.size > 1) {
@@ -2982,9 +3116,9 @@ private fun SupplierMasterForm(
                                         updated[index] = out.copy(name = newName)
                                         onOutletsChange(updated)
                                     },
-                                    label = { Text("Showroom / Shop Name", fontSize = 11.sp) },
-                                    placeholder = { Text("e.g. Maskati Cloth Market Shop", fontSize = 11.sp) },
-                                    textStyle = LocalTextStyle.current.copy(fontSize = 11.5.sp),
+                                    label = { Text("Showroom / Shop Name", style = MaterialTheme.typography.labelSmall) },
+                                    placeholder = { Text("e.g. Maskati Cloth Market Shop", style = MaterialTheme.typography.labelSmall) },
+                                    textStyle = MaterialTheme.typography.bodyLarge,
                                     shape = RoundedCornerShape(8.dp),
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true,
@@ -2998,9 +3132,9 @@ private fun SupplierMasterForm(
                                         updated[index] = out.copy(address = newAddr)
                                         onOutletsChange(updated)
                                     },
-                                    label = { Text("Shop Address", fontSize = 11.sp) },
-                                    placeholder = { Text("Shop 45, Ground Floor, Maskati Market", fontSize = 11.sp) },
-                                    textStyle = LocalTextStyle.current.copy(fontSize = 11.5.sp),
+                                    label = { Text("Shop Address", style = MaterialTheme.typography.labelSmall) },
+                                    placeholder = { Text("Shop 45, Ground Floor, Maskati Market", style = MaterialTheme.typography.labelSmall) },
+                                    textStyle = MaterialTheme.typography.bodyLarge,
                                     shape = RoundedCornerShape(8.dp),
                                     modifier = Modifier.fillMaxWidth(),
                                     minLines = 2,
@@ -3028,7 +3162,7 @@ private fun SupplierMasterForm(
                     Text(
                         text = "Market & Brand Selection",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = NavyPrimary
                     )
 
@@ -3054,7 +3188,7 @@ private fun SupplierMasterForm(
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                             modifier = Modifier.defaultMinSize(minHeight = 44.dp)
                         ) {
-                            Text("+ New", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = NavyPrimary)
+                            Text("+ New", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = NavyPrimary)
                         }
                     }
 
@@ -3080,7 +3214,7 @@ private fun SupplierMasterForm(
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                             modifier = Modifier.defaultMinSize(minHeight = 44.dp)
                         ) {
-                            Text("+ New", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = NavyPrimary)
+                            Text("+ New", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = NavyPrimary)
                         }
                     }
                 }
@@ -3097,16 +3231,16 @@ private fun SupplierMasterForm(
                     Text(
                         text = "Manufacturing Items & Price Range",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = NavyPrimary
                     )
 
                     OutlinedTextField(
                         value = productsMade,
                         onValueChange = onProductsMadeChange,
-                        label = { Text("What They Make / Manufacturing Items", fontSize = 11.5.sp) },
-                        placeholder = { Text("e.g. 100% Cotton Printed Kurtis, Heavy Rayon Palazzos, Shirting", fontSize = 11.5.sp) },
-                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                        label = { Text("What They Make / Manufacturing Items", style = MaterialTheme.typography.bodySmall) },
+                        placeholder = { Text("e.g. 100% Cotton Printed Kurtis, Heavy Rayon Palazzos, Shirting", style = MaterialTheme.typography.bodySmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 2,
@@ -3116,16 +3250,16 @@ private fun SupplierMasterForm(
                     OutlinedTextField(
                         value = priceRange,
                         onValueChange = onPriceRangeChange,
-                        label = { Text("Product Price Range (₹)", fontSize = 11.5.sp) },
-                        placeholder = { Text("e.g. ₹250 - ₹750 / piece", fontSize = 11.5.sp) },
-                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                        label = { Text("Product Price Range (₹)", style = MaterialTheme.typography.bodySmall) },
+                        placeholder = { Text("e.g. ₹250 - ₹750 / piece", style = MaterialTheme.typography.bodySmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         colors = defaultTextFieldColors()
                     )
 
-                    Text("Garment categories sold:", fontSize = 11.sp, color = TextSecondary)
+                    Text("Garment categories sold:", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(5.dp),
@@ -3143,8 +3277,8 @@ private fun SupplierMasterForm(
                             ) {
                                 Text(
                                     text = if (isSelected) "✓ $cat" else "+ $cat",
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
                                     color = if (isSelected) Color.White else TextPrimary,
                                     modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
                                 )
@@ -3155,9 +3289,9 @@ private fun SupplierMasterForm(
                     OutlinedTextField(
                         value = customCategory,
                         onValueChange = onCustomCategoryChange,
-                        label = { Text("+ Custom Fabric / Category", fontSize = 11.5.sp) },
-                        placeholder = { Text("e.g. Denim Lycra 10oz", fontSize = 11.5.sp) },
-                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                        label = { Text("+ Custom Fabric / Category", style = MaterialTheme.typography.bodySmall) },
+                        placeholder = { Text("e.g. Denim Lycra 10oz", style = MaterialTheme.typography.bodySmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
@@ -3182,7 +3316,7 @@ private fun SupplierMasterForm(
                     Text(
                         text = "Verification Photos",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = NavyPrimary
                     )
 
@@ -3219,16 +3353,16 @@ private fun SupplierMasterForm(
                     Text(
                         text = "References & Commercial Details",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = NavyPrimary
                     )
 
                     OutlinedTextField(
                         value = officeAddress,
                         onValueChange = onOfficeAddressChange,
-                        label = { Text("Registered Office Address", fontSize = 11.5.sp) },
-                        placeholder = { Text("e.g. 401, Textile Tower, Ring Road", fontSize = 11.5.sp) },
-                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                        label = { Text("Registered Office Address", style = MaterialTheme.typography.bodySmall) },
+                        placeholder = { Text("e.g. 401, Textile Tower, Ring Road", style = MaterialTheme.typography.bodySmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
@@ -3241,15 +3375,20 @@ private fun SupplierMasterForm(
                         customersList = customersList,
                         suppliersList = suppliersList,
                         employeesList = employeesList,
-                        label = "Referred By (Entity Link)"
+                        agentsList = subAgentsList,
+                        referredByType = referredByType,
+                        referredById = referredById,
+                        excludeKey = excludeReferrerKey,
+                        onLinkChange = onReferredByLinkChange,
+                        label = "Referred By"
                     )
 
                     OutlinedTextField(
                         value = email,
                         onValueChange = onEmailChange,
-                        label = { Text("Official Email", fontSize = 11.5.sp) },
-                        placeholder = { Text("e.g. contact@textilemill.com", fontSize = 11.5.sp) },
-                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                        label = { Text("Official Email", style = MaterialTheme.typography.bodySmall) },
+                        placeholder = { Text("e.g. contact@textilemill.com", style = MaterialTheme.typography.bodySmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth(),
@@ -3260,9 +3399,9 @@ private fun SupplierMasterForm(
                     OutlinedTextField(
                         value = notes,
                         onValueChange = onNotesChange,
-                        label = { Text("Commercial Terms / Notes", fontSize = 11.5.sp) },
-                        placeholder = { Text("e.g. 5% cash discount in 7 days...", fontSize = 11.5.sp) },
-                        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                        label = { Text("Commercial Terms / Notes", style = MaterialTheme.typography.bodySmall) },
+                        placeholder = { Text("e.g. 5% cash discount in 7 days...", style = MaterialTheme.typography.bodySmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 2,
@@ -3304,7 +3443,7 @@ private fun BrandMasterForm(
             Text(
                 text = "Brand Master Profile",
                 fontWeight = FontWeight.Bold,
-                fontSize = 14.sp,
+                style = MaterialTheme.typography.bodyMedium,
                 color = NavyPrimary
             )
 
@@ -3369,8 +3508,8 @@ private fun BrandMasterForm(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("Brand Status", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = NavyPrimary)
-                    Text(if (isActive) "Active brand for sales" else "Archived / Inactive", fontSize = 11.sp, color = TextSecondary)
+                    Text("Brand Status", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium, color = NavyPrimary)
+                    Text(if (isActive) "Active brand for sales" else "Archived / Inactive", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
                 }
                 Switch(checked = isActive, onCheckedChange = onIsActiveChange)
             }
@@ -3419,7 +3558,7 @@ private fun TransporterMasterForm(
             Text(
                 text = "Transporter / Courier Master",
                 fontWeight = FontWeight.Bold,
-                fontSize = 14.sp,
+                style = MaterialTheme.typography.bodyMedium,
                 color = NavyPrimary
             )
 
@@ -3458,7 +3597,7 @@ private fun TransporterMasterForm(
                 )
             }
 
-            Text("Booking & Godown Contact Numbers:", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = NavyPrimary)
+            Text("Booking & Godown Contact Numbers:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = NavyPrimary)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = phone1,
@@ -3599,7 +3738,7 @@ private fun MarketMasterForm(
             Text(
                 text = "Textile Market Master",
                 fontWeight = FontWeight.Bold,
-                fontSize = 14.sp,
+                style = MaterialTheme.typography.bodyMedium,
                 color = NavyPrimary
             )
 
@@ -3663,7 +3802,7 @@ private fun MarketMasterForm(
                 )
             }
 
-            Text("Market Type / Cluster:", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = NavyPrimary)
+            Text("Market Type / Cluster:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = NavyPrimary)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf("Wholesale", "Retail", "Mill Agents", "Mixed").forEach { mType ->
                     val isSelected = marketType.equals(mType, ignoreCase = true)
@@ -3678,8 +3817,8 @@ private fun MarketMasterForm(
                     ) {
                         Text(
                             text = mType,
-                            fontSize = 11.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
                             color = if (isSelected) Color.White else TextPrimary,
                             modifier = Modifier.padding(vertical = 7.dp, horizontal = 4.dp),
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -3739,7 +3878,7 @@ private fun ProductFormContent(
             Text(
                 text = "Product Specifications",
                 fontWeight = FontWeight.Bold,
-                fontSize = 14.sp,
+                style = MaterialTheme.typography.bodyMedium,
                 color = NavyPrimary
             )
 
@@ -3907,7 +4046,13 @@ private fun EmployeeFormContent(
     onToggleMarket: (String) -> Unit,
     customersList: List<CustomerEntity> = emptyList(),
     suppliersList: List<SupplierEntity> = emptyList(),
-    employeesList: List<EmployeeEntity> = emptyList()
+    employeesList: List<EmployeeEntity> = emptyList(),
+    subAgentsList: List<EmployeeEntity> = emptyList(),
+    referredByType: String = "",
+    referredById: Long? = null,
+    onReferredByLinkChange: (String, String, Long?) -> Unit = { _, _, _ -> },
+    excludeReferrerKey: String? = null,
+    marketOptions: List<String> = MasterConstants.AHMEDABAD_TEXTILE_MARKETS
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(
@@ -3920,7 +4065,7 @@ private fun EmployeeFormContent(
                 Text(
                     text = "1. Staff Identity & Role",
                     fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = NavyPrimary
                 )
 
@@ -3944,7 +4089,7 @@ private fun EmployeeFormContent(
                                     text = if (r == "Admin") "👑 Administrator" else "💼 Sales Agent",
                                     color = if (isSelected) Color.White else TextPrimary,
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 12.5.sp
+                                    style = MaterialTheme.typography.bodySmall
                                 )
                             }
                         }
@@ -4003,7 +4148,7 @@ private fun EmployeeFormContent(
                     Text(
                         text = "2. Contact Lines (Up to 5)",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = NavyPrimary
                     )
                     if (phoneCount < 5) {
@@ -4013,7 +4158,7 @@ private fun EmployeeFormContent(
                         ) {
                             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp), tint = NavyPrimary)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("+ Add Line", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = NavyPrimary)
+                            Text("+ Add Line", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = NavyPrimary)
                         }
                     }
                 }
@@ -4067,7 +4212,7 @@ private fun EmployeeFormContent(
                 Text(
                     text = "3. Emergency & Assigned Markets",
                     fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = NavyPrimary
                 )
 
@@ -4101,16 +4246,22 @@ private fun EmployeeFormContent(
                     customersList = customersList,
                     suppliersList = suppliersList,
                     employeesList = employeesList,
+                    agentsList = subAgentsList,
+                    referredByType = referredByType,
+                    referredById = referredById,
+                    excludeKey = excludeReferrerKey,
+                    onLinkChange = onReferredByLinkChange,
                     label = "Referred By / Reference Person"
                 )
 
-                Text("Assigned Ahmedabad Markets:", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = NavyPrimary)
+                Text("Assigned Markets:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = NavyPrimary)
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    MasterConstants.AHMEDABAD_TEXTILE_MARKETS.forEach { mkt ->
+                    // Market master first; the old fixed list is only a fallback before markets exist
+                    (marketOptions + selectedMarkets).distinct().forEach { mkt ->
                         val isSelected = selectedMarkets.contains(mkt)
                         Surface(
                             shape = CircleShape,
@@ -4122,8 +4273,8 @@ private fun EmployeeFormContent(
                         ) {
                             Text(
                                 text = if (isSelected) "✓ $mkt" else "+ $mkt",
-                                fontSize = 11.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
                                 color = if (isSelected) Color.White else TextPrimary,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
@@ -4226,7 +4377,7 @@ private fun PhotoUploadCard(
                     Text(
                         text = title,
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = NavyPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -4238,7 +4389,7 @@ private fun PhotoUploadCard(
                             uriString.isNotBlank() -> "Photo Attached ✓"
                             else -> "Tap to upload to cloud"
                         },
-                        fontSize = 10.5.sp,
+                        style = MaterialTheme.typography.labelSmall,
                         fontWeight = if (uriString.isNotBlank()) FontWeight.Medium else FontWeight.Normal,
                         color = when {
                             isUploading -> Color(0xFFD97706)
@@ -4294,7 +4445,7 @@ private fun PhotoUploadCard(
                     ) {
                         Text(
                             text = if (uriString.isNotBlank()) "Change" else "Upload",
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = if (uriString.isNotBlank()) NavyPrimary else GoldAccent
                         )
@@ -4388,7 +4539,7 @@ private fun InlineMarketDialog(
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Quick Add New Market", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = NavyPrimary)
+                Text("Quick Add New Market", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = NavyPrimary)
 
                 OutlinedTextField(
                     value = name,
@@ -4484,7 +4635,7 @@ private fun InlineBrandDialog(
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Quick Add New Brand", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = NavyPrimary)
+                Text("Quick Add New Brand", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = NavyPrimary)
 
                 OutlinedTextField(
                     value = name,
@@ -4547,3 +4698,91 @@ private fun defaultTextFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedBorderColor = NavyPrimary,
     unfocusedBorderColor = Color(0xFFE2E8F0)
 )
+
+/**
+ * Create a Sub Agent without leaving the customer form. Only the basics; the rest
+ * (login email, notes) can be filled in later in Masters -> Sub Agents.
+ */
+@Composable
+private fun QuickAddSubAgentDialog(
+    onDismiss: () -> Unit,
+    onSave: (name: String, phone: String, firmName: String, city: String) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+    var firmName by remember { mutableStateOf("") }
+    var city by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("New Sub Agent", fontWeight = FontWeight.Bold, color = NavyPrimary) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "The outside agent who brought this customer.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it; error = null },
+                    label = { Text("Name *") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
+                    colors = defaultTextFieldColors(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { input -> phone = input.filter { it.isDigit() || it == '+' || it == ' ' }; error = null },
+                    label = { Text("Mobile *") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = defaultTextFieldColors(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = firmName,
+                    onValueChange = { firmName = it },
+                    label = { Text("Firm / shop (optional)") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
+                    colors = defaultTextFieldColors(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = city,
+                    onValueChange = { city = it },
+                    label = { Text("City (optional)") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
+                    colors = defaultTextFieldColors(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                error?.let { Text(it, color = Color(0xFFDC2626), style = MaterialTheme.typography.bodySmall) }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val cleanName = name.trim()
+                    val digits = phone.filter { it.isDigit() }
+                    when {
+                        cleanName.isBlank() -> error = "Enter the agent's name"
+                        digits.length < 10 -> error = "Enter a 10 digit mobile number"
+                        else -> onSave(cleanName, phone.trim(), firmName.trim(), city.trim())
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("Add & Select", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}

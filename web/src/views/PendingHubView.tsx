@@ -438,8 +438,7 @@ export function PendingHubView() {
               All Operations Cleared!
             </h3>
             <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
-              There are no pending payments, deliveries, ongoing trips, or loose packs requiring
-              attention.
+            There are no pending payments, deliveries, or ongoing trips requiring attention.
             </p>
           </Card>
         )}

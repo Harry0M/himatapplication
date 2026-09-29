@@ -83,8 +83,11 @@ import com.example.data.local.entity.EmployeeEntity
 import com.example.data.local.entity.GarmentItemEntity
 import com.example.data.local.entity.ProductEntity
 import com.example.data.local.entity.SupplierEntity
+import com.example.util.IdGenerator
 import com.example.util.RecordValidator
 import com.example.util.ValidationResult
+import com.example.util.brandName
+import androidx.compose.material3.InputChip
 import com.example.ui.theme.GoldAccent
 import com.example.ui.theme.ManufacturerBadge
 import com.example.ui.theme.NavyPrimary
@@ -105,6 +108,8 @@ fun AddEditCustomerDialog(
     var city by remember { mutableStateOf(customer?.city ?: "") }
     var gstin by remember { mutableStateOf(customer?.gstin ?: "") }
     var creditDays by remember { mutableStateOf((customer?.creditDays ?: 30).toString()) }
+    var transportPreference by remember { mutableStateOf(customer?.transportPreference ?: "") }
+    var preferredTransporterName by remember { mutableStateOf(customer?.preferredTransporterName ?: "") }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -124,7 +129,7 @@ fun AddEditCustomerDialog(
                 ) {
                     Text(
                         text = if (customer == null) "New Customer Master" else "Edit Customer",
-                        fontSize = 18.sp,
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = NavyPrimary
                     )
@@ -206,6 +211,40 @@ fun AddEditCustomerDialog(
                     )
                 }
 
+                Spacer(modifier = Modifier.height(8.dp))
+
+                HorizontalDivider()
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "Transport / Delivery Details",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = preferredTransporterName,
+                    onValueChange = { preferredTransporterName = it },
+                    label = { Text("Preferred Transporter (Optional)") },
+                    placeholder = { Text("e.g. V-Trans, ARC, GATI") },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                    singleLine = true
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                com.example.ui.components.StationPickerField(
+                    value = transportPreference,
+                    onValueChange = { transportPreference = it },
+                    label = "Booking Station / Delivery Station",
+                    modifier = Modifier.fillMaxWidth()
+                )
+
                 Spacer(modifier = Modifier.height(20.dp))
 
                 Row(
@@ -228,7 +267,9 @@ fun AddEditCustomerDialog(
                                         address = address.trim(),
                                         city = city.trim(),
                                         gstin = gstin.trim(),
-                                        creditDays = creditDays.toIntOrNull() ?: 30
+                                        creditDays = creditDays.toIntOrNull() ?: 30,
+                                        transportPreference = transportPreference.trim(),
+                                        preferredTransporterName = preferredTransporterName.trim()
                                     )
                                 )
                             }
@@ -402,30 +443,17 @@ fun AddEditSupplierDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
-                        value = brand,
-                        onValueChange = { brand = it },
-                        label = { Text("Brand (Optional)") },
-                        placeholder = { Text("e.g. V-Denim") },
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 52.dp),
-                        singleLine = true
-                    )
-                    OutlinedTextField(
-                        value = defaultCaseSize,
-                        onValueChange = { defaultCaseSize = it },
-                        label = { Text("Case Size (Pcs)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 52.dp),
-                        singleLine = true
-                    )
-                }
+                OutlinedTextField(
+                    value = brand,
+                    onValueChange = { brand = it },
+                    label = { Text("Brand (Optional)") },
+                    placeholder = { Text("e.g. V-Denim") },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 52.dp),
+                    singleLine = true
+                )
 
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -634,7 +662,7 @@ fun AddEditEmployeeDialog(
                 ) {
                     Text(
                         text = if (employee == null) "New Employee Master" else "Edit Employee",
-                        fontSize = 18.sp,
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = NavyPrimary
                     )
@@ -687,7 +715,7 @@ fun AddEditEmployeeDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                Text("Role:", fontSize = 12.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
+                Text("Role:", style = MaterialTheme.typography.bodySmall, color = TextSecondary, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     val isAdmin = role == "Admin"
@@ -703,7 +731,7 @@ fun AddEditEmployeeDialog(
                             text = "Admin (Owner)",
                             color = if (isAdmin) Color.White else TextPrimary,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
+                            style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(vertical = 10.dp, horizontal = 12.dp)
                         )
                     }
@@ -721,7 +749,7 @@ fun AddEditEmployeeDialog(
                             text = "Salesman",
                             color = if (isSalesman) NavyPrimary else TextPrimary,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
+                            style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(vertical = 10.dp, horizontal = 12.dp)
                         )
                     }
@@ -807,7 +835,7 @@ fun QuickAddCustomerDialog(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "Quick Add Customer",
-                            fontSize = 16.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = NavyPrimary
                         )
@@ -819,7 +847,7 @@ fun QuickAddCustomerDialog(
 
                 Text(
                     text = "Add a new retailer on the fly. You can complete full KYC later in Customer Masters.",
-                    fontSize = 11.sp,
+                    style = MaterialTheme.typography.labelSmall,
                     color = TextSecondary
                 )
 
@@ -832,7 +860,7 @@ fun QuickAddCustomerDialog(
                         Text(
                             text = errorMessage ?: "",
                             color = Color(0xFFDC2626),
-                            fontSize = 11.5.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                         )
                     }
@@ -841,8 +869,8 @@ fun QuickAddCustomerDialog(
                 OutlinedTextField(
                     value = firmName,
                     onValueChange = { firmName = it; errorMessage = null },
-                    label = { Text("Shop / Firm Name *", fontSize = 11.5.sp) },
-                    placeholder = { Text("e.g. Radhe Krishna Fashion", fontSize = 11.5.sp) },
+                    label = { Text("Shop / Firm Name *", style = MaterialTheme.typography.bodySmall) },
+                    placeholder = { Text("e.g. Radhe Krishna Fashion", style = MaterialTheme.typography.bodySmall) },
                     singleLine = true,
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.fillMaxWidth()
@@ -851,8 +879,8 @@ fun QuickAddCustomerDialog(
                 OutlinedTextField(
                     value = ownerName,
                     onValueChange = { ownerName = it },
-                    label = { Text("Owner / Contact Person", fontSize = 11.5.sp) },
-                    placeholder = { Text("e.g. Ramesh Patel", fontSize = 11.5.sp) },
+                    label = { Text("Owner / Contact Person", style = MaterialTheme.typography.bodySmall) },
+                    placeholder = { Text("e.g. Ramesh Patel", style = MaterialTheme.typography.bodySmall) },
                     singleLine = true,
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.fillMaxWidth()
@@ -861,8 +889,8 @@ fun QuickAddCustomerDialog(
                 OutlinedTextField(
                     value = phone,
                     onValueChange = { phone = it; errorMessage = null },
-                    label = { Text("Mobile Number *", fontSize = 11.5.sp) },
-                    placeholder = { Text("10-digit mobile number", fontSize = 11.5.sp) },
+                    label = { Text("Mobile Number *", style = MaterialTheme.typography.bodySmall) },
+                    placeholder = { Text("10-digit mobile number", style = MaterialTheme.typography.bodySmall) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     singleLine = true,
                     shape = RoundedCornerShape(10.dp),
@@ -872,7 +900,7 @@ fun QuickAddCustomerDialog(
                 OutlinedTextField(
                     value = city,
                     onValueChange = { city = it },
-                    label = { Text("City *", fontSize = 11.5.sp) },
+                    label = { Text("City *", style = MaterialTheme.typography.bodySmall) },
                     singleLine = true,
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.fillMaxWidth()
@@ -897,8 +925,8 @@ fun QuickAddCustomerDialog(
                             Box(modifier = Modifier.padding(vertical = 7.dp), contentAlignment = Alignment.Center) {
                                 Text(
                                     text = if (type == "Credit") "💳 Credit" else "💵 Cash",
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = if (isSelected) Color.White else TextPrimary
                                 )
                             }
@@ -910,7 +938,7 @@ fun QuickAddCustomerDialog(
                     OutlinedTextField(
                         value = creditDays,
                         onValueChange = { creditDays = it },
-                        label = { Text("Credit Days", fontSize = 11.5.sp) },
+                        label = { Text("Credit Days", style = MaterialTheme.typography.bodySmall) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         shape = RoundedCornerShape(10.dp),
@@ -926,7 +954,7 @@ fun QuickAddCustomerDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TextButton(onClick = onDismiss) {
-                        Text("Cancel", fontSize = 12.sp)
+                        Text("Cancel", style = MaterialTheme.typography.bodySmall)
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
@@ -946,6 +974,8 @@ fun QuickAddCustomerDialog(
                             val effectiveName = cleanOwner.ifBlank { cleanFirm }
                             val effectiveFirm = cleanFirm.ifBlank { cleanOwner }
                             val newCustomer = CustomerEntity(
+                                // Real id right away: a trip started with this customer must link to it
+                                id = IdGenerator.newId(),
                                 customerId = "CUST-${(100..999).random()}",
                                 name = effectiveName,
                                 firmName = effectiveFirm,
@@ -960,7 +990,7 @@ fun QuickAddCustomerDialog(
                         colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text("Save & Select", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                        Text("Save & Select", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -968,33 +998,41 @@ fun QuickAddCustomerDialog(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun CreateVisitDialog(
     customers: List<CustomerEntity>,
     employees: List<EmployeeEntity>,
     defaultEmployee: EmployeeEntity?,
     onDismiss: () -> Unit,
-    onSave: (CustomerEntity, EmployeeEntity, String) -> Unit,
-    onQuickCreateCustomer: ((CustomerEntity) -> Unit)? = null
+    /** customer, trip starter, other salesmen going along, notes */
+    onSave: (CustomerEntity, EmployeeEntity, List<EmployeeEntity>, String) -> Unit,
+    onQuickCreateCustomer: ((CustomerEntity) -> Unit)? = null,
+    initialCustomer: CustomerEntity? = null
 ) {
-    var selectedCustomer by remember { mutableStateOf(customers.firstOrNull()) }
-    var selectedEmployee by remember { mutableStateOf(defaultEmployee ?: employees.firstOrNull()) }
+    val activeStaff = remember(employees) {
+        employees.filter { !it.isBlocked && !it.isDeleted && !it.status.equals("Deactivated", true) && !it.status.equals("Suspended", true) }
+    }
+    // No silent default customer: the user must pick who the trip is for
+    var selectedCustomer by remember { mutableStateOf(initialCustomer) }
+    var selectedEmployee by remember { mutableStateOf(defaultEmployee?.takeIf { d -> activeStaff.any { it.id == d.id } } ?: defaultEmployee) }
+    var otherSalesmen by remember { mutableStateOf<List<EmployeeEntity>>(emptyList()) }
     var notes by remember { mutableStateOf("") }
 
     var showCustomerSheet by remember { mutableStateOf(false) }
     var showEmployeeSheet by remember { mutableStateOf(false) }
+    var showOtherSalesmanSheet by remember { mutableStateOf(false) }
     var showQuickAddCustomer by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
                 modifier = Modifier
-                    .padding(14.dp)
+                    .padding(16.dp)
                     .verticalScroll(rememberScrollState())
             ) {
                 Row(
@@ -1003,71 +1041,50 @@ fun CreateVisitDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "New Market Visit",
-                        fontSize = 15.sp,
+                        text = "New Trip",
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = NavyPrimary
                     )
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", modifier = Modifier.size(18.dp))
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close")
                     }
                 }
 
                 Text(
-                    text = "A visit links a retailer, today's date, and your salesman for tracking multiple wholesaler stops.",
-                    fontSize = 10.5.sp,
+                    text = "Pick the customer and who takes them to the market. Other salesmen can also join later from their own phone.",
+                    style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary
                 )
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                // Customer Selection Picker Header with "+ Create New"
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Customer / Retailer *",
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = NavyPrimary
-                    )
-                    Text(
-                        text = "+ Create New",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2563EB),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .clickable { showQuickAddCustomer = true }
-                            .padding(horizontal = 4.dp, vertical = 2.dp)
-                    )
+                    Text("1. Customer *", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = NavyPrimary)
+                    TextButton(onClick = { showQuickAddCustomer = true }) {
+                        Text("+ New customer", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
-
-                // Customer Selection Picker (Tap opens Search Bottom Sheet)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .clickable { showCustomerSheet = true }
                         .testTag("create_visit_customer_field")
                 ) {
                     OutlinedTextField(
-                        value = selectedCustomer?.let { "${it.name} (${it.city})" } ?: "",
+                        value = selectedCustomer?.let { c -> "${c.firmName.ifBlank { c.name }} (${c.city})" } ?: "",
                         onValueChange = {},
                         readOnly = true,
                         enabled = false,
-                        placeholder = { Text("Tap to search & select customer", fontSize = 11.5.sp) },
+                        placeholder = { Text("Tap to search customer", style = MaterialTheme.typography.bodyMedium) },
                         trailingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = "Search Customer",
-                                tint = NavyPrimary,
-                                modifier = Modifier.size(18.dp)
-                            )
+                            Icon(Icons.Default.Search, contentDescription = "Search customer", tint = NavyPrimary)
                         },
                         colors = OutlinedTextFieldDefaults.colors(
                             disabledTextColor = MaterialTheme.colorScheme.onSurface,
@@ -1076,35 +1093,30 @@ fun CreateVisitDialog(
                             disabledPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                             disabledTrailingIconColor = NavyPrimary
                         ),
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("2. Salesman *", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = NavyPrimary)
+                Spacer(modifier = Modifier.height(4.dp))
 
-                // Salesman Selection Picker (Tap opens Search Bottom Sheet)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .clickable { showEmployeeSheet = true }
                         .testTag("create_visit_employee_field")
                 ) {
                     OutlinedTextField(
-                        value = selectedEmployee?.let { "${it.name} (${it.role})" } ?: "",
+                        value = selectedEmployee?.name ?: "",
                         onValueChange = {},
                         readOnly = true,
                         enabled = false,
-                        label = { Text("Assigned Salesman *", fontSize = 11.sp) },
-                        placeholder = { Text("Tap to search & select salesman", fontSize = 11.5.sp) },
+                        placeholder = { Text("Tap to pick the salesman", style = MaterialTheme.typography.bodyMedium) },
                         trailingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = "Search Salesman",
-                                tint = NavyPrimary,
-                                modifier = Modifier.size(18.dp)
-                            )
+                            Icon(Icons.Default.Search, contentDescription = "Search salesman", tint = NavyPrimary)
                         },
                         colors = OutlinedTextFieldDefaults.colors(
                             disabledTextColor = MaterialTheme.colorScheme.onSurface,
@@ -1113,24 +1125,55 @@ fun CreateVisitDialog(
                             disabledPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                             disabledTrailingIconColor = NavyPrimary
                         ),
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("3. Other salesmen (optional)", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = NavyPrimary)
+                    TextButton(onClick = { showOtherSalesmanSheet = true }) {
+                        Icon(Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Add", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                    }
+                }
+                if (otherSalesmen.isEmpty()) {
+                    Text("Solo trip. Add salesmen who go along, or they can join later.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                } else {
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        otherSalesmen.forEach { emp ->
+                            InputChip(
+                                selected = true,
+                                onClick = { otherSalesmen = otherSalesmen.filter { it.id != emp.id } },
+                                label = { Text(emp.name, style = MaterialTheme.typography.bodyMedium) },
+                                trailingIcon = { Icon(Icons.Default.Close, contentDescription = "Remove ${emp.name}", modifier = Modifier.size(16.dp)) }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
 
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },
-                    label = { Text("Trip Purpose / Notes", fontSize = 11.sp) },
-                    placeholder = { Text("e.g. Wholesale market tour for festive denim stock", fontSize = 11.5.sp) },
-                    shape = RoundedCornerShape(10.dp),
+                    label = { Text("Notes (optional)", style = MaterialTheme.typography.bodySmall) },
+                    placeholder = { Text("e.g. Festive denim stock", style = MaterialTheme.typography.bodyMedium) },
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth(),
                     maxLines = 2
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1138,7 +1181,7 @@ fun CreateVisitDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TextButton(onClick = onDismiss) {
-                        Text("Cancel", fontSize = 12.sp)
+                        Text("Cancel", style = MaterialTheme.typography.bodyMedium)
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
@@ -1146,21 +1189,21 @@ fun CreateVisitDialog(
                             val cust = selectedCustomer
                             val emp = selectedEmployee
                             if (cust != null && emp != null) {
-                                onSave(cust, emp, notes.trim())
+                                onSave(cust, emp, otherSalesmen.filter { it.id != emp.id }, notes.trim())
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.heightIn(min = 44.dp),
                         enabled = selectedCustomer != null && selectedEmployee != null
                     ) {
-                        Text("Start Market Visit", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                        Text("Start Trip", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                     }
                 }
             }
         }
     }
 
-    // Customer Search & Selection Bottom Sheet
     if (showCustomerSheet) {
         CustomerSearchBottomSheet(
             customers = customers,
@@ -1171,36 +1214,50 @@ fun CreateVisitDialog(
             },
             onDismiss = { showCustomerSheet = false },
             onQuickCreateCustomer = { newCust ->
-                onQuickCreateCustomer?.invoke(newCust)
-                selectedCustomer = newCust
+                // Give the new customer its real id now, so the trip links to it even before sync finishes
+                val withId = if (newCust.id == 0L) newCust.copy(id = IdGenerator.newId()) else newCust
+                onQuickCreateCustomer?.invoke(withId)
+                selectedCustomer = withId
                 showCustomerSheet = false
             }
         )
     }
 
-    // Quick Add Customer Dialog from CreateVisitDialog directly
     if (showQuickAddCustomer) {
         QuickAddCustomerDialog(
             initialName = "",
             onDismiss = { showQuickAddCustomer = false },
             onSave = { newCust ->
-                onQuickCreateCustomer?.invoke(newCust)
-                selectedCustomer = newCust
+                val withId = if (newCust.id == 0L) newCust.copy(id = IdGenerator.newId()) else newCust
+                onQuickCreateCustomer?.invoke(withId)
+                selectedCustomer = withId
                 showQuickAddCustomer = false
             }
         )
     }
 
-    // Salesman Search & Selection Bottom Sheet
     if (showEmployeeSheet) {
         EmployeeSearchBottomSheet(
-            employees = employees,
+            employees = activeStaff,
             selectedEmployee = selectedEmployee,
             onSelectEmployee = { employee ->
                 selectedEmployee = employee
+                otherSalesmen = otherSalesmen.filter { it.id != employee.id }
                 showEmployeeSheet = false
             },
             onDismiss = { showEmployeeSheet = false }
+        )
+    }
+
+    if (showOtherSalesmanSheet) {
+        EmployeeSearchBottomSheet(
+            employees = activeStaff.filter { e -> e.id != selectedEmployee?.id && otherSalesmen.none { it.id == e.id } },
+            selectedEmployee = null,
+            onSelectEmployee = { employee ->
+                otherSalesmen = otherSalesmen + employee
+                showOtherSalesmanSheet = false
+            },
+            onDismiss = { showOtherSalesmanSheet = false }
         )
     }
 }
@@ -1223,6 +1280,7 @@ fun CustomerSearchBottomSheet(
         else {
             customers.filter {
                 it.name.contains(cleanQuery, ignoreCase = true) ||
+                    it.firmName.contains(cleanQuery, ignoreCase = true) ||
                     it.city.contains(cleanQuery, ignoreCase = true) ||
                     it.phone.contains(cleanQuery, ignoreCase = true) ||
                     it.address.contains(cleanQuery, ignoreCase = true)
@@ -1252,13 +1310,13 @@ fun CustomerSearchBottomSheet(
                 Column {
                     Text(
                         text = "Select Customer / Retailer",
-                        fontSize = 18.sp,
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = "Choose retailer for this market visit",
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -1268,7 +1326,7 @@ fun CustomerSearchBottomSheet(
                 ) {
                     Text(
                         text = "${filteredCustomers.size} available",
-                        fontSize = 11.5.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -1285,7 +1343,7 @@ fun CustomerSearchBottomSheet(
                 placeholder = {
                     Text(
                         text = "Search by name, city, phone...",
-                        fontSize = 13.5.sp
+                        style = MaterialTheme.typography.bodyMedium
                     )
                 },
                 leadingIcon = {
@@ -1331,7 +1389,7 @@ fun CustomerSearchBottomSheet(
                 ) {
                     Text(
                         text = if (cleanQuery.isBlank()) "Don't see retailer listed?" else "Can't find \"$cleanQuery\"?",
-                        fontSize = 11.5.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     OutlinedButton(
@@ -1349,7 +1407,7 @@ fun CustomerSearchBottomSheet(
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = if (cleanQuery.isNotBlank()) "Add \"$cleanQuery\"" else "+ Create New",
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = NavyPrimary
                         )
@@ -1391,7 +1449,7 @@ fun CustomerSearchBottomSheet(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = if (cleanQuery.isNotBlank()) "Add \"$cleanQuery\" Now" else "Create New Customer",
-                                    fontSize = 12.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -1446,22 +1504,24 @@ fun CustomerSearchBottomSheet(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
-                                            text = customer.name.take(1).uppercase(),
+                                            text = customer.brandName().take(1).uppercase(),
                                             fontWeight = FontWeight.Bold,
-                                            fontSize = 15.sp,
+                                            style = MaterialTheme.typography.titleSmall,
                                             color = if (isSelected) Color.White else NavyPrimary
                                         )
                                     }
                                     Column {
+                                        // Brand (shop / firm) name first; owner name goes in the details line
                                         Text(
-                                            text = customer.name,
+                                            text = customer.brandName(),
                                             fontWeight = FontWeight.Bold,
-                                            fontSize = 14.5.sp,
+                                            style = MaterialTheme.typography.titleSmall,
                                             color = MaterialTheme.colorScheme.onSurface,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
                                         val details = listOfNotNull(
+                                            customer.name.trim().takeIf { it.isNotBlank() && !it.equals(customer.brandName(), ignoreCase = true) },
                                             customer.city.takeIf { it.isNotBlank() },
                                             customer.phone.takeIf { it.isNotBlank() },
                                             customer.address.takeIf { it.isNotBlank() }
@@ -1470,7 +1530,7 @@ fun CustomerSearchBottomSheet(
                                         if (details.isNotBlank()) {
                                             Text(
                                                 text = details,
-                                                fontSize = 12.sp,
+                                                style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
@@ -1499,8 +1559,11 @@ fun CustomerSearchBottomSheet(
             initialName = cleanQuery,
             onDismiss = { showQuickAddCustomer = false },
             onSave = { newCust ->
-                onQuickCreateCustomer?.invoke(newCust)
-                onSelectCustomer(newCust)
+                // Same id for "save" and "select"; before, the trip got the unsaved copy with id 0
+                // and its orders never showed in the customer master
+                val withId = if (newCust.id == 0L) newCust.copy(id = IdGenerator.newId()) else newCust
+                onQuickCreateCustomer?.invoke(withId)
+                onSelectCustomer(withId)
                 showQuickAddCustomer = false
             }
         )
@@ -1551,13 +1614,13 @@ fun EmployeeSearchBottomSheet(
                 Column {
                     Text(
                         text = "Select Salesman / Agent",
-                        fontSize = 18.sp,
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = "Assign representative leading this trip",
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -1567,7 +1630,7 @@ fun EmployeeSearchBottomSheet(
                 ) {
                     Text(
                         text = "${filteredEmployees.size} available",
-                        fontSize = 11.5.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -1584,7 +1647,7 @@ fun EmployeeSearchBottomSheet(
                 placeholder = {
                     Text(
                         text = "Search by name, role, phone...",
-                        fontSize = 13.5.sp
+                        style = MaterialTheme.typography.bodyMedium
                     )
                 },
                 leadingIcon = {
@@ -1696,7 +1759,7 @@ fun EmployeeSearchBottomSheet(
                                         Text(
                                             text = employee.name.take(1).uppercase(),
                                             fontWeight = FontWeight.Bold,
-                                            fontSize = 15.sp,
+                                            style = MaterialTheme.typography.titleSmall,
                                             color = if (isSelected) Color.White else NavyPrimary
                                         )
                                     }
@@ -1704,7 +1767,7 @@ fun EmployeeSearchBottomSheet(
                                         Text(
                                             text = employee.name,
                                             fontWeight = FontWeight.Bold,
-                                            fontSize = 14.5.sp,
+                                            style = MaterialTheme.typography.titleSmall,
                                             color = MaterialTheme.colorScheme.onSurface,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
@@ -1715,19 +1778,19 @@ fun EmployeeSearchBottomSheet(
                                         ) {
                                             Text(
                                                 text = employee.role,
-                                                fontSize = 12.sp,
+                                                style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.primary,
                                                 fontWeight = FontWeight.SemiBold
                                             )
                                             if (employee.phone.isNotBlank()) {
                                                 Text(
                                                     text = "•",
-                                                    fontSize = 12.sp,
+                                                    style = MaterialTheme.typography.bodySmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                                 Text(
                                                     text = employee.phone,
-                                                    fontSize = 12.sp,
+                                                    style = MaterialTheme.typography.bodySmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                             }
@@ -1795,13 +1858,13 @@ fun ProfileDialog(
                     Column {
                         Text(
                             text = "User Profile",
-                            fontSize = 18.sp,
+                            style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
                             text = "Himat Textile Agency • Ahmedabad",
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -1851,12 +1914,12 @@ fun ProfileDialog(
                             Text(
                                 text = activeTitle,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
+                                style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
                                 text = activeRoleLabel,
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Medium,
                                 color = if (isAdmin) NavyPrimary else Color(0xFF059669)
                             )
@@ -1869,13 +1932,13 @@ fun ProfileDialog(
 
                     Text(
                         text = "Switch Account / Role",
-                        fontSize = 13.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = "Select an operational mode to manage visits and entries",
-                        fontSize = 11.5.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
@@ -1917,11 +1980,11 @@ fun ProfileDialog(
                                     text = "Agency Owner (Admin)",
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface,
-                                    fontSize = 14.sp
+                                    style = MaterialTheme.typography.bodyMedium
                                 )
                                 Text(
                                     text = "Full operations: Masters, Ledger, All Visits & Reports",
-                                    fontSize = 11.5.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
@@ -1933,7 +1996,7 @@ fun ProfileDialog(
                                     Text(
                                         text = "Active",
                                         color = Color.White,
-                                        fontSize = 10.sp,
+                                        style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                     )
@@ -1947,7 +2010,7 @@ fun ProfileDialog(
                     // 2. Field Salesmen Profiles List
                     Text(
                         text = "Or operate as Field Salesman:",
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.Medium
                     )
@@ -1962,7 +2025,7 @@ fun ProfileDialog(
                         ) {
                             Text(
                                 text = "No salesman accounts created yet in Employee Master.",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(12.dp)
                             )
@@ -2005,13 +2068,13 @@ fun ProfileDialog(
                                         Text(
                                             text = emp.name,
                                             fontWeight = FontWeight.Bold,
-                                            fontSize = 13.5.sp,
+                                            style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
                                         val empSub = if (emp.phone.isNotBlank()) "ID: ${emp.employeeId} • ${emp.phone}" else "ID: ${emp.employeeId}"
                                         Text(
                                             text = empSub,
-                                            fontSize = 11.sp,
+                                            style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
@@ -2023,7 +2086,7 @@ fun ProfileDialog(
                                             Text(
                                                 text = "Active",
                                                 color = Color.White,
-                                                fontSize = 10.sp,
+                                                style = MaterialTheme.typography.labelSmall,
                                                 fontWeight = FontWeight.Bold,
                                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                             )
@@ -2063,13 +2126,13 @@ fun ProfileDialog(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = "Role Managed by Super Admin",
-                                    fontSize = 13.sp,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
                                     text = "Your account permissions are locked to your assigned field profile.",
-                                    fontSize = 11.5.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
@@ -2094,13 +2157,13 @@ fun ProfileDialog(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "Connected Google Account",
-                                fontSize = 11.sp,
+                                style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
                                 text = currentUser?.email ?: "Signed in",
-                                fontSize = 12.5.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1
@@ -2123,7 +2186,7 @@ fun ProfileDialog(
                                 Text(
                                     text = "Sign Out",
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 12.5.sp
+                                    style = MaterialTheme.typography.bodySmall
                                 )
                             }
                         }
@@ -2202,7 +2265,7 @@ fun AddEditProductDialog(
                     Text(
                         if (product == null) "Add Product" else "Edit Product",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
+                        style = MaterialTheme.typography.titleSmall,
                         color = NavyPrimary
                     )
                     IconButton(
@@ -2218,9 +2281,9 @@ fun AddEditProductDialog(
                 OutlinedTextField(
                     value = productCode,
                     onValueChange = { productCode = it.uppercase() },
-                    label = { Text("Product / Item Code *", fontSize = 11.sp) },
-                    placeholder = { Text("e.g. DENIM-701, COT-SHIRT", fontSize = 11.5.sp) },
-                    textStyle = TextStyle(fontSize = 12.5.sp),
+                    label = { Text("Product / Item Code *", style = MaterialTheme.typography.labelSmall) },
+                    placeholder = { Text("e.g. DENIM-701, COT-SHIRT", style = MaterialTheme.typography.bodySmall) },
+                    textStyle = MaterialTheme.typography.bodyLarge,
                     shape = RoundedCornerShape(10.dp),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
@@ -2231,9 +2294,9 @@ fun AddEditProductDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Product Name *", fontSize = 11.sp) },
-                    placeholder = { Text("e.g. Slim Fit Denim 701", fontSize = 11.5.sp) },
-                    textStyle = TextStyle(fontSize = 12.5.sp),
+                    label = { Text("Product Name *", style = MaterialTheme.typography.labelSmall) },
+                    placeholder = { Text("e.g. Slim Fit Denim 701", style = MaterialTheme.typography.bodySmall) },
+                    textStyle = MaterialTheme.typography.bodyLarge,
                     shape = RoundedCornerShape(10.dp),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
@@ -2251,8 +2314,8 @@ fun AddEditProductDialog(
                         value = selectedSupplier?.name ?: "Select Supplier",
                         onValueChange = {},
                         readOnly = true,
-                        label = { Text("Supplier *", fontSize = 11.sp) },
-                        textStyle = TextStyle(fontSize = 12.5.sp),
+                        label = { Text("Supplier *", style = MaterialTheme.typography.labelSmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         shape = RoundedCornerShape(10.dp),
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = supplierExpanded) },
                         modifier = Modifier
@@ -2265,7 +2328,7 @@ fun AddEditProductDialog(
                     ) {
                         suppliers.forEach { sup ->
                             DropdownMenuItem(
-                                text = { Text("${sup.name} (${sup.type})", fontSize = 12.sp) },
+                                text = { Text("${sup.name} (${sup.type})", style = MaterialTheme.typography.bodySmall) },
                                 onClick = {
                                     selectedSupplier = sup
                                     supplierExpanded = false
@@ -2281,8 +2344,8 @@ fun AddEditProductDialog(
                     OutlinedTextField(
                         value = category,
                         onValueChange = { category = it },
-                        label = { Text("Category", fontSize = 11.sp) },
-                        textStyle = TextStyle(fontSize = 12.5.sp),
+                        label = { Text("Category", style = MaterialTheme.typography.labelSmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         shape = RoundedCornerShape(10.dp),
                         singleLine = true,
                         modifier = Modifier.weight(1f)
@@ -2290,8 +2353,8 @@ fun AddEditProductDialog(
                     OutlinedTextField(
                         value = hsnCode,
                         onValueChange = { hsnCode = it },
-                        label = { Text("HSN Code", fontSize = 11.sp) },
-                        textStyle = TextStyle(fontSize = 12.5.sp),
+                        label = { Text("HSN Code", style = MaterialTheme.typography.labelSmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         shape = RoundedCornerShape(10.dp),
                         singleLine = true,
                         modifier = Modifier.weight(1f)
@@ -2304,8 +2367,8 @@ fun AddEditProductDialog(
                     OutlinedTextField(
                         value = defaultRate,
                         onValueChange = { defaultRate = it },
-                        label = { Text("Default Rate (₹)", fontSize = 11.sp) },
-                        textStyle = TextStyle(fontSize = 12.5.sp),
+                        label = { Text("Default Rate (₹)", style = MaterialTheme.typography.labelSmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         shape = RoundedCornerShape(10.dp),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         singleLine = true,
@@ -2314,8 +2377,8 @@ fun AddEditProductDialog(
                     OutlinedTextField(
                         value = defaultCaseSize,
                         onValueChange = { defaultCaseSize = it },
-                        label = { Text("Case Size (pcs)", fontSize = 11.sp) },
-                        textStyle = TextStyle(fontSize = 12.5.sp),
+                        label = { Text("Case Size (pcs)", style = MaterialTheme.typography.labelSmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         shape = RoundedCornerShape(10.dp),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
@@ -2328,8 +2391,8 @@ fun AddEditProductDialog(
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
-                    label = { Text("Description / Notes", fontSize = 11.sp) },
-                    textStyle = TextStyle(fontSize = 12.5.sp),
+                    label = { Text("Description / Notes", style = MaterialTheme.typography.labelSmall) },
+                    textStyle = MaterialTheme.typography.bodyLarge,
                     shape = RoundedCornerShape(10.dp),
                     minLines = 2,
                     modifier = Modifier.fillMaxWidth()
@@ -2337,7 +2400,7 @@ fun AddEditProductDialog(
 
                 if (errorMsg.isNotBlank()) {
                     Spacer(modifier = Modifier.height(6.dp))
-                    Text(errorMsg, color = Color(0xFFDC2626), fontSize = 11.sp)
+                    Text(errorMsg, color = Color(0xFFDC2626), style = MaterialTheme.typography.labelSmall)
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -2350,7 +2413,7 @@ fun AddEditProductDialog(
                         onClick = onDismiss,
                         modifier = Modifier.defaultMinSize(minHeight = 38.dp)
                     ) {
-                        Text("Cancel", color = TextSecondary, fontSize = 12.5.sp)
+                        Text("Cancel", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
@@ -2392,7 +2455,7 @@ fun AddEditProductDialog(
                         modifier = Modifier.defaultMinSize(minHeight = 38.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary)
                     ) {
-                        Text("Save Product", color = GoldAccent, fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                        Text("Save Product", color = GoldAccent, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -2451,7 +2514,7 @@ fun AddEditGarmentItemDialog(
                     Text(
                         text = if (item == null) "New Garment Item" else "Edit Garment Item",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
+                        style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     IconButton(
@@ -2480,7 +2543,7 @@ fun AddEditGarmentItemDialog(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = "Incomplete Garment Record:",
-                                    fontSize = 11.sp,
+                                    style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onErrorContainer
                                 )
@@ -2489,7 +2552,7 @@ fun AddEditGarmentItemDialog(
                             validationErrors.forEach { err ->
                                 Text(
                                     text = "• $err",
-                                    fontSize = 11.sp,
+                                    style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onErrorContainer
                                 )
                             }
@@ -2503,9 +2566,9 @@ fun AddEditGarmentItemDialog(
                     OutlinedTextField(
                         value = itemCode,
                         onValueChange = { itemCode = it },
-                        label = { Text("Item Code *", fontSize = 11.sp) },
-                        placeholder = { Text("e.g. DENIM-701", fontSize = 11.5.sp) },
-                        textStyle = TextStyle(fontSize = 12.5.sp),
+                        label = { Text("Item Code *", style = MaterialTheme.typography.labelSmall) },
+                        placeholder = { Text("e.g. DENIM-701", style = MaterialTheme.typography.bodySmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         isError = hasAttemptedSubmit && itemCode.trim().length < 2,
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
@@ -2516,9 +2579,9 @@ fun AddEditGarmentItemDialog(
                     OutlinedTextField(
                         value = category,
                         onValueChange = { category = it },
-                        label = { Text("Category *", fontSize = 11.sp) },
-                        placeholder = { Text("e.g. Denim", fontSize = 11.5.sp) },
-                        textStyle = TextStyle(fontSize = 12.5.sp),
+                        label = { Text("Category *", style = MaterialTheme.typography.labelSmall) },
+                        placeholder = { Text("e.g. Denim", style = MaterialTheme.typography.bodySmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         isError = hasAttemptedSubmit && category.trim().isBlank(),
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
@@ -2548,7 +2611,7 @@ fun AddEditGarmentItemDialog(
                             Text(
                                 text = cat,
                                 color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 10.5.sp,
+                                style = MaterialTheme.typography.labelSmall,
                                 modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
                             )
                         }
@@ -2560,9 +2623,9 @@ fun AddEditGarmentItemDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Garment Name / Description *", fontSize = 11.sp) },
-                    placeholder = { Text("e.g. Slim Fit Stretch Jeans 701", fontSize = 11.5.sp) },
-                    textStyle = TextStyle(fontSize = 12.5.sp),
+                    label = { Text("Garment Name / Description *", style = MaterialTheme.typography.labelSmall) },
+                    placeholder = { Text("e.g. Slim Fit Stretch Jeans 701", style = MaterialTheme.typography.bodySmall) },
+                    textStyle = MaterialTheme.typography.bodyLarge,
                     isError = hasAttemptedSubmit && name.trim().length < 2,
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier
@@ -2582,8 +2645,8 @@ fun AddEditGarmentItemDialog(
                         value = selectedSupplier?.let { "${it.name} (${it.type})" } ?: "Select Supplier *",
                         onValueChange = {},
                         readOnly = true,
-                        label = { Text("Supplier Master *", fontSize = 11.sp) },
-                        textStyle = TextStyle(fontSize = 12.5.sp),
+                        label = { Text("Supplier Master *", style = MaterialTheme.typography.labelSmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = supplierExpanded) },
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
@@ -2596,7 +2659,7 @@ fun AddEditGarmentItemDialog(
                     ) {
                         suppliers.forEach { supp ->
                             DropdownMenuItem(
-                                text = { Text("${supp.name} - ${supp.marketArea.ifBlank { supp.city }}", fontSize = 12.sp) },
+                                text = { Text("${supp.name} - ${supp.marketArea.ifBlank { supp.city }}", style = MaterialTheme.typography.bodySmall) },
                                 onClick = {
                                     selectedSupplier = supp
                                     supplierExpanded = false
@@ -2612,9 +2675,9 @@ fun AddEditGarmentItemDialog(
                     OutlinedTextField(
                         value = defaultRate,
                         onValueChange = { defaultRate = it },
-                        label = { Text("Rate (₹/pc) *", fontSize = 11.sp) },
-                        placeholder = { Text("450", fontSize = 11.5.sp) },
-                        textStyle = TextStyle(fontSize = 12.5.sp),
+                        label = { Text("Rate (₹/pc) *", style = MaterialTheme.typography.labelSmall) },
+                        placeholder = { Text("450", style = MaterialTheme.typography.bodySmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         isError = hasAttemptedSubmit && ((defaultRate.toDoubleOrNull() ?: 0.0) <= 0.0),
                         shape = RoundedCornerShape(10.dp),
@@ -2626,8 +2689,8 @@ fun AddEditGarmentItemDialog(
                     OutlinedTextField(
                         value = defaultCaseSize,
                         onValueChange = { defaultCaseSize = it },
-                        label = { Text("Case Size (Pcs) *", fontSize = 11.sp) },
-                        textStyle = TextStyle(fontSize = 12.5.sp),
+                        label = { Text("Case Size (Pcs) *", style = MaterialTheme.typography.labelSmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         isError = hasAttemptedSubmit && ((defaultCaseSize.toIntOrNull() ?: 0) <= 0),
                         shape = RoundedCornerShape(10.dp),
@@ -2644,9 +2707,9 @@ fun AddEditGarmentItemDialog(
                     OutlinedTextField(
                         value = fabricType,
                         onValueChange = { fabricType = it },
-                        label = { Text("Fabric Type", fontSize = 11.sp) },
-                        placeholder = { Text("e.g. Cotton Spandex", fontSize = 11.5.sp) },
-                        textStyle = TextStyle(fontSize = 12.5.sp),
+                        label = { Text("Fabric Type", style = MaterialTheme.typography.labelSmall) },
+                        placeholder = { Text("e.g. Cotton Spandex", style = MaterialTheme.typography.bodySmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
                             .weight(1f)
@@ -2656,9 +2719,9 @@ fun AddEditGarmentItemDialog(
                     OutlinedTextField(
                         value = sizeRange,
                         onValueChange = { sizeRange = it },
-                        label = { Text("Size Range", fontSize = 11.sp) },
-                        placeholder = { Text("e.g. 28 to 36", fontSize = 11.5.sp) },
-                        textStyle = TextStyle(fontSize = 12.5.sp),
+                        label = { Text("Size Range", style = MaterialTheme.typography.labelSmall) },
+                        placeholder = { Text("e.g. 28 to 36", style = MaterialTheme.typography.bodySmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
                             .weight(1f)
@@ -2673,8 +2736,8 @@ fun AddEditGarmentItemDialog(
                     OutlinedTextField(
                         value = hsnCode,
                         onValueChange = { hsnCode = it },
-                        label = { Text("HSN Code", fontSize = 11.sp) },
-                        textStyle = TextStyle(fontSize = 12.5.sp),
+                        label = { Text("HSN Code", style = MaterialTheme.typography.labelSmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
                             .weight(1f)
@@ -2684,8 +2747,8 @@ fun AddEditGarmentItemDialog(
                     OutlinedTextField(
                         value = inStockPieces,
                         onValueChange = { inStockPieces = it },
-                        label = { Text("Current Stock (Pcs)", fontSize = 11.sp) },
-                        textStyle = TextStyle(fontSize = 12.5.sp),
+                        label = { Text("Current Stock (Pcs)", style = MaterialTheme.typography.labelSmall) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
@@ -2700,9 +2763,9 @@ fun AddEditGarmentItemDialog(
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
-                    label = { Text("Description / Specs", fontSize = 11.sp) },
-                    placeholder = { Text("e.g. Enzyme washed, 5 pocket styling", fontSize = 11.5.sp) },
-                    textStyle = TextStyle(fontSize = 12.5.sp),
+                    label = { Text("Description / Specs", style = MaterialTheme.typography.labelSmall) },
+                    placeholder = { Text("e.g. Enzyme washed, 5 pocket styling", style = MaterialTheme.typography.bodySmall) },
+                    textStyle = MaterialTheme.typography.bodyLarge,
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 2
@@ -2718,7 +2781,7 @@ fun AddEditGarmentItemDialog(
                         onClick = onDismiss,
                         modifier = Modifier.defaultMinSize(minHeight = 38.dp)
                     ) {
-                        Text("Cancel", fontSize = 12.5.sp)
+                        Text("Cancel", style = MaterialTheme.typography.bodySmall)
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
@@ -2767,7 +2830,7 @@ fun AddEditGarmentItemDialog(
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.defaultMinSize(minHeight = 38.dp)
                     ) {
-                        Text("Save Garment Item", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                        Text("Save Garment Item", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                     }
                 }
             }

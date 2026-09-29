@@ -2,6 +2,7 @@ package com.example.data.local.entity
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.google.firebase.database.Exclude
 import com.google.firebase.database.IgnoreExtraProperties
 
 @IgnoreExtraProperties
@@ -44,6 +45,7 @@ data class CustomerEntity(
     val preferredTransporterName: String = "",
     val transportPreference: String = "",
     val dob: String = "",
+    val workingMarkets: String = "",
     val religion: String = "",
     val aadharPhotoUri: String = "",
     val aadharBackPhotoUri: String = "",
@@ -52,8 +54,17 @@ data class CustomerEntity(
     val shopPhotoUri: String = "",
     val purchaserPhotoUri: String = "",
     val cancelChequePhotoUri: String = "",
+    val bankName: String = "",
+    val accountNumber: String = "",
+    val ifscCode: String = "",
     val preferredCategories: String = "",
     val referredBy: String = "",
+    // Structured referrer link (shared with web): "Staff" | "Agent" | "Customer" | "Supplier" | "Broker"
+    val referredByType: String = "",
+    val referredById: Long? = null,
+    // Sub Agent (employees node, role = "Agent") who brought this customer
+    val subAgentId: Long? = null,
+    val subAgentName: String = "",
     val defaultSalesmanId: Long? = null,
     val creditDays: Int = 30,
     val creditLimit: Double = 0.0,
@@ -89,6 +100,10 @@ data class SupplierEntity(
     val shopCount: Int = 1,
     val shopLocations: String = "",
     val city: String = "Ahmedabad",
+    // Also written by the web admin / registration form; kept so an Android save does not wipe them
+    val district: String = "",
+    val state: String = "",
+    val pincode: String = "",
     val marketArea: String = "",
     val markets: String = "",
     val marketId: Long? = null,
@@ -108,8 +123,20 @@ data class SupplierEntity(
     val factoriesJson: String = "[]",
     val outletsJson: String = "[]",
     val shopPhotoUri: String = "",
+    val godownPhotoUri: String = "",
     val visitingCardPhotoUri: String = "",
     val referredBy: String = "",
+    val referredByType: String = "",
+    val referredById: Long? = null,
+    val subCategories: String = "",
+    val systemMrpValue: String = "",
+    val systemMrpPercent: String = "",
+    val systemLessValue: String = "",
+    val systemLessPercent: String = "",
+    val systemJson: String = "",
+    val bankName: String = "",
+    val accountNumber: String = "",
+    val ifscCode: String = "",
     val defaultCaseSize: Int = 24,
     val rating: Float = 4.5f,
     val notes: String = "",
@@ -192,9 +219,12 @@ data class EmployeeEntity(
     val phone3: String = "",
     val phone4: String = "",
     val phone5: String = "",
-    val role: String = "Salesman", // "Admin" or "Salesman"
+    val role: String = "Salesman", // "Admin", "Salesman" (Staff) or "Agent" (Sub Agent)
     val email: String = "", // Google Account email for auth & role binding
     val alternateEmail: String = "",
+    val firmName: String = "", // Sub Agent business / firm name (optional)
+    val city: String = "",
+    val notes: String = "",
     val address: String = "",
     val currentAddress: String = "",
     val permanentAddress: String = "",
@@ -202,6 +232,8 @@ data class EmployeeEntity(
     val emergencyContactName: String = "",
     val emergencyContactPhone: String = "",
     val referredBy: String = "",
+    val referredByType: String = "",
+    val referredById: Long? = null,
     val assignedMarkets: String = "",
     val markets: String = "",
     val status: String = "Active", // "Active", "Suspended", "Deactivated"
@@ -230,9 +262,19 @@ data class VisitEntity(
     val customerName: String = "",
     val employeeId: Long = 0,
     val employeeName: String = "",
+    val secondaryEmployeeId: Long = 0,
+    val secondaryEmployeeName: String = "",
+    // All salesmen on this trip (comma separated employee ids, incl. the starter), e.g. "3,7"
+    val memberIds: String = "",
+    // Display names in the same order, e.g. "Ramesh, Suresh"
+    val memberNames: String = "",
     val date: String = "",
     val notes: String = "",
-    val status: String = "Active", // "Active", "Completed"
+    // How the order was placed: "Market" (customer came along) or "Phone". Blank = Market.
+    val tripType: String = "",
+    val status: String = "Active", // "Active", "Completed" (shown as Closed)
+    val closedAt: Long? = null,
+    val closedBy: String = "",
     val isDeleted: Boolean = false,
     val deletedAt: Long? = null,
     val deletedBy: String = "",
@@ -240,6 +282,13 @@ data class VisitEntity(
     val deletedByRole: String = "",
     val deletionStatus: String = "",
     val deletionReason: String = "",
+    /**
+     * True while this trip has not been confirmed saved to the cloud yet. Local-only: the sync
+     * never deletes a row that is still waiting to be uploaded, so nothing is lost when the phone
+     * was offline or a write was rejected.
+     */
+    @get:Exclude @set:Exclude
+    var pendingPush: Boolean = false,
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -252,6 +301,12 @@ data class PurchaseEntryEntity(
     val supplierId: Long = 0,
     val supplierName: String = "",
     val supplierType: String = "", // "Manufacturer" or "Wholesaler"
+    val salesmanId: Long = 0,
+    val salesmanName: String = "",
+    // Who actually entered this order (phone user); salesmanId/Name is who gets credit on reports
+    val createdById: Long = 0,
+    val createdByName: String = "",
+    val orderDate: String = "",
     val itemCode: String = "", // e.g. "ABC", "XYZ", "Kurti 102"
     val pieces: Int = 0,
     val rate: Double = 0.0,
@@ -265,6 +320,8 @@ data class PurchaseEntryEntity(
     val expectedDeliveryDate: String = "",
     val deliveryStatus: String = "Pending", // "Pending", "Packed", "Dispatched", "Delivered"
     val transporter: String = "",
+    val lrNo: String = "",
+    val lrDate: String = "",
     val orderFormPhotoUri: String? = null,
     val supplierInvoiceUri: String? = null,
     val packGroupId: Long? = null,
@@ -280,6 +337,13 @@ data class PurchaseEntryEntity(
     val deletedByRole: String = "",
     val deletionStatus: String = "",
     val deletionReason: String = "",
+    /**
+     * True while this order has not been confirmed saved to the cloud yet. Local-only: the sync
+     * never deletes a row that is still waiting to be uploaded, so an order booked offline (or one
+     * whose write was rejected) survives until it really reaches the office.
+     */
+    @get:Exclude @set:Exclude
+    var pendingPush: Boolean = false,
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -476,6 +540,8 @@ data class CustomerRegistrationRequestEntity(
     val pincode: String = "",
     val shopMapLink: String = "",
     val garmentTypes: String = "",
+    val workingMarkets: String = "",
+    val dob: String = "",
     val gstin: String = "",
     val panNumber: String = "",
     val preferredTransporterName: String = "",
@@ -488,6 +554,8 @@ data class CustomerRegistrationRequestEntity(
     val panPhotoUri: String = "",
     val aadharPhotoUri: String = "",
     val aadharBackPhotoUri: String = "",
+    val cancelChequePhotoUri: String = "",
+    val purchaserPhotoUri: String = "",
     val notes: String = "",
     val status: String = "PENDING", // PENDING, APPROVED, REJECTED
     val phoneVerified: Boolean = true,
@@ -501,7 +569,10 @@ data class CustomerRegistrationRequestEntity(
     val creditLimit: Double = 0.0,
     val religion: String = "",
     val createdCustomerId: Long? = null,
-    val rejectionReason: String = ""
+    val rejectionReason: String = "",
+    // Set when the customer registered through a Sub Agent's personal link
+    val subAgentId: Long? = null,
+    val subAgentName: String = ""
 )
 
 @IgnoreExtraProperties
@@ -517,7 +588,11 @@ data class SupplierRegistrationRequestEntity(
     val email: String = "",
     val address: String = "",
     val officeAddress: String = "",
+    val homeAddress: String = "",
     val marketArea: String = "",
+    // Market master picked on the public form (id 0 / null = typed by hand)
+    val marketId: Long? = null,
+    val marketName: String = "",
     val city: String = "Ahmedabad",
     val district: String = "",
     val state: String = "Gujarat",
@@ -533,6 +608,13 @@ data class SupplierRegistrationRequestEntity(
     val ifscCode: String = "",
     val visitingCardPhotoUri: String = "",
     val shopPhotoUri: String = "",
+    val godownPhotoUri: String = "",
+    val subCategories: String = "",
+    val systemMrpValue: String = "",
+    val systemMrpPercent: String = "",
+    val systemLessValue: String = "",
+    val systemLessPercent: String = "",
+    val systemJson: String = "",
     val gstCertPhotoUri: String = "",
     val panPhotoUri: String = "",
     val idProofPhotoUri: String = "",

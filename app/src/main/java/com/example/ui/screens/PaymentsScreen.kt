@@ -45,6 +45,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -73,6 +74,7 @@ import com.example.data.local.entity.CustomerEntity
 import com.example.data.local.entity.PurchaseEntryEntity
 import com.example.data.local.entity.SupplierEntity
 import com.example.data.local.entity.VisitEntity
+import com.example.ui.components.ListRow
 import com.example.ui.components.SupplierTypeBadge
 import com.example.ui.theme.GoldAccent
 import com.example.ui.theme.NavyPrimary
@@ -142,11 +144,11 @@ fun PaymentsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF1F5F9))
+            .background(MaterialTheme.colorScheme.background)
     ) {
         // TOP HEADER BAR
         Surface(
-            color = Color.White,
+            color = MaterialTheme.colorScheme.surface,
             shadowElevation = 2.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -157,16 +159,16 @@ fun PaymentsScreen(
                 ) {
                     Surface(
                         shape = CircleShape,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
                         shadowElevation = 2.dp,
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                         modifier = Modifier.size(36.dp)
                     ) {
                         IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Back",
-                                tint = NavyPrimary,
+                                tint = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.size(18.dp)
                             )
                         }
@@ -177,12 +179,12 @@ fun PaymentsScreen(
                             text = "Payments & Bills Ledger",
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
-                            color = NavyPrimary
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
                             text = "Customer collections & supplier payment status",
                             fontSize = 11.sp,
-                            color = TextSecondary,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -191,9 +193,9 @@ fun PaymentsScreen(
                     // Search Toggle Icon in Header Right Corner
                     Surface(
                         shape = CircleShape,
-                        color = if (isSearchVisible || searchQuery.isNotBlank()) NavyPrimary else Color.White,
+                        color = if (isSearchVisible || searchQuery.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
                         shadowElevation = 2.dp,
-                        border = BorderStroke(1.dp, if (isSearchVisible || searchQuery.isNotBlank()) NavyPrimary else Color(0xFFE2E8F0)),
+                        border = BorderStroke(1.dp, if (isSearchVisible || searchQuery.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                         modifier = Modifier.size(36.dp)
                     ) {
                         IconButton(
@@ -206,7 +208,7 @@ fun PaymentsScreen(
                             Icon(
                                 imageVector = if (isSearchVisible || searchQuery.isNotBlank()) Icons.Default.Clear else Icons.Default.Search,
                                 contentDescription = "Search",
-                                tint = if (isSearchVisible || searchQuery.isNotBlank()) Color.White else NavyPrimary,
+                                tint = if (isSearchVisible || searchQuery.isNotBlank()) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.size(18.dp)
                             )
                         }
@@ -420,7 +422,7 @@ fun PaymentsScreen(
                                 Text(
                                     text = tab.label,
                                     fontSize = 11.5.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    fontWeight = FontWeight.SemiBold,
                                     color = if (isSelected) Color.White else TextPrimary
                                 )
                             }
@@ -458,7 +460,7 @@ fun PaymentsScreen(
                                 Text(
                                     text = status,
                                     fontSize = 11.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    fontWeight = FontWeight.SemiBold,
                                     color = if (isSelected) Color.White else TextPrimary
                                 )
                                 Spacer(modifier = Modifier.width(5.dp))
@@ -695,7 +697,7 @@ private data class SupplierLedgerItem(
     val entries: List<PurchaseEntryEntity>
 )
 
-// COMPONENT: BILL PAYMENT CARD (ALL BILLS VIEW)
+// COMPONENT: ONE BILL ROW (ALL BILLS VIEW)
 @Composable
 private fun BillPaymentCard(
     entry: PurchaseEntryEntity,
@@ -704,173 +706,34 @@ private fun BillPaymentCard(
     dueAmount: Double,
     onUpdatePayment: () -> Unit
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        shape = RoundedCornerShape(10.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(10.dp)) {
-            // Header Row: Order No + Date + Status Badge
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Order ${entry.orderNo}",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = NavyPrimary
-                    )
-                    if (visit != null && visit.date.isNotBlank()) {
-                        Text(
-                            text = " • ${visit.date}",
-                            fontSize = 11.sp,
-                            color = TextSecondary
-                        )
-                    }
-                }
-
-                PaymentStatusBadge(status = entry.paymentStatus)
-            }
-
-            HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp), color = Color(0xFFF1F5F9))
-
-            // Parties Row: Customer & Supplier
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "👤 ${visit?.customerName ?: "Customer"}",
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 12.sp,
-                        color = TextPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "🏭 ${entry.supplierName}",
-                            fontSize = 11.sp,
-                            color = TextSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        if (entry.supplierType.isNotBlank()) {
-                            Spacer(modifier = Modifier.width(4.dp))
-                            SupplierTypeBadge(type = entry.supplierType)
-                        }
-                    }
-                }
-
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = "${entry.itemCode} • ${entry.pieces} pcs",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = TextPrimary
-                    )
-                    Text(
-                        text = "@ ₹${entry.rate.toInt()} / pc",
-                        fontSize = 10.sp,
-                        color = TextSecondary
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Financial Breakdown & Update Action
-            Surface(
-                color = Color(0xFFF8FAFC),
-                shape = RoundedCornerShape(6.dp),
-                border = BorderStroke(0.5.dp, Color(0xFFE2E8F0)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("Billed (GST)", fontSize = 9.sp, color = TextSecondary)
-                            Text(
-                                "₹${PdfGenerator.formatInr(billAmount)}",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = TextPrimary
-                            )
-                        }
-                        Column {
-                            Text("Paid (${entry.paymentMode})", fontSize = 9.sp, color = Color(0xFF15803D))
-                            Text(
-                                "₹${PdfGenerator.formatInr(entry.paidAmount)}",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF15803D)
-                            )
-                        }
-                        Column {
-                            Text("Balance Due", fontSize = 9.sp, color = if (dueAmount > 0) Color(0xFFBE123C) else TextSecondary)
-                            Text(
-                                text = if (dueAmount > 0) "₹${PdfGenerator.formatInr(dueAmount)}" else "Cleared ✓",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (dueAmount > 0) Color(0xFFBE123C) else Color(0xFF15803D)
-                            )
-                        }
-                    }
-
-                    // Update button
-                    Surface(
-                        color = Color.White,
-                        shape = RoundedCornerShape(6.dp),
-                        border = BorderStroke(1.dp, NavyPrimary.copy(alpha = 0.5f)),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable(onClick = onUpdatePayment)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = "Edit",
-                                tint = NavyPrimary,
-                                modifier = Modifier.size(11.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text("Update", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = NavyPrimary)
-                        }
-                    }
-                }
-            }
-
-            if (entry.paymentRemarks.isNotBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Ref/Note: ${entry.paymentRemarks}",
-                    fontSize = 9.5.sp,
-                    color = TextSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+    val paidLine = "Paid ₹${PdfGenerator.formatInr(entry.paidAmount)} (${entry.paymentMode})"
+    val dueLine = if (dueAmount > 0) "Due ₹${PdfGenerator.formatInr(dueAmount)}" else "Cleared"
+    ListRow(
+        horizontalPadding = 0.dp,
+        title = "${entry.orderNo.ifBlank { "Order" }} • ${entry.supplierName}",
+        value = "₹${PdfGenerator.formatInr(billAmount)}",
+        detail = listOf(
+            visit?.customerName?.takeIf { it.isNotBlank() },
+            "${entry.itemCode.ifBlank { "Item" }} • ${entry.pieces} pcs",
+            visit?.date?.takeIf { it.isNotBlank() }
+        ).filterNotNull().joinToString(" • "),
+        note = listOf(paidLine, dueLine, entry.paymentRemarks.takeIf { it.isNotBlank() })
+            .filterNotNull()
+            .joinToString(" • "),
+        valueColor = if (dueAmount > 0) Color(0xFFBE123C) else Color(0xFF15803D),
+        status = { PaymentStatusBadge(status = entry.paymentStatus) },
+        onClick = onUpdatePayment,
+        trailing = {
+            IconButton(onClick = onUpdatePayment, modifier = Modifier.size(40.dp)) {
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = "Record or update payment for ${entry.orderNo}",
+                    tint = NavyPrimary,
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }
-    }
+    )
 }
 
 // COMPONENT: CUSTOMER LEDGER CARD
@@ -1384,7 +1247,7 @@ fun RecordPaymentDialog(
                                         else -> s
                                     },
                                     fontSize = 11.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    fontWeight = FontWeight.SemiBold,
                                     color = if (isSelected) Color.White else TextPrimary
                                 )
                             }
@@ -1439,7 +1302,7 @@ fun RecordPaymentDialog(
                                 Text(
                                     text = m,
                                     fontSize = 10.5.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    fontWeight = FontWeight.SemiBold,
                                     color = if (isSelected) Color.White else TextPrimary
                                 )
                             }

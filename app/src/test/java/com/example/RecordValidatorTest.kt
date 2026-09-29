@@ -82,13 +82,13 @@ class RecordValidatorTest {
     }
 
     @Test
-    fun testSupplierWithZeroOrNegativeCaseSize_failsValidation() {
+    fun testSupplierWithNegativeCaseSize_failsValidation() {
         val invalidSupplier = SupplierEntity(
             supplierId = "SUP-004",
             name = "Test Textiles",
             type = "Manufacturer",
             marketArea = "Ring Road",
-            defaultCaseSize = 0
+            defaultCaseSize = -1
         )
         val result = RecordValidator.validateSupplier(invalidSupplier)
         assertFalse(result.isValid)

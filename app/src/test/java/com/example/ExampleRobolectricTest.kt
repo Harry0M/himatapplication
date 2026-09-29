@@ -118,17 +118,18 @@ class ExampleRobolectricTest {
     )
 
     val customerReportText = com.example.util.ShareUtil.buildCustomerReportText(visit, customer, entries)
-    assertTrue(customerReportText.contains("Customer Day Report"))
-    assertTrue(customerReportText.contains("Rajesh Garments"))
+    assertTrue(customerReportText.contains("CUSTOMER PURCHASE REPORT"))
+    assertTrue(customerReportText.contains("RAJESH GARMENTS"))
     assertTrue(customerReportText.contains("DENIM-701"))
     assertTrue(customerReportText.contains("Vardhman Denim Mills"))
     assertTrue(customerReportText.contains("Packed 2 pcs into Mixed Case #1"))
 
     val supplierCopyText = com.example.util.ShareUtil.buildSupplierCopyText(visit, supplier, customer, entries)
-    assertTrue(supplierCopyText.contains("Supplier Purchase Order Copy"))
+    assertTrue(supplierCopyText.contains("ORDER FORM (DRAFT BILL)"))
+    assertTrue(supplierCopyText.contains("V-DENIM"))
     assertTrue(supplierCopyText.contains("Vardhman Denim Mills"))
     assertTrue(supplierCopyText.contains("DENIM-701"))
-    assertTrue(supplierCopyText.contains("Packing Note"))
+    assertTrue(supplierCopyText.contains("One Bill One LR"))
   }
 
   @Test

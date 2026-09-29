@@ -16,7 +16,17 @@ export interface Visit extends BaseEntity {
   date: string
   employeeId: number
   employeeName: string
+  secondaryEmployeeId?: number
+  secondaryEmployeeName?: string
+  /** Everybody who joined the trip besides the starter: "3,7" (same order as memberNames) */
+  memberIds?: string
+  /** "Ravi, Suresh" */
+  memberNames?: string
+  /** How the order was placed: "Market" (customer came along) or "Phone". Blank = Market. */
+  tripType?: string
   status: string // "Active", "Completed", "Cancelled"
+  closedAt?: number
+  closedBy?: string
   notes?: string
   totalEstimatedAmount?: number
   createdAt?: number
@@ -29,6 +39,12 @@ export interface PurchaseEntry extends BaseEntity {
   supplierId: number
   supplierName: string
   supplierType?: string
+  salesmanId?: number
+  salesmanName?: string
+  /** Who typed the order in (the salesman can be somebody else) */
+  createdById?: number
+  createdByName?: string
+  orderDate?: string
   itemCode: string
   pieces: number
   rate?: number
@@ -52,6 +68,11 @@ export interface PurchaseEntry extends BaseEntity {
   mixedPackNote?: string | null
   notes?: string
   billPdfPath?: string
+  /** Android field names (same record): GST %, expected delivery, order form / supplier bill photos */
+  gstRate?: number
+  expectedDeliveryDate?: string
+  orderFormPhotoUri?: string | null
+  supplierInvoiceUri?: string | null
   createdAt?: number
 }
 
@@ -110,17 +131,32 @@ export interface Customer extends BaseEntity {
   balanceType?: string
   balanceDueDate?: string
   isBlocked?: boolean
+  /** Display string, e.g. "Customer: Balaji Sarees" */
   referredBy?: string
+  /** Staff / Agent / Customer / Supplier / Broker */
+  referredByType?: string
+  referredById?: number
+  /** Staff member who added / owns this customer */
   addedByAgentId?: number | string
   addedByAgentName?: string
+  /** Sub Agent (employees node, role "Agent") who brought this customer */
+  subAgentId?: number
+  subAgentName?: string
   gstNumber?: string
   gstin?: string
   panNumber?: string
   dob?: string
+  workingMarkets?: string
   religion?: string
+  brandName?: string
+  contactPerson?: string
+  transportName?: string
+  preferredTransporter?: string
   preferredTransporterId?: number | string
   preferredTransporterName?: string
   transportPreference?: string
+  bookingStation?: string
+  creditTerms?: string
   aadharPhotoUri?: string
   aadharBackPhotoUri?: string
   gstCertPhotoUri?: string
@@ -128,7 +164,11 @@ export interface Customer extends BaseEntity {
   shopPhotoUri?: string
   purchaserPhotoUri?: string
   cancelChequePhotoUri?: string
+  bankName?: string
+  accountNumber?: string
+  ifscCode?: string
   notes?: string
+  securityCheques?: CustomerSecurityCheque[]
   createdAt?: number
 }
 
@@ -178,10 +218,22 @@ export interface Supplier extends BaseEntity {
   productsMade?: string // What they make
   priceRange?: string // Range of products in Rupees e.g. "₹250 - ₹1200"
   shopPhotoUri?: string
+  godownPhotoUri?: string
   visitingCardPhotoUri?: string
   referredBy?: string
+  referredByType?: string
+  referredById?: number
   categories?: string
+  subCategories?: string
   garmentTypes?: string
+  system?: {
+    mrp?: { value?: string; percentage?: string | number }
+    less?: { value?: string; percentage?: string | number }
+  }
+  systemMrpValue?: string
+  systemMrpPercent?: string | number
+  systemLessValue?: string
+  systemLessPercent?: string | number
   gstin?: string
   gstNumber?: string
   panNumber?: string
@@ -192,6 +244,10 @@ export interface Supplier extends BaseEntity {
   aadharPhotoUri?: string
   aadharBackPhotoUri?: string
   cancelChequePhotoUri?: string
+  purchaserPhotoUri?: string
+  bankName?: string
+  accountNumber?: string
+  ifscCode?: string
   defaultCaseSize?: number
   defaultGstRate?: number
   rating?: number
@@ -238,7 +294,11 @@ export interface Employee extends BaseEntity {
   id: number
   employeeId?: string
   name: string
-  role: string // "Admin" or "Salesman"
+  role: string // "Admin", "Salesman" (shown as Staff) or "Agent" (Sub Agent)
+  /** Sub Agents: their own shop / firm */
+  firmName?: string
+  city?: string
+  notes?: string
   phone?: string
   phone2?: string
   phone3?: string
@@ -255,6 +315,8 @@ export interface Employee extends BaseEntity {
   emergencyContactName?: string
   emergencyContactPhone?: string
   referredBy?: string
+  referredByType?: string
+  referredById?: number
   assignedMarkets?: string
   markets?: string
   status?: string // "Active", "Suspended", "Deactivated"
@@ -354,6 +416,8 @@ export interface CustomerRegistrationRequest {
   pincode?: string
   shopMapLink?: string
   garmentTypes?: string // Preferred Garment Categories
+  workingMarkets?: string
+  dob?: string
   gstin?: string
   panNumber?: string
   preferredTransporterName?: string
@@ -367,6 +431,7 @@ export interface CustomerRegistrationRequest {
   aadharPhotoUri?: string
   aadharBackPhotoUri?: string
   cancelChequePhotoUri?: string
+  purchaserPhotoUri?: string
   notes?: string
   status: "PENDING" | "APPROVED" | "REJECTED"
   phoneVerified: boolean
@@ -376,6 +441,9 @@ export interface CustomerRegistrationRequest {
   approvedBy?: string
   assignedAgentId?: number | string
   assignedAgentName?: string
+  /** Set when the customer opened a Sub Agent's personal registration link (?agent=<id>) */
+  subAgentId?: number
+  subAgentName?: string
   creditType?: "Cash" | "Credit"
   creditDays?: number
   creditLimit?: number
@@ -391,21 +459,26 @@ export interface SupplierRegistrationRequest {
   firmName: string
   name: string // Mill / Firm Name or Owner Name
   contactPerson: string
-  type: "Manufacturer" | "Wholesaler"
+  type: "Manufacturer" | "Trading" | "Distributor" | "Fabric" | string
   brand?: string
   phone: string // Primary Phone / Mobile
   phone2?: string // Secondary Phone / WhatsApp
   email?: string
-  address: string // Factory / Mill Address
+  address?: string // Factory / Office Address (optional)
   officeAddress?: string // Market Office / Shop Address
+  homeAddress?: string // Factory / Unit Address
   marketArea?: string
+  /** Market master record picked on the form (markets node) */
+  marketId?: number
+  marketName?: string
   city: string
   district?: string
   state: string
   pincode?: string
   mapLink?: string
   productsMade?: string // e.g. Fabrics, Garments manufactured
-  categories?: string // Garment or Fabric categories
+  categories?: string // Garment categories: Ladies, Gents, Kids, Handloom
+  subCategories?: string // Selected child options
   priceRange?: string
   gstin?: string
   panNumber?: string
@@ -413,7 +486,8 @@ export interface SupplierRegistrationRequest {
   accountNumber?: string
   ifscCode?: string
   visitingCardPhotoUri?: string
-  shopPhotoUri?: string // Mill / Front Photo
+  shopPhotoUri?: string // Shop Front Photo
+  godownPhotoUri?: string // Godown Photo
   gstCertPhotoUri?: string
   panPhotoUri?: string
   idProofPhotoUri?: string
@@ -421,7 +495,16 @@ export interface SupplierRegistrationRequest {
   aadharPhotoUri?: string
   aadharBackPhotoUri?: string
   cancelChequePhotoUri?: string
+  purchaserPhotoUri?: string
   notes?: string
+  system?: {
+    mrp?: { value?: string; percentage?: string | number }
+    less?: { value?: string; percentage?: string | number }
+  }
+  systemMrpValue?: string
+  systemMrpPercent?: string | number
+  systemLessValue?: string
+  systemLessPercent?: string | number
   status: "PENDING" | "APPROVED" | "REJECTED"
   phoneVerified: boolean
   verificationUid?: string
@@ -476,6 +559,23 @@ export interface ChequePdc extends BaseEntity {
   clearedDate?: string
   notes?: string
   photoUri?: string
+  isSecurityCheque?: boolean
+  accountNumber?: string
+  branchName?: string
+  createdAt?: number
+}
+
+export interface CustomerSecurityCheque {
+  id: number | string
+  chequeNo: string
+  bankName: string
+  amount: number
+  chequeDate: string // YYYY-MM-DD (due/maturity date)
+  accountNumber?: string
+  branchName?: string
+  notes?: string
+  status?: ChequeStatus | string
+  pdcChequeId?: number
   createdAt?: number
 }
 

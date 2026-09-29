@@ -14,14 +14,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import com.example.R
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -68,9 +71,9 @@ fun LoginScreen(
             .background(
                 brush = Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFF0F172A),
-                        NavyPrimary,
-                        Color(0xFF1E293B)
+                        Color(0xFFFFFFFF),
+                        Color(0xFFF8FAFC),
+                        Color(0xFFEEF2F6)
                     )
                 )
             )
@@ -89,17 +92,21 @@ fun LoginScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Surface(
-                    shape = RoundedCornerShape(24.dp),
-                    color = Color.White.copy(alpha = 0.08f),
-                    border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.3f)),
-                    modifier = Modifier.size(80.dp)
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.White,
+                    shadowElevation = 6.dp,
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    modifier = Modifier.size(88.dp)
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.Business,
-                            contentDescription = "Logo",
-                            tint = GoldAccent,
-                            modifier = Modifier.size(44.dp)
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.padding(12.dp)
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.himat_logo),
+                            contentDescription = "Himat Textile Logo",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
                 }
@@ -110,25 +117,36 @@ fun LoginScreen(
                     text = "HIMAT TEXTILE",
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White,
+                    color = NavyPrimary,
                     letterSpacing = 2.sp
                 )
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = "YOUR BUSINESS GUIDE ACROSS INDIA",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = GoldAccent,
+                    letterSpacing = 1.sp
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
                     text = "Sourcing & Wholesale Visit Management",
                     fontSize = 13.sp,
-                    color = Color(0xFF94A3B8),
+                    color = Color(0xFF64748B),
                     textAlign = TextAlign.Center
                 )
             }
 
             // Middle Features Box
             Surface(
-                color = Color.White.copy(alpha = 0.06f),
+                color = Color.White,
                 shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
+                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                shadowElevation = 2.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
@@ -137,16 +155,22 @@ fun LoginScreen(
                 ) {
                     FeatureItem(
                         icon = Icons.Default.CheckCircle,
+                        iconColor = Color(0xFF0F766E),
+                        iconBg = Color(0xFFCCFBF1),
                         title = "On-the-spot Sourcing Logs",
                         subtitle = "Record wholesale stops, piece volumes & case sizes"
                     )
                     FeatureItem(
                         icon = Icons.Default.ReceiptLong,
+                        iconColor = NavyPrimary,
+                        iconBg = Color(0xFFE0E7FF),
                         title = "Instant Client & Supplier Vouchers",
                         subtitle = "Auto-generate PDF reports and share via WhatsApp"
                     )
                     FeatureItem(
                         icon = Icons.Default.CloudDone,
+                        iconColor = Color(0xFFD97706),
+                        iconBg = Color(0xFFFEF3C7),
                         title = "Realtime Database Sync",
                         subtitle = "Cloud backup powered by Firebase Realtime DB"
                     )
@@ -160,7 +184,8 @@ fun LoginScreen(
             ) {
                 if (errorMessage != null) {
                     Surface(
-                        color = Color(0xFF7F1D1D).copy(alpha = 0.8f),
+                        color = Color(0xFFFEF2F2),
+                        border = BorderStroke(1.dp, Color(0xFFFECACA)),
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -168,7 +193,7 @@ fun LoginScreen(
                     ) {
                         Text(
                             text = errorMessage ?: "",
-                            color = Color(0xFFFCA5A5),
+                            color = Color(0xFFB91C1C),
                             fontSize = 12.sp,
                             modifier = Modifier.padding(10.dp),
                             textAlign = TextAlign.Center
@@ -197,8 +222,9 @@ fun LoginScreen(
                         containerColor = Color.White,
                         contentColor = Color(0xFF1E293B)
                     ),
+                    border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
                     shape = RoundedCornerShape(12.dp),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp, pressedElevation = 4.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(52.dp)
@@ -235,7 +261,7 @@ fun LoginScreen(
                     Icon(
                         imageVector = Icons.Default.Security,
                         contentDescription = null,
-                        tint = Color(0xFF64748B),
+                        tint = Color(0xFF94A3B8),
                         modifier = Modifier.size(13.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
@@ -255,6 +281,8 @@ fun LoginScreen(
 @Composable
 private fun FeatureItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconColor: Color,
+    iconBg: Color,
     title: String,
     subtitle: String
 ) {
@@ -264,15 +292,15 @@ private fun FeatureItem(
     ) {
         Surface(
             shape = CircleShape,
-            color = GoldAccent.copy(alpha = 0.15f),
-            modifier = Modifier.size(32.dp)
+            color = iconBg,
+            modifier = Modifier.size(34.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = GoldAccent,
-                    modifier = Modifier.size(16.dp)
+                    tint = iconColor,
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }
@@ -282,12 +310,12 @@ private fun FeatureItem(
                 text = title,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = Color.White
+                color = Color(0xFF1E293B)
             )
             Text(
                 text = subtitle,
                 fontSize = 11.sp,
-                color = Color(0xFF94A3B8)
+                color = Color(0xFF64748B)
             )
         }
     }

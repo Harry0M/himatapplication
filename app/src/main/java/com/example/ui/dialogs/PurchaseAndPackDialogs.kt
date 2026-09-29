@@ -84,6 +84,15 @@ import com.example.ui.theme.GoldAccent
 import com.example.ui.theme.NavyPrimary
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import com.example.data.remote.FirebaseStorageService
+import com.example.ui.screens.StopDocumentAttachmentCard
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -108,9 +117,15 @@ fun AddPurchaseEntryDialog(
         loosePieces: Int,
         gstRate: Double,
         expectedDeliveryDate: String,
-        transporter: String
+        transporter: String,
+        orderFormPhotoUri: String?,
+        supplierInvoiceUri: String?
     ) -> Unit
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val storageService = remember { FirebaseStorageService() }
+
     var selectedSupplier by remember { mutableStateOf(suppliers.firstOrNull()) }
     var itemCode by remember { mutableStateOf("") }
     var piecesText by remember { mutableStateOf("") }
@@ -127,8 +142,49 @@ fun AddPurchaseEntryDialog(
     }
     var expectedDeliveryDate by remember { mutableStateOf(defaultDate) }
     var transporter by remember { mutableStateOf("") }
-    var hasOrderFormPhoto by remember { mutableStateOf(false) }
-    var hasSupplierInvoicePhoto by remember { mutableStateOf(false) }
+
+    var orderFormPhotoUri by remember { mutableStateOf<String?>(null) }
+    var isUploadingOrderForm by remember { mutableStateOf(false) }
+
+    var supplierInvoiceUri by remember { mutableStateOf<String?>(null) }
+    var isUploadingInvoice by remember { mutableStateOf(false) }
+
+    var previewImageUrl by remember { mutableStateOf<String?>(null) }
+    var previewImageTitle by remember { mutableStateOf("") }
+
+    val orderFormLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) {
+            isUploadingOrderForm = true
+            coroutineScope.launch {
+                val result = storageService.uploadFile(context, uri, folder = "purchase_orders/order_forms", prefix = "order_form")
+                isUploadingOrderForm = false
+                result.onSuccess { downloadUrl ->
+                    orderFormPhotoUri = downloadUrl
+                    Toast.makeText(context, "Order Form uploaded to Cloud!", Toast.LENGTH_SHORT).show()
+                }.onFailure { err ->
+                    orderFormPhotoUri = uri.toString()
+                    Toast.makeText(context, "Saved locally (offline)", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    val invoiceLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) {
+            isUploadingInvoice = true
+            coroutineScope.launch {
+                val result = storageService.uploadFile(context, uri, folder = "purchase_orders/invoices", prefix = "bill")
+                isUploadingInvoice = false
+                result.onSuccess { downloadUrl ->
+                    supplierInvoiceUri = downloadUrl
+                    Toast.makeText(context, "Wholesaler Bill uploaded to Cloud!", Toast.LENGTH_SHORT).show()
+                }.onFailure { err ->
+                    supplierInvoiceUri = uri.toString()
+                    Toast.makeText(context, "Saved locally (offline)", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
 
     var showSupplierSheet by remember { mutableStateOf(false) }
     var showQuickAddSupplier by remember { mutableStateOf(false) }
@@ -344,30 +400,17 @@ fun AddPurchaseEntryDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Row 3: Case Size & GST Rate
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = caseSizeText,
-                        onValueChange = { caseSizeText = it },
-                        label = { Text("Case Size (Ref)", fontSize = 11.sp) },
-                        placeholder = { Text("24", fontSize = 11.5.sp) },
-                        textStyle = TextStyle(fontSize = 12.5.sp),
-                        shape = RoundedCornerShape(10.dp),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f),
-                        singleLine = true
-                    )
-                    OutlinedTextField(
-                        value = gstRateText,
-                        onValueChange = { gstRateText = it },
-                        label = { Text("Garment GST (%)", fontSize = 11.sp) },
-                        textStyle = TextStyle(fontSize = 12.5.sp),
-                        shape = RoundedCornerShape(10.dp),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.weight(1f),
-                        singleLine = true
-                    )
-                }
+                // Row 3: Garment GST (%)
+                OutlinedTextField(
+                    value = gstRateText,
+                    onValueChange = { gstRateText = it },
+                    label = { Text("Garment GST (%)", fontSize = 11.sp) },
+                    textStyle = TextStyle(fontSize = 12.5.sp),
+                    shape = RoundedCornerShape(10.dp),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -460,62 +503,35 @@ fun AddPurchaseEntryDialog(
                     color = TextSecondary
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Surface(
-                        color = if (hasOrderFormPhoto) Color(0xFFDCFCE7) else Color(0xFFF1F5F9),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { hasOrderFormPhoto = !hasOrderFormPhoto }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                if (hasOrderFormPhoto) Icons.Default.Check else Icons.Default.AddPhotoAlternate,
-                                contentDescription = null,
-                                tint = if (hasOrderFormPhoto) Color(0xFF16A34A) else NavyPrimary,
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = if (hasOrderFormPhoto) "Order Form Added" else "+ Order Form Pic",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = if (hasOrderFormPhoto) Color(0xFF15803D) else TextPrimary
-                            )
-                        }
-                    }
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    StopDocumentAttachmentCard(
+                        title = "Order Form Pic",
+                        subtitle = "Upload order form / slip",
+                        uriString = orderFormPhotoUri,
+                        isUploading = isUploadingOrderForm,
+                        onPickImage = { orderFormLauncher.launch("image/*") },
+                        onViewImage = {
+                            previewImageUrl = orderFormPhotoUri
+                            previewImageTitle = "Order Form Preview"
+                        },
+                        onRemoveImage = { orderFormPhotoUri = null }
+                    )
 
-                    Surface(
-                        color = if (hasSupplierInvoicePhoto) Color(0xFFDCFCE7) else Color(0xFFF1F5F9),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { hasSupplierInvoicePhoto = !hasSupplierInvoicePhoto }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                if (hasSupplierInvoicePhoto) Icons.Default.Check else Icons.Default.AddPhotoAlternate,
-                                contentDescription = null,
-                                tint = if (hasSupplierInvoicePhoto) Color(0xFF16A34A) else NavyPrimary,
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = if (hasSupplierInvoicePhoto) "Wholesaler Bill Added" else "+ Supplier Invoice",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = if (hasSupplierInvoicePhoto) Color(0xFF15803D) else TextPrimary
-                            )
-                        }
-                    }
+                    StopDocumentAttachmentCard(
+                        title = "Wholesaler Bill",
+                        subtitle = "Upload wholesaler invoice / bill",
+                        uriString = supplierInvoiceUri,
+                        isUploading = isUploadingInvoice,
+                        onPickImage = { invoiceLauncher.launch("image/*") },
+                        onViewImage = {
+                            previewImageUrl = supplierInvoiceUri
+                            previewImageTitle = "Wholesaler Bill Preview"
+                        },
+                        onRemoveImage = { supplierInvoiceUri = null }
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -545,7 +561,9 @@ fun AddPurchaseEntryDialog(
                                     loosePieces,
                                     gstRateText.toDoubleOrNull() ?: 5.0,
                                     expectedDeliveryDate.trim(),
-                                    transporter.trim()
+                                    transporter.trim(),
+                                    orderFormPhotoUri,
+                                    supplierInvoiceUri
                                 )
                             }
                         },
@@ -590,6 +608,14 @@ fun AddPurchaseEntryDialog(
                 caseSizeText = newSup.defaultCaseSize.toString()
                 showQuickAddSupplier = false
             }
+        )
+    }
+
+    previewImageUrl?.let { url ->
+        FullScreenImageViewerDialog(
+            imageUrl = url,
+            title = previewImageTitle,
+            onDismiss = { previewImageUrl = null }
         )
     }
 }
@@ -703,50 +729,34 @@ fun QuickAddSupplierDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Supplier Type selector and Case Size
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Supplier Type", fontSize = 10.5.sp, color = TextSecondary)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            listOf("Manufacturer", "Wholesaler").forEach { type ->
-                                val isSelected = supplierType == type
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (isSelected) NavyPrimary else Color(0xFFF1F5F9),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clickable { supplierType = type }
+                // Supplier Type selector
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text("Supplier Type", fontSize = 10.5.sp, color = TextSecondary)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("Manufacturer", "Wholesaler").forEach { type ->
+                            val isSelected = supplierType == type
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSelected) NavyPrimary else Color(0xFFF1F5F9),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { supplierType = type }
+                            ) {
+                                Box(
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Box(
-                                        modifier = Modifier.padding(vertical = 8.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = type,
-                                            fontSize = 11.sp,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                            color = if (isSelected) Color.White else TextPrimary
-                                        )
-                                    }
+                                    Text(
+                                        text = type,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isSelected) Color.White else TextPrimary
+                                    )
                                 }
                             }
                         }
                     }
-
-                    OutlinedTextField(
-                        value = defaultCaseSize,
-                        onValueChange = { defaultCaseSize = it },
-                        label = { Text("Case Size", fontSize = 11.sp) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.width(90.dp),
-                        singleLine = true
-                    )
                 }
 
                 errorMessage?.let { err ->
@@ -786,11 +796,7 @@ fun QuickAddSupplierDialog(
                                 errorMessage = "Phone number must have at least 7 digits"
                                 return@Button
                             }
-                            val parsedCaseSize = defaultCaseSize.toIntOrNull() ?: 24
-                            if (parsedCaseSize <= 0) {
-                                errorMessage = "Case size must be greater than 0"
-                                return@Button
-                            }
+                            val parsedCaseSize = 24
 
                             val newSupplier = SupplierEntity(
                                 supplierId = "SUP-${(100..999).random()}",
@@ -1085,8 +1091,7 @@ fun SupplierSearchBottomSheet(
 
                                         val subDetails = listOfNotNull(
                                             supplier.marketArea.takeIf { it.isNotBlank() },
-                                            supplier.brand.takeIf { it.isNotBlank() }?.let { "Brand: $it" },
-                                            "Default Case: ${supplier.defaultCaseSize} pcs"
+                                            supplier.brand.takeIf { it.isNotBlank() }?.let { "Brand: $it" }
                                         ).joinToString(" • ")
 
                                         Text(

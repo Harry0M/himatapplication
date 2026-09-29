@@ -614,6 +614,7 @@ private fun CustomerRequestInspectorDialog(
 
                             InspectorRow("Firm Name", request.firmName)
                             InspectorRow("Contact Person", request.name)
+                            if (request.dob.isNotBlank()) InspectorRow("Date of Birth", request.dob)
                             InspectorRow("Primary Phone", request.phone)
                             if (request.phone2.isNotBlank()) InspectorRow("Alt Phone", request.phone2)
                             if (request.email.isNotBlank()) InspectorRow("Email", request.email)
@@ -674,6 +675,7 @@ private fun CustomerRequestInspectorDialog(
                             Spacer(modifier = Modifier.height(8.dp))
 
                             InspectorRow("Deals In", request.garmentTypes)
+                            if (request.workingMarkets.isNotBlank()) InspectorRow("Working Markets", request.workingMarkets)
                             InspectorRow("GSTIN", request.gstin.ifBlank { "Not Provided" })
                             InspectorRow("PAN", request.panNumber.ifBlank { "Not Provided" })
                             if (request.preferredTransporterName.isNotBlank()) {
@@ -711,7 +713,9 @@ private fun CustomerRequestInspectorDialog(
                                 if (request.gstCertPhotoUri.isNotBlank()) Pair("GST Certificate", request.gstCertPhotoUri) else null,
                                 if (request.panPhotoUri.isNotBlank()) Pair("PAN Card", request.panPhotoUri) else null,
                                 if (request.aadharPhotoUri.isNotBlank()) Pair("Aadhaar (Front)", request.aadharPhotoUri) else null,
-                                if (request.aadharBackPhotoUri.isNotBlank()) Pair("Aadhaar (Back)", request.aadharBackPhotoUri) else null
+                                if (request.aadharBackPhotoUri.isNotBlank()) Pair("Aadhaar (Back)", request.aadharBackPhotoUri) else null,
+                                if (request.cancelChequePhotoUri.isNotBlank()) Pair("Cancelled Cheque", request.cancelChequePhotoUri) else null,
+                                if (request.purchaserPhotoUri.isNotBlank()) Pair("Purchaser Photo", request.purchaserPhotoUri) else null
                             )
 
                             if (photos.isEmpty()) {
@@ -850,9 +854,6 @@ private fun CustomerRequestInspectorDialog(
                                         selected = creditType == "Cash",
                                         onClick = { creditType = "Cash" },
                                         label = { Text("Cash Party", fontSize = 10.5.sp) },
-                                        leadingIcon = if (creditType == "Cash") {
-                                            { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(13.dp)) }
-                                        } else null,
                                         modifier = Modifier.weight(1f)
                                     )
 
@@ -860,9 +861,6 @@ private fun CustomerRequestInspectorDialog(
                                         selected = creditType == "Credit",
                                         onClick = { creditType = "Credit" },
                                         label = { Text("Credit Party", fontSize = 10.5.sp) },
-                                        leadingIcon = if (creditType == "Credit") {
-                                            { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(13.dp)) }
-                                        } else null,
                                         modifier = Modifier.weight(1f)
                                     )
                                 }

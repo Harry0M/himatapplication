@@ -35,6 +35,7 @@ import {
   Sparkles
 } from "lucide-react"
 import { useData } from "../context/DataContext"
+import { useAuth } from "../context/AuthContext"
 import { Card } from "../components/ui/Card"
 import { Button } from "../components/ui/Button"
 import { Badge } from "../components/ui/Badge"
@@ -43,11 +44,14 @@ import { Input } from "../components/ui/Input"
 import { ReferrerSelectModal } from "../components/ui/ReferrerSelectModal"
 import { Tabs } from "../components/ui/Tabs"
 import { Supplier, SupplierAddress, Visit, SupplierRegistrationRequest } from "../types"
-import { GARMENT_CATEGORIES } from "../lib/constants"
+import { GARMENT_CATEGORIES, SUPPLIER_TYPES, SUPPLIER_CATEGORIES } from "../lib/constants"
 import { ReportViewerModal } from "../components/ui/ReportViewerModal"
+import { EnvelopePrintModal } from "../components/ui/EnvelopePrintModal"
+import { createSupplierEnvelopeData } from "../lib/envelopePrint"
 import {
   generateSupplierInvoiceHtml,
   buildSupplierInvoiceWhatsAppText,
+  type SupplierOrderFormOptions,
 } from "../lib/pdfReports"
 import { generateSuppliersTallyXml, downloadXmlFile } from "../lib/tallyExport"
 import { FileUpload } from "../components/ui/FileUpload"
@@ -59,14 +63,22 @@ import {
   extractPanFromGstin,
   getStateFromGstin,
 } from "../lib/gstHelper"
+import { displayCode, newId, toNumericId } from "../lib/domain"
 
-export function SuppliersView() {
+interface SuppliersViewProps {
+  /** Open straight on the registration requests list (used by the Registration Requests inbox) */
+  initialViewMode?: "suppliers" | "requests"
+}
+
+export function SuppliersView({ initialViewMode = "suppliers" }: SuppliersViewProps = {}) {
+  const { isAdmin } = useAuth()
   const {
     suppliers,
     visits,
     entries,
     customers,
     employees,
+    subAgents,
     markets,
     brands,
     saveSupplier,
@@ -81,7 +93,7 @@ export function SuppliersView() {
   } = useData()
 
   // Navigation mode: 'suppliers' vs 'requests'
-  const [viewMode, setViewMode] = useState<"suppliers" | "requests">("suppliers")
+  const [viewMode, setViewMode] = useState<"suppliers" | "requests">(initialViewMode)
   const [isShareLinkModalOpen, setIsShareLinkModalOpen] = useState<boolean>(false)
   const [copiedLink, setCopiedLink] = useState<boolean>(false)
   const [directSharePhone, setDirectSharePhone] = useState<string>("")
@@ -92,6 +104,12 @@ export function SuppliersView() {
   const [selectedRequestForApproval, setSelectedRequestForApproval] = useState<SupplierRegistrationRequest | null>(null)
   const [approvalBrand, setApprovalBrand] = useState<string>("")
   const [approvalMarket, setApprovalMarket] = useState<string>("")
+  const [approvalSystemMrpValue, setApprovalSystemMrpValue] = useState<string>("")
+  const [approvalSystemMrpPercent, setApprovalSystemMrpPercent] = useState<string | number>("")
+  const [approvalSystemLessValue, setApprovalSystemLessValue] = useState<string>("")
+  const [approvalSystemLessPercent, setApprovalSystemLessPercent] = useState<string | number>("")
+  const [approvalCreateMarketMaster, setApprovalCreateMarketMaster] = useState<boolean>(false)
+  const [approvalNewMarketCity, setApprovalNewMarketCity] = useState<string>("Ahmedabad")
   const [isApproving, setIsApproving] = useState<boolean>(false)
   const [rejectModal, setRejectModal] = useState<{
     open: boolean
@@ -116,22 +134,29 @@ export function SuppliersView() {
 
   const getPublicSupplierRegistrationUrl = () => {
     if (typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")) {
-      return "https://himatsms.web.app/#supplier-register"
+      return `${window.location.origin}/#/register-supplier`
     }
-    return `${window.location.origin}/#supplier-register`
+    return "https://himatsms.web.app/#/register-supplier"
   }
 
   const buildSupplierInviteMessage = () => {
     const regUrl = getPublicSupplierRegistrationUrl()
-    return `Hello!\nTo register as a fabric mill / supplier with Himat Textile, please click the link below to submit your mill and business details:\n\n${regUrl}\n\nThank you!\nHimat Textile, Ahmedabad`
+    return `HIMAT TEXTILE AHMEDABAD\nYour Garment Guide Across India\n\nHello,\n\nTo register as a Supplier with Himat Textile, please click the link below to submit your firm and business details:\n\n🔗 Supplier Registration:\n${regUrl}\n\nThank you!\nHimat Textile Ahmedabad\nYour Garment Guide Across India`
   }
 
   const [search, setSearch] = useState<string>("")
   const [showSearch, setShowSearch] = useState<boolean>(false)
   const [typeFilter, setTypeFilter] = useState<string>("all")
+  const [categoryFilter, setCategoryFilter] = useState<string>("all")
+  const [systemFilter, setSystemFilter] = useState<string>("all")
 
   // Master Detail Full Page State
   const [selectedSupplierId, setSelectedSupplierId] = useState<number | null>(null)
+
+  // Inside the Registration Requests inbox: closing a supplier opened after an approval returns to the requests
+  useEffect(() => {
+    if (initialViewMode === "requests" && selectedSupplierId === null) setViewMode("requests")
+  }, [initialViewMode, selectedSupplierId])
 
   // Modal States
   const [isDialogOpen, setIsDialogOpen] = useState<boolean>(false)
@@ -151,12 +176,18 @@ export function SuppliersView() {
     title: string
     html: string
     whatsAppText: string
+    /** Order forms: rebuilds the document for the chosen options */
+    buildHtml?: (options: SupplierOrderFormOptions) => string
   }>({
     open: false,
     title: "",
     html: "",
     whatsAppText: "",
   })
+
+  // 24cm x 10.5cm Envelope Print Modal State
+  const [isEnvelopeModalOpen, setIsEnvelopeModalOpen] = useState<boolean>(false)
+  const [selectedSupplierForEnvelope, setSelectedSupplierForEnvelope] = useState<Supplier | null>(null)
 
   const handleOpenSupplierInvoice = (sup: Supplier) => {
     const supEntries = entries.filter(
@@ -188,9 +219,10 @@ export function SuppliersView() {
 
     setReportModal({
       open: true,
-      title: `Supplier Order Copy: ${sup.firmName || sup.name}`,
+      title: `Supplier Order Copy: ${sup.brand || sup.firmName || sup.name}`,
       html,
       whatsAppText,
+      buildHtml: (options) => generateSupplierInvoiceHtml({ ...reportData, options }),
     })
   }
 
@@ -235,6 +267,9 @@ export function SuppliersView() {
   const [shopPhotoUri, setShopPhotoUri] = useState<string>("")
   const [visitingCardPhotoUri, setVisitingCardPhotoUri] = useState<string>("")
   const [referredBy, setReferredBy] = useState<string>("")
+  // Structured referrer (type + id) so "Referred" lists work even after names change
+  const [referredByType, setReferredByType] = useState<string>("")
+  const [referredById, setReferredById] = useState<number>(0)
   const [notes, setNotes] = useState<string>("")
 
   // GST Lookup & auto-population state
@@ -358,6 +393,8 @@ export function SuppliersView() {
       setShopPhotoUri("")
       setVisitingCardPhotoUri("")
       setReferredBy(draft.referredBy || "")
+      setReferredByType(draft.referredByType || "")
+      setReferredById(Number(draft.referredById) || 0)
       setNotes(draft.notes || "")
       setHasDraft(true)
     } else {
@@ -388,6 +425,8 @@ export function SuppliersView() {
       setShopPhotoUri("")
       setVisitingCardPhotoUri("")
       setReferredBy("")
+      setReferredByType("")
+      setReferredById(0)
       setNotes("")
       setHasDraft(false)
     }
@@ -423,6 +462,8 @@ export function SuppliersView() {
     setSelectedCategories([])
     setCustomCategory("")
     setReferredBy("")
+    setReferredByType("")
+    setReferredById(0)
     setNotes("")
   }
 
@@ -455,12 +496,16 @@ export function SuppliersView() {
         priceRange,
         selectedCategories,
         referredBy,
+        referredByType,
+        referredById,
         notes,
       })
     }
   }, [
     isDialogOpen,
     editingId,
+    referredByType,
+    referredById,
     supplierId,
     name,
     firmName,
@@ -553,6 +598,8 @@ export function SuppliersView() {
     setShopPhotoUri(s.shopPhotoUri || "")
     setVisitingCardPhotoUri(s.visitingCardPhotoUri || "")
     setReferredBy(s.referredBy || "")
+    setReferredByType(s.referredByType || "")
+    setReferredById(toNumericId(s.referredById))
     setNotes(s.notes || "")
 
     setActiveFormTab("basic")
@@ -572,7 +619,10 @@ export function SuppliersView() {
     const finalContactPerson = contactPerson.trim() || name.trim()
     if (!finalFirmName) return
 
-    const id = editingId || Date.now()
+    // Globally unique id (Date.now() / max + 1 collided with records saved from phones)
+    const id = editingId || newId()
+    // Keep fields this form does not show (bank, MRP/Less system, district, pincode, Android-only fields)
+    const existing = editingId ? suppliers.find((s) => Number(s.id) === Number(editingId)) : undefined
     const allPhones = [phone1.trim(), phone2.trim(), phone3.trim(), phone4.trim(), phone5.trim()].filter(Boolean)
     const primaryPhone = allPhones[0] || ""
 
@@ -581,12 +631,20 @@ export function SuppliersView() {
       allCats.push(customCategory.trim())
     }
 
+    // Link the Market master record, not just its name
+    const linkedMarket = selectedMarketName
+      ? markets.find((m) => (m.marketName || "").trim().toLowerCase() === selectedMarketName.trim().toLowerCase())
+      : undefined
+    const referrer = referredBy.trim()
+
     const payload: Supplier = {
+      ...(existing || {}),
       id,
-      supplierId: supplierId.trim() || `SUP-${id % 10000}`,
+      supplierId: supplierId.trim() || displayCode("SUP"),
       name: finalFirmName,
       firmName: finalFirmName,
       type,
+      marketId: linkedMarket ? Number(linkedMarket.id) : undefined,
       marketArea: selectedMarketName,
       marketName: selectedMarketName,
       brand: selectedBrandName,
@@ -613,9 +671,11 @@ export function SuppliersView() {
       panNumber: panNumber.trim().toUpperCase() || (gstin.length === 15 ? gstin.slice(2, 12) : ""),
       shopPhotoUri: shopPhotoUri.trim(),
       visitingCardPhotoUri: visitingCardPhotoUri.trim(),
-      referredBy: referredBy.trim(),
+      referredBy: referrer,
+      referredByType: referrer ? referredByType || undefined : undefined,
+      referredById: referrer && referredById > 0 ? referredById : undefined,
       notes: notes.trim(),
-      defaultCaseSize: 24, // Maintained internally for seamless order case math
+      defaultCaseSize: existing?.defaultCaseSize || 24, // Maintained internally for seamless order case math
       createdAt: editingId ? (suppliers.find((s) => s.id === editingId)?.createdAt || Date.now()) : Date.now(),
     }
 
@@ -644,7 +704,7 @@ export function SuppliersView() {
     e.preventDefault()
     if (!quickMarketName.trim()) return
     const newMarket = {
-      id: Date.now(),
+      id: newId(),
       marketName: quickMarketName.trim(),
       city: quickMarketCity.trim(),
       createdAt: Date.now(),
@@ -659,7 +719,7 @@ export function SuppliersView() {
     e.preventDefault()
     if (!quickBrandName.trim()) return
     const newBrand = {
-      id: Date.now(),
+      id: newId(),
       brandName: quickBrandName.trim(),
       manufacturerName: firmName || name,
       createdAt: Date.now(),
@@ -670,7 +730,7 @@ export function SuppliersView() {
     setQuickBrandName("")
   }
 
-  // Filter
+  // Multi-criteria filter: search query, supplier type, category, wholesale system
   const q = search.trim().toLowerCase()
   const filteredSuppliers = suppliers.filter((s) => {
     const matchesQuery =
@@ -682,13 +742,52 @@ export function SuppliersView() {
       s.marketName?.toLowerCase().includes(q) ||
       s.contactPerson?.toLowerCase().includes(q) ||
       s.phone?.includes(q) ||
+      s.phone2?.includes(q) ||
       s.gstin?.toLowerCase().includes(q) ||
-      s.productsMade?.toLowerCase().includes(q)
+      s.city?.toLowerCase().includes(q) ||
+      s.productsMade?.toLowerCase().includes(q) ||
+      s.categories?.toLowerCase().includes(q) ||
+      s.subCategories?.toLowerCase().includes(q) ||
+      s.bankName?.toLowerCase().includes(q)
 
-    const matchesType =
-      typeFilter === "all" || s.type?.toLowerCase() === typeFilter.toLowerCase()
+    let matchesType = true
+    if (typeFilter !== "all") {
+      const tf = typeFilter.toLowerCase()
+      const st = (s.type || "").toLowerCase()
+      if (tf === "manufacturer") {
+        matchesType = st.includes("manufacturer") || st.includes("mill")
+      } else if (tf === "trading") {
+        matchesType = st.includes("trading") || st.includes("trader") || st.includes("wholesaler")
+      } else if (tf === "distributor") {
+        matchesType = st.includes("distributor") || st.includes("dealer")
+      } else if (tf === "fabric") {
+        matchesType = st.includes("fabric") || st.includes("processor") || st.includes("jobworker")
+      } else {
+        matchesType = st === tf
+      }
+    }
 
-    return matchesQuery && matchesType
+    let matchesCategory = true
+    if (categoryFilter !== "all") {
+      const cf = categoryFilter.toLowerCase()
+      const cats = ((s.categories || "") + " " + (s.subCategories || "") + " " + (s.productsMade || "") + " " + (s.garmentTypes || "")).toLowerCase()
+      matchesCategory = cats.includes(cf)
+    }
+
+    let matchesSystem = true
+    if (systemFilter !== "all") {
+      const hasMrp = Boolean(s.systemMrpValue || s.systemMrpPercent || s.system?.mrp?.value || s.system?.mrp?.percentage)
+      const hasLess = Boolean(s.systemLessValue || s.systemLessPercent || s.system?.less?.value || s.system?.less?.percentage)
+      if (systemFilter === "has_system") {
+        matchesSystem = hasMrp || hasLess
+      } else if (systemFilter === "mrp") {
+        matchesSystem = hasMrp
+      } else if (systemFilter === "less") {
+        matchesSystem = hasLess
+      }
+    }
+
+    return matchesQuery && matchesType && matchesCategory && matchesSystem
   })
 
   // Filtered Supplier Registration Requests
@@ -716,7 +815,16 @@ export function SuppliersView() {
   const handleOpenApprovalDialog = (req: SupplierRegistrationRequest) => {
     setSelectedRequestForApproval(req)
     setApprovalBrand(req.brand || "")
-    setApprovalMarket(req.marketArea || "")
+    const mkt = req.marketArea || ""
+    setApprovalMarket(mkt)
+    setApprovalSystemMrpValue(req.systemMrpValue || req.system?.mrp?.value || "")
+    setApprovalSystemMrpPercent(req.systemMrpPercent ?? req.system?.mrp?.percentage ?? "")
+    setApprovalSystemLessValue(req.systemLessValue || req.system?.less?.value || "")
+    setApprovalSystemLessPercent(req.systemLessPercent ?? req.system?.less?.percentage ?? "")
+    const mktClean = mkt.trim().toLowerCase()
+    const isExistingMarket = markets.some((m) => m.marketName?.trim().toLowerCase() === mktClean)
+    setApprovalCreateMarketMaster(Boolean(mktClean && !isExistingMarket))
+    setApprovalNewMarketCity(req.city || "Ahmedabad")
   }
 
   const handleConfirmApproval = async () => {
@@ -727,6 +835,23 @@ export function SuppliersView() {
         brand: approvalBrand.trim(),
         marketName: approvalMarket.trim(),
         fallbackRequest: selectedRequestForApproval,
+        system: {
+          mrp: {
+            value: approvalSystemMrpValue.trim(),
+            percentage: approvalSystemMrpPercent !== "" ? approvalSystemMrpPercent : undefined,
+          },
+          less: {
+            value: approvalSystemLessValue.trim(),
+            percentage: approvalSystemLessPercent !== "" ? approvalSystemLessPercent : undefined,
+          },
+        },
+        systemMrpValue: approvalSystemMrpValue.trim(),
+        systemMrpPercent: approvalSystemMrpPercent !== "" ? approvalSystemMrpPercent : undefined,
+        systemLessValue: approvalSystemLessValue.trim(),
+        systemLessPercent: approvalSystemLessPercent !== "" ? approvalSystemLessPercent : undefined,
+        createMarketMaster: approvalCreateMarketMaster,
+        newMarketName: approvalMarket.trim(),
+        newMarketCity: approvalNewMarketCity.trim() || selectedRequestForApproval.city || "Ahmedabad",
       })
       setSelectedRequestForApproval(null)
       setSelectedRequestForDetails(null)
@@ -777,11 +902,13 @@ export function SuppliersView() {
           supplierId={selectedSupplierId}
           onBack={() => setSelectedSupplierId(null)}
           onEdit={(sup) => handleOpenEdit(sup)}
+          onDelete={(sup) => handleDelete(sup.id)}
         />
       ) : (
         <>
           {/* Top Header */}
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          {initialViewMode === "suppliers" && (
+<div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
@@ -833,6 +960,20 @@ export function SuppliersView() {
               </Button>
 
               <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSelectedSupplierForEnvelope(null)
+                  setIsEnvelopeModalOpen(true)
+                }}
+                className="h-8 px-3 text-xs gap-1.5 border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/40 font-semibold"
+                title="Print 24cm x 10.5cm Envelopes for Suppliers"
+              >
+                <Mail className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                <span>Print Envelope</span>
+              </Button>
+
+              <Button
                 size="sm"
                 onClick={handleOpenAdd}
                 className="h-8 px-3 text-xs font-semibold shadow-sm bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 gap-1"
@@ -842,40 +983,19 @@ export function SuppliersView() {
               </Button>
             </div>
           </div>
+          )}
 
-          {/* Navigation Tabs: Active Suppliers vs Registration Requests */}
-          <div className="flex items-center gap-2 border-b border-zinc-200 dark:border-zinc-800">
-            <button
-              type="button"
-              onClick={() => setViewMode("suppliers")}
-              className={`flex items-center gap-2 py-2.5 px-3 border-b-2 font-medium text-xs transition-all ${
-                viewMode === "suppliers"
-                  ? "border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-100 font-bold"
-                  : "border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
-              }`}
-            >
-              <Factory className="h-4 w-4" />
-              <span>Active Suppliers ({suppliers.length})</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setViewMode("requests")}
-              className={`flex items-center gap-2 py-2.5 px-3 border-b-2 font-medium text-xs transition-all ${
-                viewMode === "requests"
-                  ? "border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-100 font-bold"
-                  : "border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
-              }`}
-            >
-              <Building2 className="h-4 w-4" />
-              <span>Registration Requests ({supplierRegistrationRequests.length})</span>
-              {pendingSupplierRegistrationRequestsCount > 0 && (
-                <span className="flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white shadow-xs animate-pulse">
-                  {pendingSupplierRegistrationRequestsCount}
-                </span>
-              )}
-            </button>
-          </div>
+          {/* One home per feature: approvals live in the Registration Requests inbox */}
+          {initialViewMode === "suppliers" && isAdmin && pendingSupplierRegistrationRequestsCount > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
+              <span>
+                <strong>{pendingSupplierRegistrationRequestsCount}</strong> new supplier registration{pendingSupplierRegistrationRequestsCount === 1 ? "" : "s"} waiting for approval
+              </span>
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => (window.location.hash = "#/app/requests")}>
+                Open Registration Requests
+              </Button>
+            </div>
+          )}
 
           {viewMode === "suppliers" ? (
             <>
@@ -903,27 +1023,85 @@ export function SuppliersView() {
             </Card>
           )}
 
-          {/* Supplier Type Filter Tabs */}
-          <div className="flex gap-2 border-b border-zinc-200 dark:border-zinc-800 pb-2 overflow-x-auto text-xs">
-            {[
-              { id: "all", label: "All Suppliers" },
-              { id: "Manufacturer", label: "Fabric Mills / Manufacturers" },
-              { id: "Wholesaler", label: "Wholesalers / Traders" },
-              { id: "Processor", label: "Dyeing & Processors" },
-              { id: "Jobworker", label: "Job Workers" },
-            ].map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setTypeFilter(t.id)}
-                className={`px-3 py-1.5 rounded-lg font-medium whitespace-nowrap transition-colors ${
-                  typeFilter === t.id
-                    ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-sm"
-                    : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
+          {/* Supplier Multi-Criteria Filters Bar */}
+          <div className="space-y-2 pb-2 border-b border-zinc-200 dark:border-zinc-800">
+            {/* Type Filter Pills */}
+            <div className="flex gap-1.5 overflow-x-auto text-xs pb-0.5">
+              {[
+                { id: "all", label: "All Suppliers" },
+                { id: "Manufacturer", label: "Manufacturer" },
+                { id: "Trading", label: "Trading" },
+                { id: "Distributor", label: "Distributor" },
+                { id: "Fabric", label: "Fabric / Mill" },
+              ].map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setTypeFilter(t.id)}
+                  className={`px-3 py-1.5 rounded-lg font-medium whitespace-nowrap transition-colors ${
+                    typeFilter === t.id
+                      ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-sm"
+                      : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Category & System Dropdown Bar */}
+            <div className="flex flex-wrap items-center gap-2.5 text-xs">
+              {/* Category Filter */}
+              <div className="flex items-center gap-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-2.5 py-1 text-xs shadow-xs">
+                <span className="text-[11px] font-semibold text-muted-foreground">Category:</span>
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="bg-transparent font-medium text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none cursor-pointer"
+                >
+                  <option value="all">All Categories</option>
+                  {SUPPLIER_CATEGORIES.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* System Pricing Filter */}
+              <div className="flex items-center gap-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-2.5 py-1 text-xs shadow-xs">
+                <span className="text-[11px] font-semibold text-muted-foreground">System Rates:</span>
+                <select
+                  value={systemFilter}
+                  onChange={(e) => setSystemFilter(e.target.value)}
+                  className="bg-transparent font-medium text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none cursor-pointer"
+                >
+                  <option value="all">All Pricing</option>
+                  <option value="has_system">Has System Rates</option>
+                  <option value="mrp">MRP System (%)</option>
+                  <option value="less">Less System (%)</option>
+                </select>
+              </div>
+
+              {/* Reset Filters */}
+              {(typeFilter !== "all" || categoryFilter !== "all" || systemFilter !== "all" || search) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setTypeFilter("all")
+                    setCategoryFilter("all")
+                    setSystemFilter("all")
+                    setSearch("")
+                  }}
+                  className="h-7 px-2 text-xs text-muted-foreground hover:text-zinc-900 dark:hover:text-zinc-100 gap-1"
+                >
+                  <X className="h-3 w-3" />
+                  <span>Reset Filters</span>
+                </Button>
+              )}
+
+              <span className="text-[11px] text-muted-foreground ml-auto">
+                Showing {filteredSuppliers.length} of {suppliers.length} suppliers
+              </span>
+            </div>
           </div>
 
           {/* Suppliers Master List Table */}
@@ -1046,6 +1224,19 @@ export function SuppliersView() {
                             >
                               <Printer className="h-3 w-3 mr-1" />
                               PO Copy
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setSelectedSupplierForEnvelope(sup)
+                                setIsEnvelopeModalOpen(true)
+                              }}
+                              className="h-7 text-xs px-2 text-amber-700 dark:text-amber-400 font-medium"
+                              title="Print 24cm x 10.5cm Postal Envelope"
+                            >
+                              <Mail className="h-3 w-3 mr-1" />
+                              Envelope
                             </Button>
                             <Button
                               size="sm"
@@ -1499,11 +1690,19 @@ export function SuppliersView() {
                       </h4>
                       <div className="grid grid-cols-2 gap-3">
                         <div className="col-span-2">
-                          <span className="text-zinc-400 block text-[11px]">Fabrics / Products Made</span>
+                          <span className="text-zinc-400 block text-[11px]">Primary Categories</span>
                           <span className="font-semibold text-zinc-900 dark:text-zinc-100 text-xs">
-                            {activeDetailRequest.productsMade || activeDetailRequest.categories || "—"}
+                            {activeDetailRequest.categories || activeDetailRequest.productsMade || "—"}
                           </span>
                         </div>
+                        {activeDetailRequest.subCategories && (
+                          <div className="col-span-2">
+                            <span className="text-zinc-400 block text-[11px]">Items / Sub-Categories</span>
+                            <span className="font-semibold text-indigo-700 dark:text-indigo-400 text-xs">
+                              {activeDetailRequest.subCategories}
+                            </span>
+                          </div>
+                        )}
                         <div>
                           <span className="text-zinc-400 block text-[11px]">Price Range</span>
                           <span className="font-semibold text-emerald-600 text-xs">
@@ -1564,16 +1763,32 @@ export function SuppliersView() {
 
                         {activeDetailRequest.shopPhotoUri && (
                           <div
-                            onClick={() => setLightbox({ open: true, url: activeDetailRequest.shopPhotoUri!, title: "Mill / Factory Front" })}
+                            onClick={() => setLightbox({ open: true, url: activeDetailRequest.shopPhotoUri!, title: "Shop / Firm Photo" })}
                             className="cursor-pointer group relative rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-white dark:bg-zinc-800 p-2 text-center"
                           >
                             <img
                               src={activeDetailRequest.shopPhotoUri}
-                              alt="Mill Front"
+                              alt="Shop Photo"
                               className="h-24 w-full object-cover rounded-lg group-hover:scale-105 transition-transform"
                             />
                             <span className="text-[10px] font-semibold text-zinc-600 dark:text-zinc-400 mt-1 block">
-                              Mill Front Photo
+                              Shop Photo
+                            </span>
+                          </div>
+                        )}
+
+                        {activeDetailRequest.godownPhotoUri && (
+                          <div
+                            onClick={() => setLightbox({ open: true, url: activeDetailRequest.godownPhotoUri!, title: "Godown Photo" })}
+                            className="cursor-pointer group relative rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-white dark:bg-zinc-800 p-2 text-center"
+                          >
+                            <img
+                              src={activeDetailRequest.godownPhotoUri}
+                              alt="Godown Photo"
+                              className="h-24 w-full object-cover rounded-lg group-hover:scale-105 transition-transform"
+                            />
+                            <span className="text-[10px] font-semibold text-zinc-600 dark:text-zinc-400 mt-1 block">
+                              Godown Photo
                             </span>
                           </div>
                         )}
@@ -1654,6 +1869,22 @@ export function SuppliersView() {
                             />
                             <span className="text-[10px] font-semibold text-zinc-600 dark:text-zinc-400 mt-1 block">
                               Cancel Cheque
+                            </span>
+                          </div>
+                        )}
+
+                        {activeDetailRequest.purchaserPhotoUri && (
+                          <div
+                            onClick={() => setLightbox({ open: true, url: activeDetailRequest.purchaserPhotoUri!, title: "Purchaser Selfie" })}
+                            className="cursor-pointer group relative rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-white dark:bg-zinc-800 p-2 text-center"
+                          >
+                            <img
+                              src={activeDetailRequest.purchaserPhotoUri}
+                              alt="Purchaser Selfie"
+                              className="h-24 w-full object-cover rounded-lg group-hover:scale-105 transition-transform"
+                            />
+                            <span className="text-[10px] font-semibold text-zinc-600 dark:text-zinc-400 mt-1 block">
+                              Purchaser Selfie
                             </span>
                           </div>
                         )}
@@ -2285,10 +2516,19 @@ export function SuppliersView() {
                 <ReferrerSelectModal
                   value={referredBy}
                   onChange={setReferredBy}
+                  onSelect={(sel) => {
+                    setReferredByType(sel?.referredByType || "")
+                    setReferredById(sel?.referredById || 0)
+                  }}
+                  selectedType={referredByType}
+                  selectedId={referredById}
                   employees={employees}
+                  subAgents={subAgents}
                   customers={customers}
                   suppliers={suppliers}
-                  label="Referred By (Entity Link)"
+                  excludeType="Supplier"
+                  excludeId={editingId || undefined}
+                  label="Referred By"
                 />
               </div>
 
@@ -2401,6 +2641,7 @@ export function SuppliersView() {
         title={reportModal.title}
         htmlContent={reportModal.html}
         whatsAppText={reportModal.whatsAppText}
+        buildHtml={reportModal.buildHtml}
       />
 
       {/* Supplier Request Approval Modal */}
@@ -2431,14 +2672,106 @@ export function SuppliersView() {
               />
             </div>
 
-            <div>
-              <label className="font-semibold block mb-1">Market Hub / Area</label>
-              <Input
-                value={approvalMarket}
-                onChange={(e) => setApprovalMarket(e.target.value)}
-                placeholder="e.g. Maskati Market, New Cloth Market"
-                className="h-8 text-xs"
-              />
+            <div className="space-y-2">
+              <div>
+                <label className="font-semibold block mb-1">Market Hub / Area</label>
+                <Input
+                  value={approvalMarket}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    setApprovalMarket(val)
+                    const isExisting = markets.some((m) => m.marketName?.trim().toLowerCase() === val.trim().toLowerCase())
+                    if (!isExisting && val.trim()) {
+                      setApprovalCreateMarketMaster(true)
+                    }
+                  }}
+                  placeholder="e.g. Safal 1, Maskati Market, Grain Market"
+                  className="h-8 text-xs"
+                />
+              </div>
+
+              <div className="p-2.5 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/30 space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer font-medium text-zinc-800 dark:text-zinc-200">
+                  <input
+                    type="checkbox"
+                    checked={approvalCreateMarketMaster}
+                    onChange={(e) => setApprovalCreateMarketMaster(e.target.checked)}
+                    className="rounded border-zinc-300 text-amber-600 focus:ring-amber-500"
+                  />
+                  <span>Add as new Market Master in Directory</span>
+                </label>
+                {approvalCreateMarketMaster && (
+                  <div className="pl-6 pt-1">
+                    <label className="text-[11px] text-muted-foreground block mb-0.5">Market City</label>
+                    <Input
+                      value={approvalNewMarketCity}
+                      onChange={(e) => setApprovalNewMarketCity(e.target.value)}
+                      placeholder="Ahmedabad"
+                      className="h-7 text-xs bg-white dark:bg-zinc-900"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Wholesale System Rate Structure (MRP & Less) */}
+            <div className="p-3 rounded-xl border border-indigo-100 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="font-bold text-xs text-indigo-900 dark:text-indigo-200 uppercase tracking-wide">
+                  Trade Rate Structure / System
+                </label>
+                <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">MRP & Less Rates</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {/* MRP */}
+                <div className="space-y-1.5 p-2 rounded-lg bg-white dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700">
+                  <span className="font-semibold text-[11px] text-zinc-700 dark:text-zinc-300 block">System MRP</span>
+                  <div>
+                    <label className="text-[10px] text-muted-foreground block">Value / Name</label>
+                    <Input
+                      value={approvalSystemMrpValue}
+                      onChange={(e) => setApprovalSystemMrpValue(e.target.value)}
+                      placeholder="e.g. MRP"
+                      className="h-7 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted-foreground block">Percentage (%)</label>
+                    <Input
+                      type="number"
+                      value={approvalSystemMrpPercent}
+                      onChange={(e) => setApprovalSystemMrpPercent(e.target.value)}
+                      placeholder="e.g. 10"
+                      className="h-7 text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Less */}
+                <div className="space-y-1.5 p-2 rounded-lg bg-white dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700">
+                  <span className="font-semibold text-[11px] text-zinc-700 dark:text-zinc-300 block">System Less (Discount)</span>
+                  <div>
+                    <label className="text-[10px] text-muted-foreground block">Value / Name</label>
+                    <Input
+                      value={approvalSystemLessValue}
+                      onChange={(e) => setApprovalSystemLessValue(e.target.value)}
+                      placeholder="e.g. Less"
+                      className="h-7 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted-foreground block">Percentage (%)</label>
+                    <Input
+                      type="number"
+                      value={approvalSystemLessPercent}
+                      onChange={(e) => setApprovalSystemLessPercent(e.target.value)}
+                      placeholder="e.g. 20"
+                      className="h-7 text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="flex justify-end gap-2 pt-3 border-t border-zinc-100 dark:border-zinc-800">
@@ -2576,6 +2909,14 @@ export function SuppliersView() {
         onClose={() => setLightbox({ open: false, url: "", title: "" })}
         imageUrl={lightbox.url}
         title={lightbox.title}
+      />
+
+      {/* 24cm x 10.5cm Envelope Print Modal */}
+      <EnvelopePrintModal
+        open={isEnvelopeModalOpen}
+        onOpenChange={setIsEnvelopeModalOpen}
+        initialRecipient={selectedSupplierForEnvelope ? createSupplierEnvelopeData(selectedSupplierForEnvelope) : null}
+        defaultType="Supplier"
       />
     </div>
   )

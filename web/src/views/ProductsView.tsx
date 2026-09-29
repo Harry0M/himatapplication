@@ -21,6 +21,7 @@ import { Badge } from "../components/ui/Badge"
 import { Dialog } from "../components/ui/Dialog"
 import { Input } from "../components/ui/Input"
 import { Product } from "../types"
+import { newId } from "../lib/domain"
 import { GARMENT_CATEGORIES } from "../lib/constants"
 import { formatInr } from "../lib/utils"
 import { getMasterDraft, saveMasterDraft, clearMasterDraft } from "../lib/masterDrafts"
@@ -132,7 +133,9 @@ export function ProductsView() {
     const selectedSupplier = suppliers.find((s) => s.id === Number(supplierId))
 
     const productPayload: Product = {
-      id: editingProduct?.id || Date.now(),
+      // Keep fields this form does not show
+      ...(editingProduct || {}),
+      id: editingProduct?.id || newId(),
       productCode: productCode.trim().toUpperCase(),
       name: name.trim(),
       supplierId: selectedSupplier ? selectedSupplier.id : 0,

@@ -23,7 +23,9 @@ import { Card } from "../components/ui/Card"
 import { Button } from "../components/ui/Button"
 import { Badge } from "../components/ui/Badge"
 import { Input } from "../components/ui/Input"
+import { DateRangeFilter } from "../components/ui/DateRangeFilter"
 import { Market } from "../types"
+import { ALL_TIME, DateRange, effectiveOrderDate, matchesDateRange } from "../lib/domain"
 
 interface MarketDetailViewProps {
   marketId: number
@@ -48,21 +50,30 @@ export function MarketDetailView({
     return markets.find((m) => m.id === marketId) || null
   }, [markets, marketId])
 
-  // Suppliers in this market
+  // Exact market match on comma separated lists ("Safal 1" must not match "Safal 10")
+  const hasMarketToken = (value: string | undefined, name: string) =>
+    Boolean(name) &&
+    (value || "")
+      .toLowerCase()
+      .split(/[,;|]+/)
+      .map((t) => t.trim())
+      .includes(name)
+
+  // Suppliers in this market: linked by id, else by exact market name
   const marketSuppliers = useMemo(() => {
     if (!market) return []
-    const mName = (market.marketName || "").toLowerCase()
-    const mArea = (market.area || "").toLowerCase()
+    const mName = (market.marketName || "").trim().toLowerCase()
+    const mArea = (market.area || "").trim().toLowerCase()
 
     return suppliers.filter((s) => {
-      const sMkt = (s.marketName || s.marketArea || "").toLowerCase()
-      const sMktId = s.marketId ? Number(s.marketId) : null
+      const sMktId = s.marketId ? Number(s.marketId) : 0
+      if (sMktId > 0) return sMktId === Number(market.id)
       const sAddress = (s.address || s.officeAddress || "").toLowerCase()
-
       return (
-        sMktId === market.id ||
-        (mName && sMkt.includes(mName)) ||
-        (mArea && sAddress.includes(mArea))
+        hasMarketToken(s.marketName, mName) ||
+        hasMarketToken(s.marketArea, mName) ||
+        hasMarketToken(s.markets, mName) ||
+        Boolean(mArea && sAddress.includes(mArea))
       )
     })
   }, [suppliers, market])
@@ -70,20 +81,21 @@ export function MarketDetailView({
   // Customers in this market
   const marketCustomers = useMemo(() => {
     if (!market) return []
-    const mName = (market.marketName || "").toLowerCase()
-    const mArea = (market.area || "").toLowerCase()
+    const mName = (market.marketName || "").trim().toLowerCase()
+    const mArea = (market.area || "").trim().toLowerCase()
 
     return customers.filter((c) => {
-      const cArea = (c.marketArea || "").toLowerCase()
-      const cMkts = (c.markets || "").toLowerCase()
       const cAddress = (c.address || c.shopAddress || "").toLowerCase()
-
       return (
-        (mName && (cArea.includes(mName) || cMkts.includes(mName))) ||
-        (mArea && cAddress.includes(mArea))
+        hasMarketToken(c.marketArea, mName) ||
+        hasMarketToken(c.markets, mName) ||
+        Boolean(mArea && cAddress.includes(mArea))
       )
     })
   }, [customers, market])
+
+  // Orders tab: shared date filter
+  const [ordersRange, setOrdersRange] = useState<DateRange>(ALL_TIME)
 
   // Agents assigned to this market
   const assignedAgents = useMemo(() => {
@@ -174,11 +186,12 @@ export function MarketDetailView({
     )
   }, [marketCustomers, searchQuery])
 
-  // Filtered Orders
+  // Filtered Orders (search + date range)
   const filteredOrders = useMemo(() => {
     const q = searchQuery.toLowerCase().trim()
-    if (!q) return marketOrders
-    return marketOrders.filter((o) => {
+    const inRange = marketOrders.filter((o) => matchesDateRange(effectiveOrderDate(o, visitMap.get(o.visitId)), ordersRange))
+    if (!q) return inRange
+    return inRange.filter((o) => {
       const visit = visitMap.get(o.visitId)
       const custName = (visit?.customerName || customerMap.get(visit?.customerId || 0) || "").toLowerCase()
       return (
@@ -189,7 +202,7 @@ export function MarketDetailView({
         (o.deliveryStatus || "").toLowerCase().includes(q)
       )
     })
-  }, [marketOrders, searchQuery, customerMap, visitMap])
+  }, [marketOrders, searchQuery, customerMap, visitMap, ordersRange])
 
   // Filtered Agents
   const filteredAgents = useMemo(() => {
@@ -513,7 +526,8 @@ export function MarketDetailView({
 
       {/* TAB 3: Market Orders */}
       {activeTab === "orders" && (
-        <div>
+        <div className="space-y-3">
+          <DateRangeFilter value={ordersRange} onChange={setOrdersRange} />
           {filteredOrders.length === 0 ? (
             <Card className="p-8 text-center text-zinc-500 border-dashed text-xs">
               <Receipt className="h-8 w-8 mx-auto text-zinc-300 mb-2" />

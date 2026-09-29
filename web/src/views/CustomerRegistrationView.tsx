@@ -25,11 +25,14 @@ import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from "fi
 import { ref, set } from "firebase/database"
 import { auth, rtdb } from "../lib/firebase"
 import { FileUpload } from "../components/ui/FileUpload"
+import { Toast } from "../components/ui/Toast"
 import AutoGrowTextarea from "../components/ui/AutoGrowTextarea"
-import { GARMENT_CATEGORIES } from "../lib/constants"
+import { StationSearchInput } from "../components/ui/StationSearchInput"
+import { CUSTOMER_GARMENT_CATEGORIES, CUSTOMER_WORKING_MARKETS } from "../lib/constants"
 import { CustomerRegistrationRequest } from "../types"
 import { REGISTRATION_TRANSLATIONS, RegistrationLang } from "../lib/registrationI18n"
 import { HIMAT_LOGO_DATA_URI } from "../lib/logoBase64"
+import { subAgentIdFromUrl } from "../lib/links"
 import {
   fetchGstDetails,
   isValidGstin,
@@ -39,6 +42,9 @@ import {
 
 export function CustomerRegistrationView() {
   const [currentStep, setCurrentStep] = useState<number>(1)
+
+  // Sub Agent personal link: #/register-customer?agent=<id>. The approval screen resolves the name.
+  const [subAgentId] = useState<number | null>(() => subAgentIdFromUrl())
 
   // Language State - Defaults to English ('en') with user toggle
   const [lang, setLang] = useState<RegistrationLang>(() => {
@@ -54,22 +60,23 @@ export function CustomerRegistrationView() {
 
   // Form State
   const [formData, setFormData] = useState({
-    // Step 1: Business Profile
+    // Step 1: Business Profile & Owner
     firmName: "",
+    name: "",
+    dob: "",
+    phone: "",
     marketArea: "",
     address: "",
     shopAddress: "",
-    city: "Ahmedabad",
+    city: "",
     district: "",
-    state: "Gujarat",
+    state: "",
     pincode: "",
     shopMapLink: "",
 
-    // Step 2: Owner & Contact
-    name: "",
-    phone: "",
+    // Step 2: Contact
     phone2: "",
-    sameAsMobile: true,
+    sameAsMobile: false,
     email: "",
 
     // Step 3: KYC & Docs (all mandatory)
@@ -81,19 +88,21 @@ export function CustomerRegistrationView() {
     aadharPhotoUri: "",
     aadharBackPhotoUri: "",
     cancelChequePhotoUri: "",
+    purchaserPhotoUri: "",
 
-    // Step 4: Transport & Bank
+    // Step 4: Transport & Logistics
     preferredTransporterName: "",
     transportPreference: "",
-    bankName: "",
-    accountNumber: "",
-    ifscCode: "",
     notes: "",
   })
 
   // Selected Garment Categories (Pills)
   const [selectedGarments, setSelectedGarments] = useState<string[]>([])
   const [customGarment, setCustomGarment] = useState<string>("")
+
+  // Selected Working Markets
+  const [selectedWorkingMarkets, setSelectedWorkingMarkets] = useState<string[]>([])
+  const [customWorkingMarket, setCustomWorkingMarket] = useState<string>("")
 
   // Phone Auth State
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null)
@@ -108,6 +117,49 @@ export function CustomerRegistrationView() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null)
   const recaptchaWrapperRef = useRef<HTMLDivElement | null>(null)
+
+  // Floating Toast Notification State
+  const [toast, setToast] = useState<{
+    open: boolean
+    message: string
+    title?: string
+    type?: "error" | "warning" | "success" | "info"
+  }>({
+    open: false,
+    message: "",
+    title: "",
+    type: "error",
+  })
+
+  const triggerValidationError = (
+    msg: string,
+    fieldId?: string,
+    customTitle?: string,
+    type: "error" | "warning" | "success" | "info" = "error"
+  ) => {
+    setErrorMessage(msg)
+    setToast({
+      open: true,
+      message: msg,
+      title:
+        customTitle ||
+        (lang === "hi"
+          ? "आवश्यक जानकारी अधूरी है (Mandatory)"
+          : "Mandatory Field Required"),
+      type,
+    })
+    if (fieldId) {
+      setTimeout(() => {
+        const el = document.getElementById(fieldId)
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" })
+          if ("focus" in el && typeof (el as HTMLElement).focus === "function") {
+            ;(el as HTMLElement).focus()
+          }
+        }
+      }, 80)
+    }
+  }
 
   // GST Lookup and auto-population state
   const [isFetchingGst, setIsFetchingGst] = useState<boolean>(false)
@@ -202,13 +254,6 @@ export function CustomerRegistrationView() {
     setGstFeedback({ type: null, message: "" })
   }
 
-  // Sync phone2 if sameAsMobile is checked
-  useEffect(() => {
-    if (formData.sameAsMobile) {
-      setFormData((prev) => ({ ...prev, phone2: prev.phone }))
-    }
-  }, [formData.phone, formData.sameAsMobile])
-
   // Timer countdown for OTP resend
   useEffect(() => {
     if (resendTimer <= 0) return
@@ -238,13 +283,15 @@ export function CustomerRegistrationView() {
     }
   }
 
-  // Step 1 completeness check (all 5 mandatory starred fields)
+  // Step 1 completeness check (all mandatory starred fields)
   const isStep1Complete = Boolean(
     formData.firmName.trim() &&
     formData.name.trim() &&
+    formData.dob.trim() &&
     formData.phone.replace(/\D/g, "").length === 10 &&
     formData.city.trim() &&
-    formData.address.trim()
+    formData.address.trim() &&
+    formData.gstin.trim()
   )
 
   // Step 3 completeness: all KYC documents are mandatory
@@ -256,33 +303,43 @@ export function CustomerRegistrationView() {
     formData.panPhotoUri &&
     formData.aadharPhotoUri &&
     formData.aadharBackPhotoUri &&
-    formData.cancelChequePhotoUri
+    formData.cancelChequePhotoUri &&
+    formData.purchaserPhotoUri
   )
 
-  // Step Validation with localized error messages
+  // Step Validation with localized error messages and prominent floating toast notice
   const validateCurrentStep = (targetStep?: number): boolean => {
     setErrorMessage(null)
-    // Always enforce all 5 mandatory fields if currently on Step 1 or trying to navigate past Step 1
+    // Always enforce all mandatory fields if currently on Step 1 or trying to navigate past Step 1
     if (currentStep === 1 || (targetStep && targetStep > 1)) {
       if (!formData.firmName.trim()) {
-        setErrorMessage(t.errFirmName)
+        triggerValidationError(t.errFirmName, "field-firmName")
         return false
       }
       if (!formData.name.trim()) {
-        setErrorMessage(t.errOwnerName)
+        triggerValidationError(t.errOwnerName, "field-name")
+        return false
+      }
+      if (!formData.dob.trim()) {
+        triggerValidationError(
+          lang === "hi"
+            ? "कृपया संचालक की जन्म तिथि (DOB) दर्ज करें (अनिवार्य)"
+            : "Please enter Proprietor Date of Birth (DOB) (Mandatory)",
+          "field-dob"
+        )
         return false
       }
       const cleanPhone = formData.phone.replace(/\D/g, "")
       if (cleanPhone.length !== 10) {
-        setErrorMessage(t.errPhone)
+        triggerValidationError(t.errPhone, "field-phone")
         return false
       }
       if (!formData.city.trim()) {
-        setErrorMessage(t.errCity)
+        triggerValidationError(t.errCity, "field-city")
         return false
       }
       if (!formData.address.trim()) {
-        setErrorMessage(t.errAddress)
+        triggerValidationError(t.errAddress, "field-address")
         return false
       }
     }
@@ -291,95 +348,169 @@ export function CustomerRegistrationView() {
     if (currentStep === 1 || (targetStep && targetStep > 1)) {
       const cleanGstin = formData.gstin.trim().toUpperCase()
       if (!cleanGstin) {
-        setErrorMessage(
+        triggerValidationError(
           lang === "hi"
             ? "कृपया अपना 15 अंकों का GSTIN नंबर दर्ज करें (अनिवार्य)"
-            : "Please enter your 15-character GSTIN number (Mandatory)"
+            : "Please enter your 15-character GSTIN number (Mandatory)",
+          "field-gstin"
         )
         return false
       }
       if (cleanGstin.length !== 15 || !isValidGstin(cleanGstin)) {
-        setErrorMessage(
+        triggerValidationError(
           lang === "hi"
             ? "कृपया 15 अक्षरों का मान्य जीएसटी नंबर दर्ज करें (उदा. 24AAAAA0000A1Z5)"
-            : "Please enter a valid 15-character GSTIN (e.g. 24AAAAA0000A1Z5)"
+            : "Please enter a valid 15-character GSTIN (e.g. 24AAAAA0000A1Z5)",
+          "field-gstin"
         )
         return false
       }
     }
 
-    // Mandatory PAN check (enforced from Step 3 onwards, or on Skip to Submit)
+    // Mandatory PAN check (enforced from Step 3 onwards)
     if (currentStep >= 3 || (targetStep && targetStep >= 3)) {
       if (formData.panNumber.trim().length < 8) {
-        setErrorMessage(
+        triggerValidationError(
           lang === "hi"
             ? "कृपया पैन कार्ड नंबर दर्ज करें (अनिवार्य)"
-            : "Please enter the PAN Card number (Mandatory)"
+            : "Please enter the PAN Card number (Mandatory)",
+          "field-panNumber"
         )
         return false
       }
     }
 
-    // Mandatory KYC documents check (Step 3 / Skip to Submit)
+    // Mandatory alternative/WhatsApp number & Market Area & District & Pincode (Step 2 onwards)
+    if (currentStep === 2 || (targetStep && targetStep >= 3)) {
+      const cleanAlt = formData.phone2.replace(/\D/g, "")
+      if (cleanAlt.length !== 10) {
+        triggerValidationError(
+          lang === "hi"
+            ? "कृपया मान्य 10 अंकों का व्हाट्सएप / वैकल्पिक नंबर दर्ज करें (अनिवार्य)"
+            : "Please enter a valid 10-digit WhatsApp / Alternative number (Mandatory)",
+          "field-phone2"
+        )
+        return false
+      }
+      if (cleanAlt === formData.phone.replace(/\D/g, "").slice(-10)) {
+        triggerValidationError(
+          lang === "hi"
+            ? "वैकल्पिक नंबर प्राथमिक मोबाइल नंबर से अलग होना चाहिए"
+            : "Alternative number must be different from the primary mobile number",
+          "field-phone2"
+        )
+        return false
+      }
+      if (!formData.marketArea.trim()) {
+        triggerValidationError(
+          lang === "hi"
+            ? "कृपया मार्केट / बाज़ार क्षेत्र दर्ज करें (अनिवार्य)"
+            : "Please enter Market Area (Mandatory)",
+          "field-marketArea"
+        )
+        return false
+      }
+      if (!formData.district.trim()) {
+        triggerValidationError(
+          lang === "hi"
+            ? "कृपया जिला दर्ज करें (अनिवार्य)"
+            : "Please enter the District (Mandatory)",
+          "field-district"
+        )
+        return false
+      }
+      if (formData.pincode.replace(/\D/g, "").length !== 6) {
+        triggerValidationError(
+          lang === "hi"
+            ? "कृपया मान्य 6 अंकों का पिनकोड दर्ज करें (अनिवार्य)"
+            : "Please enter a valid 6-digit Pincode (Mandatory)",
+          "field-pincode"
+        )
+        return false
+      }
+    }
+
+    // Mandatory logistics destination (Step 4 onwards)
+    if (currentStep === 4 || (targetStep && targetStep >= 5)) {
+      if (!formData.transportPreference.trim()) {
+        triggerValidationError(
+          lang === "hi"
+            ? "कृपया बुकिंग स्टेशन / डिलीवरी गंतव्य दर्ज करें (अनिवार्य)"
+            : "Please enter the Booking Station / Delivery Destination (Mandatory)",
+          "field-transportPreference"
+        )
+        return false
+      }
+    }
+
+    // Mandatory KYC documents check (Step 3)
     if (currentStep === 3 || (targetStep && targetStep >= 4)) {
       if (!formData.shopPhotoUri) {
-        setErrorMessage(
+        triggerValidationError(
           lang === "hi"
             ? "कृपया दुकान के बोर्ड/फ्रंट की फोटो अपलोड करें (अनिवार्य)"
-            : "Please upload the Shop Front / Signboard photo (Mandatory)"
+            : "Please upload the Shop Front / Signboard photo (Mandatory)",
+          "field-shopPhotoUri"
         )
         return false
       }
       if (!formData.gstCertPhotoUri) {
-        setErrorMessage(
+        triggerValidationError(
           lang === "hi"
             ? "कृपया जीएसटी प्रमाण पत्र / विजिटिंग कार्ड अपलोड करें (अनिवार्य)"
-            : "Please upload the GST Certificate / Visiting Card (Mandatory)"
+            : "Please upload the GST Certificate / Visiting Card (Mandatory)",
+          "field-gstCertPhotoUri"
         )
         return false
       }
       if (!formData.panPhotoUri) {
-        setErrorMessage(
+        triggerValidationError(
           lang === "hi"
             ? "कृपया पैन कार्ड की फोटो अपलोड करें (अनिवार्य)"
-            : "Please upload the PAN Card photo (Mandatory)"
+            : "Please upload the PAN Card photo (Mandatory)",
+          "field-panPhotoUri"
         )
         return false
       }
       if (!formData.aadharPhotoUri) {
-        setErrorMessage(
+        triggerValidationError(
           lang === "hi"
             ? "कृपया आधार कार्ड (आगे की ओर) अपलोड करें (अनिवार्य)"
-            : "Please upload the Aadhaar / ID proof (front side) (Mandatory)"
+            : "Please upload the Aadhaar / ID proof (front side) (Mandatory)",
+          "field-aadharPhotoUri"
         )
         return false
       }
       if (!formData.aadharBackPhotoUri) {
-        setErrorMessage(
+        triggerValidationError(
           lang === "hi"
             ? "कृपया आधार कार्ड (पीछे की ओर) अपलोड करें (अनिवार्य)"
-            : "Please upload the Aadhaar / ID proof (back side) (Mandatory)"
+            : "Please upload the Aadhaar / ID proof (back side) (Mandatory)",
+          "field-aadharBackPhotoUri"
         )
         return false
       }
       if (!formData.cancelChequePhotoUri) {
-        setErrorMessage(
+        triggerValidationError(
           lang === "hi"
             ? "कृपया कैंसिल चेक अपलोड करें (अनिवार्य)"
-            : "Please upload a Cancelled Cheque (Mandatory)"
+            : "Please upload a Cancelled Cheque (Mandatory)",
+          "field-cancelChequePhotoUri"
+        )
+        return false
+      }
+      if (!formData.purchaserPhotoUri) {
+        triggerValidationError(
+          lang === "hi"
+            ? "कृपया खरीदार / मालिक की सेल्फी अपलोड करें (अनिवार्य)"
+            : "Please upload the Purchaser / Owner selfie (Mandatory)",
+          "field-purchaserPhotoUri"
         )
         return false
       }
     }
 
     return true
-  }
-
-  const handleSkipToSubmit = () => {
-    if (validateCurrentStep(5)) {
-      setCurrentStep(5)
-      window.scrollTo({ top: 0, behavior: "smooth" })
-    }
   }
 
   const handleNextStep = () => {
@@ -451,7 +582,7 @@ export function CustomerRegistrationView() {
     setErrorMessage(null)
     const cleanPhone = formData.phone.replace(/\D/g, "").slice(-10)
     if (cleanPhone.length !== 10) {
-      setErrorMessage(t.errPhone)
+      triggerValidationError(t.errPhone, "field-phone")
       return
     }
 
@@ -463,6 +594,12 @@ export function CustomerRegistrationView() {
       setConfirmationResult(confirmation)
       setOtpSent(true)
       setResendTimer(60)
+      setToast({
+        open: true,
+        message: lang === "hi" ? "ओटीपी आपके मोबाइल नंबर पर भेज दिया गया है" : "Verification OTP sent to your mobile number",
+        title: lang === "hi" ? "ओटीपी भेजा गया" : "OTP Sent",
+        type: "info",
+      })
     } catch (err: any) {
       console.error("Firebase Phone Auth error:", err)
       // On failure, clean up recaptcha verifier and DOM so the user can immediately retry
@@ -486,15 +623,15 @@ export function CustomerRegistrationView() {
         }
       }
 
+      let authErrorMsg = err.message || t.errGenericPhoneAuth
       if (err.code === "auth/invalid-phone-number") {
-        setErrorMessage(t.errPhone)
+        authErrorMsg = t.errPhone
       } else if (err.code === "auth/too-many-requests") {
-        setErrorMessage(t.errTooManyAttempts)
+        authErrorMsg = t.errTooManyAttempts
       } else if (err.code === "auth/quota-exceeded") {
-        setErrorMessage(t.errQuotaExceeded)
-      } else {
-        setErrorMessage(err.message || t.errGenericPhoneAuth)
+        authErrorMsg = t.errQuotaExceeded
       }
+      triggerValidationError(authErrorMsg, "field-phone", "SMS Verification Notice")
     } finally {
       setIsSendingOtp(false)
     }
@@ -504,11 +641,11 @@ export function CustomerRegistrationView() {
   const handleVerifyAndSubmit = async () => {
     setErrorMessage(null)
     if (!confirmationResult) {
-      setErrorMessage(t.errSendOtpFirst)
+      triggerValidationError(t.errSendOtpFirst, undefined, "Verification Notice")
       return
     }
     if (!otpCode.trim() || otpCode.trim().length < 6) {
-      setErrorMessage(t.errOtpLength)
+      triggerValidationError(t.errOtpLength, "field-otpCode", "Verification Notice")
       return
     }
 
@@ -525,6 +662,10 @@ export function CustomerRegistrationView() {
       const primaryKey = cleanGstin || cleanPhone
       const keyType: "GSTIN" | "PHONE" = cleanGstin ? "GSTIN" : "PHONE"
       const requestId = cleanGstin ? `req_gst_${cleanGstin}` : `req_phone_${cleanPhone}`
+      const finalWorkingMarkets = selectedWorkingMarkets.includes("Other") && customWorkingMarket.trim()
+        ? [...selectedWorkingMarkets.filter((m) => m !== "Other"), customWorkingMarket.trim()].join(", ")
+        : selectedWorkingMarkets.join(", ")
+
       const reqRef = ref(rtdb, `customer_registration_requests/${requestId}`)
 
       const payload: CustomerRegistrationRequest = {
@@ -533,32 +674,34 @@ export function CustomerRegistrationView() {
         keyType,
         firmName: formData.firmName.trim(),
         name: formData.name.trim(),
+        dob: formData.dob.trim(),
         phone: `+91${cleanPhone}`,
         phone2: formData.phone2.trim() ? `+91${formData.phone2.replace(/\D/g, "").slice(-10)}` : "",
         email: formData.email.trim(),
         address: formData.address.trim(),
         shopAddress: formData.shopAddress.trim() || formData.address.trim(),
         marketArea: formData.marketArea.trim(),
-        city: formData.city.trim() || "Ahmedabad",
+        city: formData.city.trim(),
         district: formData.district.trim(),
-        state: formData.state.trim() || "Gujarat",
+        state: formData.state.trim(),
         pincode: formData.pincode.trim(),
         shopMapLink: formData.shopMapLink.trim(),
         garmentTypes: selectedGarments.join(", "),
+        workingMarkets: finalWorkingMarkets,
         gstin: cleanGstin,
         panNumber: formData.panNumber.trim().toUpperCase(),
         preferredTransporterName: formData.preferredTransporterName.trim(),
         transportPreference: formData.transportPreference.trim(),
-        bankName: formData.bankName.trim(),
-        accountNumber: formData.accountNumber.trim(),
-        ifscCode: formData.ifscCode.trim().toUpperCase(),
         shopPhotoUri: formData.shopPhotoUri || "",
         gstCertPhotoUri: formData.gstCertPhotoUri || "",
         panPhotoUri: formData.panPhotoUri || "",
         aadharPhotoUri: formData.aadharPhotoUri || "",
         aadharBackPhotoUri: formData.aadharBackPhotoUri || "",
         cancelChequePhotoUri: formData.cancelChequePhotoUri || "",
+        purchaserPhotoUri: formData.purchaserPhotoUri || "",
         notes: formData.notes.trim(),
+        // Links the new customer to the Sub Agent whose link was used
+        subAgentId: subAgentId && subAgentId > 0 ? subAgentId : undefined,
         status: "PENDING",
         phoneVerified: true,
         verificationUid: verifiedUser.uid,
@@ -576,13 +719,13 @@ export function CustomerRegistrationView() {
       window.scrollTo({ top: 0, behavior: "smooth" })
     } catch (err: any) {
       console.error("OTP verification or submission error:", err)
+      let otpErrMsg = err.message || t.errGenericPhoneAuth
       if (err.code === "auth/invalid-verification-code") {
-        setErrorMessage(t.errOtpInvalid)
+        otpErrMsg = t.errOtpInvalid
       } else if (err.code === "auth/code-expired") {
-        setErrorMessage(t.errOtpExpired)
-      } else {
-        setErrorMessage(err.message || t.errGenericPhoneAuth)
+        otpErrMsg = t.errOtpExpired
       }
+      triggerValidationError(otpErrMsg, "field-otpCode", "OTP Verification Failed")
     } finally {
       setIsVerifyingOtp(false)
     }
@@ -810,6 +953,7 @@ export function CustomerRegistrationView() {
                 </div>
                 <div className="relative">
                   <input
+                    id="field-gstin"
                     type="text"
                     maxLength={15}
                     placeholder="24AAAAA0000A1Z5"
@@ -859,6 +1003,7 @@ export function CustomerRegistrationView() {
                   Firm / Shop Name <span className="text-red-500">*</span>
                 </label>
                 <input
+                  id="field-firmName"
                   type="text"
                   value={formData.firmName}
                   onChange={(e) => handleInputChange("firmName", e.target.value)}
@@ -872,10 +1017,24 @@ export function CustomerRegistrationView() {
                   Proprietor / Owner Name <span className="text-red-500">*</span>
                 </label>
                 <input
+                  id="field-name"
                   type="text"
                   value={formData.name}
                   onChange={(e) => handleInputChange("name", e.target.value)}
                   placeholder="e.g. Mukeshbhai Shah"
+                  className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                  {lang === "hi" ? "संचालक / मालिक की जन्म तिथि (DOB)" : "Proprietor Date of Birth (DOB)"} <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="field-dob"
+                  type="date"
+                  value={formData.dob}
+                  onChange={(e) => handleInputChange("dob", e.target.value)}
                   className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
@@ -887,6 +1046,7 @@ export function CustomerRegistrationView() {
                 <div className="relative">
                   <span className="absolute left-3 top-2.5 text-xs text-zinc-500 font-semibold">+91</span>
                   <input
+                    id="field-phone"
                     type="tel"
                     maxLength={10}
                     value={formData.phone}
@@ -902,6 +1062,7 @@ export function CustomerRegistrationView() {
                   City <span className="text-red-500">*</span>
                 </label>
                 <input
+                  id="field-city"
                   type="text"
                   value={formData.city}
                   onChange={(e) => handleInputChange("city", e.target.value)}
@@ -910,7 +1071,7 @@ export function CustomerRegistrationView() {
                 />
               </div>
 
-              <div>
+              <div id="field-address">
                 <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
                   Complete Shop / Office Address <span className="text-red-500">*</span>
                 </label>
@@ -939,33 +1100,24 @@ export function CustomerRegistrationView() {
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                    WhatsApp Number
-                  </label>
-                  <label className="inline-flex items-center gap-1 text-[11px] text-zinc-500 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formData.sameAsMobile}
-                      onChange={(e) => handleInputChange("sameAsMobile", e.target.checked)}
-                      className="rounded border-zinc-300 text-emerald-600 focus:ring-emerald-500"
-                    />
-                    <span>Same as Mobile</span>
-                  </label>
+                <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                  WhatsApp / Alternative Number <span className="text-red-500">*</span>
+                  <span className="block text-[10px] font-normal text-zinc-500 mt-0.5">
+                    {lang === "hi" ? "प्राथमिक मोबाइल से अलग नंबर दर्ज करें" : "Must be different from the primary mobile number"}
+                  </span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-xs text-zinc-500 font-semibold">+91</span>
+                  <input
+                    id="field-phone2"
+                    type="tel"
+                    maxLength={10}
+                    value={formData.phone2}
+                    onChange={(e) => handleInputChange("phone2", e.target.value.replace(/\D/g, ""))}
+                    placeholder="WhatsApp / Alternative phone number"
+                    className="w-full h-10 pl-11 pr-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
                 </div>
-                {!formData.sameAsMobile && (
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-xs text-zinc-500 font-semibold">+91</span>
-                    <input
-                      type="tel"
-                      maxLength={10}
-                      value={formData.phone2}
-                      onChange={(e) => handleInputChange("phone2", e.target.value.replace(/\D/g, ""))}
-                      placeholder="WhatsApp phone number"
-                      className="w-full h-10 pl-11 pr-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
-                  </div>
-                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -984,13 +1136,14 @@ export function CustomerRegistrationView() {
 
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                    Market Area (Optional)
+                    {lang === "hi" ? "मार्केट क्षेत्र (अनिवार्य)" : "Market Area (Mandatory)"} <span className="text-red-500">*</span>
                   </label>
                   <input
+                    id="field-marketArea"
                     type="text"
                     value={formData.marketArea}
                     onChange={(e) => handleInputChange("marketArea", e.target.value)}
-                    placeholder="e.g. Relief Road, Rituraj Market"
+                    placeholder="e.g. Relief Road, Rituraj Market, New Cloth Market"
                     className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
@@ -999,9 +1152,10 @@ export function CustomerRegistrationView() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                    District
+                    District <span className="text-red-500">*</span>
                   </label>
                   <input
+                    id="field-district"
                     type="text"
                     value={formData.district}
                     onChange={(e) => handleInputChange("district", e.target.value)}
@@ -1024,9 +1178,10 @@ export function CustomerRegistrationView() {
 
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                    Pincode
+                    Pincode <span className="text-red-500">*</span>
                   </label>
                   <input
+                    id="field-pincode"
                     type="text"
                     maxLength={6}
                     value={formData.pincode}
@@ -1053,10 +1208,10 @@ export function CustomerRegistrationView() {
               {/* Garment Categories Preference */}
               <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800">
                 <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-2">
-                  Garments / Products Dealt In (Select all that apply)
+                  {lang === "hi" ? "दुकान में कौन-से गारमेंट्स बेचते हैं (Select all that apply)" : "Garments / Products Dealt In (Select all that apply)"}
                 </label>
                 <div className="flex flex-wrap gap-1.5 mb-2">
-                  {GARMENT_CATEGORIES.map((cat) => {
+                  {CUSTOMER_GARMENT_CATEGORIES.map((cat) => {
                     const isSelected = selectedGarments.includes(cat)
                     return (
                       <button
@@ -1075,29 +1230,52 @@ export function CustomerRegistrationView() {
                     )
                   })}
                 </div>
+              </div>
 
-                <div className="flex gap-2 mt-2">
-                  <input
-                    type="text"
-                    value={customGarment}
-                    onChange={(e) => setCustomGarment(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault()
-                        addCustomGarment()
-                      }
-                    }}
-                    placeholder="Add custom garment or category..."
-                    className="flex-1 h-9 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={addCustomGarment}
-                    className="px-3 h-9 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-xs font-bold rounded-xl"
-                  >
-                    Add
-                  </button>
+              {/* Working Markets Preference */}
+              <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800">
+                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+                  {lang === "hi" ? "कामकाज के बाज़ार (Working Markets)" : "Working Markets (Select all that apply)"}
+                </label>
+                <p className="text-[11px] text-zinc-500 mb-2">
+                  {lang === "hi" ? "जिन मुख्य बाज़ारों से आप खरीददारी या व्यापार करते हैं:" : "Markets you actively buy or deal from:"}
+                </p>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {CUSTOMER_WORKING_MARKETS.map((mkt) => {
+                    const isSelected = selectedWorkingMarkets.includes(mkt)
+                    return (
+                      <button
+                        key={mkt}
+                        type="button"
+                        onClick={() => {
+                          setSelectedWorkingMarkets((prev) =>
+                            prev.includes(mkt) ? prev.filter((m) => m !== mkt) : [...prev, mkt]
+                          )
+                        }}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                          isSelected
+                            ? "bg-emerald-600 text-white shadow-sm"
+                            : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
+                        }`}
+                      >
+                        {isSelected && <Check className="w-3 h-3 inline mr-1" />}
+                        {mkt}
+                      </button>
+                    )
+                  })}
                 </div>
+
+                {selectedWorkingMarkets.includes("Other") && (
+                  <div className="mt-2">
+                    <input
+                      type="text"
+                      value={customWorkingMarket}
+                      onChange={(e) => setCustomWorkingMarket(e.target.value)}
+                      placeholder={lang === "hi" ? "अन्य बाज़ार का नाम लिखें..." : "Specify other market name(s)..."}
+                      className="w-full h-9 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1150,6 +1328,7 @@ export function CustomerRegistrationView() {
                     PAN Number (Mandatory) <span className="text-red-500">*</span>
                   </label>
                   <input
+                    id="field-panNumber"
                     type="text"
                     maxLength={10}
                     value={formData.panNumber}
@@ -1161,7 +1340,7 @@ export function CustomerRegistrationView() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                <div className="sm:col-span-2">
+                <div id="field-shopPhotoUri" className="sm:col-span-2">
                   <FileUpload
                     label="Shop Front / Showroom Photo"
                     folder="kyc/shop"
@@ -1173,7 +1352,7 @@ export function CustomerRegistrationView() {
                   />
                 </div>
 
-                <div className="sm:col-span-2">
+                <div id="field-gstCertPhotoUri" className="sm:col-span-2">
                   <FileUpload
                     label="GST Certificate or Visiting Card"
                     folder="kyc/gst"
@@ -1184,7 +1363,7 @@ export function CustomerRegistrationView() {
                   />
                 </div>
 
-                <div>
+                <div id="field-panPhotoUri">
                   <FileUpload
                     label="PAN Card Photo"
                     folder="kyc/pan"
@@ -1196,7 +1375,7 @@ export function CustomerRegistrationView() {
                   />
                 </div>
 
-                <div>
+                <div id="field-aadharPhotoUri">
                   <FileUpload
                     label="ID Proof / Aadhaar (Front Side)"
                     folder="kyc/id"
@@ -1208,7 +1387,7 @@ export function CustomerRegistrationView() {
                   />
                 </div>
 
-                <div>
+                <div id="field-aadharBackPhotoUri">
                   <FileUpload
                     label="ID Proof / Aadhaar (Back Side)"
                     folder="kyc/id"
@@ -1220,7 +1399,7 @@ export function CustomerRegistrationView() {
                   />
                 </div>
 
-                <div className="sm:col-span-2">
+                <div id="field-cancelChequePhotoUri" className="sm:col-span-2">
                   <FileUpload
                     label="Cancelled Cheque (Bank Account Proof)"
                     folder="kyc/bank"
@@ -1231,20 +1410,32 @@ export function CustomerRegistrationView() {
                     required
                   />
                 </div>
+
+                <div id="field-purchaserPhotoUri" className="sm:col-span-2">
+                  <FileUpload
+                    label="Purchaser / Owner Selfie"
+                    folder="kyc/purchaser"
+                    prefix="purchaser_selfie"
+                    value={formData.purchaserPhotoUri}
+                    onChange={(url) => handleInputChange("purchaserPhotoUri", url)}
+                    description="A clear selfie of the owner / purchaser for records"
+                    required
+                  />
+                </div>
               </div>
             </div>
           )}
 
-          {/* STEP 4: TRANSPORT & BANK */}
+          {/* STEP 4: TRANSPORT & LOGISTICS */}
           {currentStep === 4 && (
             <div className="space-y-4">
               <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3 mb-4">
                 <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
                   <Truck className="w-4 h-4 text-emerald-600" />
-                  <span>Step 4: Logistics & Bank Details</span>
+                  <span>{lang === "hi" ? "चरण 4: ट्रांसपोर्ट व लॉजिस्टिक्स विवरण" : "Step 4: Logistics & Transporter Details"}</span>
                 </h3>
                 <p className="text-xs text-zinc-500 mt-0.5">
-                  Provide preferred transporter, delivery station, and bank account for smooth dispatch.
+                  {lang === "hi" ? "माल मंगाने के लिए पसंदीदा ट्रांसपोर्टर और डिलीवरी स्टेशन दर्ज करें।" : "Provide preferred transporter and booking station for smooth dispatch."}
                 </p>
               </div>
 
@@ -1263,59 +1454,20 @@ export function CustomerRegistrationView() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                    Booking Station / Destination (Optional)
-                  </label>
-                  <input
-                    type="text"
+                  <StationSearchInput
+                    id="field-transportPreference"
+                    label={lang === "hi" ? "बुकिंग स्टेशन / डिलीवरी स्टेशन" : "Booking Station / Delivery Station"}
                     value={formData.transportPreference}
-                    onChange={(e) => handleInputChange("transportPreference", e.target.value)}
-                    placeholder="e.g. Ring Road Station, Godown Delivery"
-                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    onChange={(val) => handleInputChange("transportPreference", val)}
+                    placeholder={lang === "hi" ? "रेलवे स्टेशन खोजें..." : "Search railway station..."}
+                    required
                   />
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
+                    {lang === "hi"
+                      ? "उस स्टेशन का नाम चुनें जहाँ माल डिलीवर होना है"
+                      : "Select the nearest railway station for goods delivery / booking"}
+                  </p>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                    Bank Name (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.bankName}
-                    onChange={(e) => handleInputChange("bankName", e.target.value)}
-                    placeholder="e.g. State Bank of India, HDFC"
-                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                    Account Number (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.accountNumber}
-                    onChange={(e) => handleInputChange("accountNumber", e.target.value)}
-                    placeholder="Bank Account Number"
-                    className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
-                  IFSC Code (Optional)
-                </label>
-                <input
-                  type="text"
-                  maxLength={11}
-                  value={formData.ifscCode}
-                  onChange={(e) => handleInputChange("ifscCode", e.target.value.toUpperCase())}
-                  placeholder="SBIN0001234"
-                  className="w-full h-10 px-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono uppercase"
-                />
               </div>
 
               <div>
@@ -1404,6 +1556,7 @@ export function CustomerRegistrationView() {
                       Enter 6-Digit OTP Code
                     </label>
                     <input
+                      id="field-otpCode"
                       type="text"
                       maxLength={6}
                       value={otpCode}
@@ -1465,22 +1618,6 @@ export function CustomerRegistrationView() {
                   <span>Back</span>
                 </button>
               ) : null}
-
-              {currentStep < 5 && isStep1Complete && (
-                <button
-                  type="button"
-                  onClick={handleSkipToSubmit}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-emerald-600 dark:border-emerald-500 bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-xs font-bold transition-all shadow-xs"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                  <span>
-                    {lang === "hi"
-                      ? "सीधे सबमिट करें"
-                      : "Skip to Submit"}
-                  </span>
-                  <ArrowRight className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                </button>
-              )}
             </div>
 
             {currentStep < 5 && (
@@ -1496,6 +1633,15 @@ export function CustomerRegistrationView() {
           </div>
         </div>
       </div>
+
+      {/* Floating Toast Notification for Mandatory Field Errors & Alerts */}
+      <Toast
+        open={toast.open}
+        message={toast.message}
+        title={toast.title}
+        type={toast.type}
+        onClose={() => setToast((prev) => ({ ...prev, open: false }))}
+      />
     </div>
   )
 }

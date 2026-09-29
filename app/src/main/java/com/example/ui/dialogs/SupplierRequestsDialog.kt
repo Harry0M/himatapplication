@@ -49,6 +49,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -95,10 +96,23 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private const val SUPPLIER_INVITE_URL = "https://himatsms.web.app/#supplier-register"
+private const val SUPPLIER_INVITE_URL = "https://himatsms.web.app/#/register-supplier"
 
 private fun buildSupplierInviteMessage(): String {
-    return "Hello!\nTo register as a fabric mill / supplier with Himat Textile, please visit the link below and fill in your mill & business details:\n\n$SUPPLIER_INVITE_URL\n\nThank you!\nHimat Textile, Ahmedabad"
+    return """
+        HIMAT TEXTILE AHMEDABAD
+        Your Garment Guide Across India
+
+        Hello,
+
+        To register as a Supplier with Himat Textile, please visit the link below and submit your firm details:
+
+        🔗 Supplier Registration:
+        $SUPPLIER_INVITE_URL
+
+        Thank you!
+        Himat Textile Ahmedabad
+    """.trimIndent()
 }
 
 private fun dialPhone(context: Context, phone: String) {
@@ -404,12 +418,18 @@ fun SupplierRequestsDialog(
             markets = markets,
             brands = brands,
             onDismiss = { selectedRequest = null },
-            onApprove = { brand, marketName, type ->
+            onApprove = { brand, marketName, type, sysMrpVal, sysMrpPct, sysLessVal, sysLessPct, createMkt, mktCity ->
                 viewModel.approveSupplierRegistrationRequest(
                     request = req,
                     brand = brand,
                     marketName = marketName,
-                    type = type
+                    type = type,
+                    systemMrpValue = sysMrpVal,
+                    systemMrpPercent = sysMrpPct,
+                    systemLessValue = sysLessVal,
+                    systemLessPercent = sysLessPct,
+                    createMarketMaster = createMkt,
+                    newMarketCity = mktCity
                 ) { newSuppId ->
                     Toast.makeText(context, "Approved! Supplier #$newSuppId onboarded successfully.", Toast.LENGTH_LONG).show()
                     selectedRequest = null
@@ -677,7 +697,17 @@ private fun SupplierRequestInspectorDialog(
     markets: List<com.example.data.local.entity.MarketEntity>,
     brands: List<com.example.data.local.entity.BrandEntity>,
     onDismiss: () -> Unit,
-    onApprove: (brand: String, marketName: String, type: String) -> Unit,
+    onApprove: (
+        brand: String,
+        marketName: String,
+        type: String,
+        systemMrpValue: String,
+        systemMrpPercent: String,
+        systemLessValue: String,
+        systemLessPercent: String,
+        createMarketMaster: Boolean,
+        newMarketCity: String
+    ) -> Unit,
     onReject: (reason: String) -> Unit,
     onViewImage: (url: String, title: String) -> Unit
 ) {
@@ -687,6 +717,17 @@ private fun SupplierRequestInspectorDialog(
     var selectedBrand by remember { mutableStateOf(request.brand.ifBlank { request.firmName }) }
     var selectedMarket by remember { mutableStateOf(request.marketArea) }
     var selectedType by remember { mutableStateOf(request.type.ifBlank { "Manufacturer" }) }
+
+    var systemMrpValue by remember { mutableStateOf(request.systemMrpValue) }
+    var systemMrpPercent by remember { mutableStateOf(request.systemMrpPercent) }
+    var systemLessValue by remember { mutableStateOf(request.systemLessValue) }
+    var systemLessPercent by remember { mutableStateOf(request.systemLessPercent) }
+    var createMarketMaster by remember {
+        val cleanMkt = request.marketArea.trim()
+        val exists = markets.any { it.marketName.equals(cleanMkt, ignoreCase = true) }
+        mutableStateOf(cleanMkt.isNotBlank() && !exists)
+    }
+    var newMarketCity by remember { mutableStateOf(request.city.ifBlank { "Ahmedabad" }) }
 
     var marketExpanded by remember { mutableStateOf(false) }
 
@@ -831,7 +872,8 @@ private fun SupplierRequestInspectorDialog(
 
                             SupplierInspectorRow("Brand Name", request.brand.ifBlank { request.firmName })
                             if (request.productsMade.isNotBlank()) SupplierInspectorRow("Products Made", request.productsMade)
-                            if (request.categories.isNotBlank()) SupplierInspectorRow("Categories", request.categories)
+                            if (request.categories.isNotBlank()) SupplierInspectorRow("Primary Categories", request.categories)
+                            if (request.subCategories.isNotBlank()) SupplierInspectorRow("Sub-Categories", request.subCategories)
                             if (request.priceRange.isNotBlank()) SupplierInspectorRow("Price Range", request.priceRange)
                             SupplierInspectorRow("GSTIN", request.gstin.ifBlank { "Not Provided" })
                             SupplierInspectorRow("PAN", request.panNumber.ifBlank { "Not Provided" })
@@ -864,7 +906,8 @@ private fun SupplierRequestInspectorDialog(
 
                             val photos = listOfNotNull(
                                 if (request.visitingCardPhotoUri.isNotBlank()) Pair("Visiting Card", request.visitingCardPhotoUri) else null,
-                                if (request.shopPhotoUri.isNotBlank()) Pair("Mill / Shop Photo", request.shopPhotoUri) else null,
+                                if (request.shopPhotoUri.isNotBlank()) Pair("Shop Photo", request.shopPhotoUri) else null,
+                                if (request.godownPhotoUri.isNotBlank()) Pair("Godown Photo", request.godownPhotoUri) else null,
                                 if (request.gstCertPhotoUri.isNotBlank()) Pair("GST Certificate", request.gstCertPhotoUri) else null,
                                 if (request.panPhotoUri.isNotBlank()) Pair("PAN Card", request.panPhotoUri) else null,
                                 (if (request.idProofPhotoUri.isNotBlank()) request.idProofPhotoUri else request.aadharPhotoUri).takeIf { it.isNotBlank() }?.let { Pair("ID Proof (Front)", it) },
@@ -962,29 +1005,19 @@ private fun SupplierRequestInspectorDialog(
                                     color = TextPrimary
                                 )
                                 Spacer(modifier = Modifier.height(3.dp))
+                                val supplierTypeOptions = listOf("Manufacturer", "Trading", "Distributor", "Fabric")
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    FilterChip(
-                                        selected = selectedType == "Manufacturer",
-                                        onClick = { selectedType = "Manufacturer" },
-                                        label = { Text("Manufacturer / Mill", fontSize = 10.5.sp) },
-                                        leadingIcon = if (selectedType == "Manufacturer") {
-                                            { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(13.dp)) }
-                                        } else null,
-                                        modifier = Modifier.weight(1f)
-                                    )
-
-                                    FilterChip(
-                                        selected = selectedType == "Wholesaler",
-                                        onClick = { selectedType = "Wholesaler" },
-                                        label = { Text("Wholesaler / Trader", fontSize = 10.5.sp) },
-                                        leadingIcon = if (selectedType == "Wholesaler") {
-                                            { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(13.dp)) }
-                                        } else null,
-                                        modifier = Modifier.weight(1f)
-                                    )
+                                    supplierTypeOptions.forEach { t ->
+                                        FilterChip(
+                                            selected = selectedType.equals(t, ignoreCase = true),
+                                            onClick = { selectedType = t },
+                                            label = { Text(t, fontSize = 9.5.sp) },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
                                 }
 
                                 Spacer(modifier = Modifier.height(9.dp))
@@ -1026,7 +1059,13 @@ private fun SupplierRequestInspectorDialog(
                                 ) {
                                     OutlinedTextField(
                                         value = selectedMarket,
-                                        onValueChange = { selectedMarket = it },
+                                        onValueChange = {
+                                            selectedMarket = it
+                                            val exists = markets.any { m -> m.marketName.equals(it.trim(), ignoreCase = true) }
+                                            if (!exists && it.isNotBlank()) {
+                                                createMarketMaster = true
+                                            }
+                                        },
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .menuAnchor(),
@@ -1052,6 +1091,141 @@ private fun SupplierRequestInspectorDialog(
                                                     }
                                                 )
                                             }
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                // Market Master Checkbox & City
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFFFEF3C7).copy(alpha = 0.5f),
+                                    border = BorderStroke(0.5.dp, Color(0xFFFDE68A)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(8.dp)) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.clickable { createMarketMaster = !createMarketMaster }
+                                        ) {
+                                            Checkbox(
+                                                checked = createMarketMaster,
+                                                onCheckedChange = { createMarketMaster = it },
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Add as new Market Master in Directory",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = Color(0xFF92400E)
+                                            )
+                                        }
+
+                                        if (createMarketMaster) {
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            OutlinedTextField(
+                                                value = newMarketCity,
+                                                onValueChange = { newMarketCity = it },
+                                                label = { Text("Market City", fontSize = 10.sp) },
+                                                modifier = Modifier.fillMaxWidth(),
+                                                placeholder = { Text("Ahmedabad", fontSize = 11.sp) },
+                                                singleLine = true,
+                                                shape = RoundedCornerShape(6.dp),
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedContainerColor = Color.White,
+                                                    unfocusedContainerColor = Color.White
+                                                )
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                // Trade Rate Structure (System MRP & System Less)
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFFEEF2FF),
+                                    border = BorderStroke(0.5.dp, Color(0xFFC7D2FE)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp)) {
+                                        Text(
+                                            text = "Trade Rate Structure / System",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.5.sp,
+                                            color = Color(0xFF3730A3)
+                                        )
+                                        Spacer(modifier = Modifier.height(6.dp))
+
+                                        // MRP
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            OutlinedTextField(
+                                                value = systemMrpValue,
+                                                onValueChange = { systemMrpValue = it },
+                                                label = { Text("System MRP Name", fontSize = 9.5.sp) },
+                                                placeholder = { Text("e.g. MRP", fontSize = 10.5.sp) },
+                                                modifier = Modifier.weight(1.3f),
+                                                singleLine = true,
+                                                shape = RoundedCornerShape(6.dp),
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedContainerColor = Color.White,
+                                                    unfocusedContainerColor = Color.White
+                                                )
+                                            )
+                                            OutlinedTextField(
+                                                value = systemMrpPercent,
+                                                onValueChange = { systemMrpPercent = it },
+                                                label = { Text("MRP %", fontSize = 9.5.sp) },
+                                                placeholder = { Text("10", fontSize = 10.5.sp) },
+                                                modifier = Modifier.weight(0.7f),
+                                                singleLine = true,
+                                                shape = RoundedCornerShape(6.dp),
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedContainerColor = Color.White,
+                                                    unfocusedContainerColor = Color.White
+                                                )
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.height(6.dp))
+
+                                        // Less
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            OutlinedTextField(
+                                                value = systemLessValue,
+                                                onValueChange = { systemLessValue = it },
+                                                label = { Text("System Less Name", fontSize = 9.5.sp) },
+                                                placeholder = { Text("e.g. Less", fontSize = 10.5.sp) },
+                                                modifier = Modifier.weight(1.3f),
+                                                singleLine = true,
+                                                shape = RoundedCornerShape(6.dp),
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedContainerColor = Color.White,
+                                                    unfocusedContainerColor = Color.White
+                                                )
+                                            )
+                                            OutlinedTextField(
+                                                value = systemLessPercent,
+                                                onValueChange = { systemLessPercent = it },
+                                                label = { Text("Less %", fontSize = 9.5.sp) },
+                                                placeholder = { Text("20", fontSize = 10.5.sp) },
+                                                modifier = Modifier.weight(0.7f),
+                                                singleLine = true,
+                                                shape = RoundedCornerShape(6.dp),
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedContainerColor = Color.White,
+                                                    unfocusedContainerColor = Color.White
+                                                )
+                                            )
                                         }
                                     }
                                 }
@@ -1129,7 +1303,13 @@ private fun SupplierRequestInspectorDialog(
                                     onApprove(
                                         selectedBrand.trim(),
                                         selectedMarket.trim(),
-                                        selectedType
+                                        selectedType,
+                                        systemMrpValue.trim(),
+                                        systemMrpPercent.trim(),
+                                        systemLessValue.trim(),
+                                        systemLessPercent.trim(),
+                                        createMarketMaster,
+                                        newMarketCity.trim()
                                     )
                                 },
                                 modifier = Modifier.weight(2f),

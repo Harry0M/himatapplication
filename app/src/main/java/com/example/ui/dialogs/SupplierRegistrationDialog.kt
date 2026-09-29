@@ -290,7 +290,7 @@ fun SupplierRegistrationDialog(
                                     Text(
                                         text = opt,
                                         fontSize = 12.5.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        fontWeight = FontWeight.SemiBold,
                                         color = if (isSelected) Color.White else TextPrimary
                                     )
                                 }

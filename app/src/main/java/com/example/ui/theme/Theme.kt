@@ -67,8 +67,10 @@ private val LightColorScheme = lightColorScheme(
 
 @Composable
 fun MyApplicationTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = false, // Keep consistent agency brand colors and status bar blending
+    // Most screens draw white cards with navy text, so the app always uses the brand light
+    // scheme. Wallpaper-based (dynamic) colours and system dark mode made screens look mismatched.
+    darkTheme: Boolean = false,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {

@@ -2,26 +2,76 @@ package com.example.util
 
 object MasterConstants {
     val AHMEDABAD_TEXTILE_MARKETS = listOf(
-        "New Cloth Market (Raipur)",
-        "Maskati Cloth Market (Sakarkalupur)",
-        "Relief Road Textile Market",
-        "Ratanpole Cloth Market",
-        "Sindhi Market (Kalupur)",
-        "Revdi Bazar Textile Market",
-        "Gheekanta Cloth Market",
-        "Narol Textile Cluster / Narol GIDC",
-        "Bapunagar Cloth Market",
-        "Ahmedabad Wholesale Cloth Market (Panchkuva)",
-        "Dhandhuka Market",
-        "Manek Chowk Market",
-        "Madhavpura Market",
-        "Asarwa Textile Zone",
-        "Changodar Industrial Area / Sanand Road",
-        "Odhav GIDC Textile Park",
-        "C.G. Road Commercial Area",
-        "Ashram Road Commercial Hub",
-        "Surat Textile Market (Inter-city)",
+        "Safal 1",
+        "Safal 2",
+        "Safal 3",
+        "Safal 6",
+        "Safal 10",
+        "Ghee Kanta",
+        "Karnawati 8",
+        "Karnawati 9",
+        "Sarnam 5",
+        "Sarnam 6",
+        "Sarnam 8",
+        "Metrolink",
+        "Samet Business Park",
+        "Grain Market",
+        "Revari Bazar",
+        "Maskati Market",
+        "Narol",
+        "Kahiyal",
+        "New Cloth Market",
+        "Revdi Bazar",
+        "Relief Road",
         "Other / Outside Ahmedabad"
+    )
+
+    val CUSTOMER_GARMENT_CATEGORIES = listOf(
+        "Gents",
+        "Ladies",
+        "Kids",
+        "Handloom",
+        "Family Shop"
+    )
+
+    val CUSTOMER_WORKING_MARKETS = listOf(
+        "Delhi",
+        "Ludhiana",
+        "Mumbai",
+        "Ahmedabad",
+        "Other"
+    )
+
+    val SUPPLIER_TYPES = listOf(
+        "Manufacturer",
+        "Trading",
+        "Distributor",
+        "Fabric"
+    )
+
+    val SUPPLIER_CATEGORIES = listOf(
+        "Ladies",
+        "Gents",
+        "Kids",
+        "Handloom"
+    )
+
+    val SUPPLIER_GENTS_CHILD_OPTIONS = listOf(
+        "Cotton Pants",
+        "Jeans Pants",
+        "Shirts",
+        "T-Shirts",
+        "Lower",
+        "Others"
+    )
+
+    val SUPPLIER_LADIES_CHILD_OPTIONS = listOf(
+        "3 Pc",
+        "Salwar Suit",
+        "Nighty",
+        "Plazo",
+        "Leggings",
+        "Others"
     )
 
     val GARMENT_CATEGORIES = listOf(
