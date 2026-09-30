@@ -807,8 +807,13 @@ object PdfGenerator {
 
         y += bCardHeight + 8f
 
-        // Note Alert Ribbon (Pink/red banner with red exclamation circle)
-        val alertHeight = 18f
+        // Note Alert Ribbon (Pink/red banner with red exclamation circle).
+        //
+        // Two lines now. The dispatch policy used to sit up in the terms grid where it was easy to
+        // miss; the one thing a customer must not miss is that this is a draft, and the one thing the
+        // transporter must not miss is one bill per LR. So both live here, and the policy gets its own
+        // colour so the two lines do not read as one sentence.
+        val alertHeight = 29f
         paint.color = Color.rgb(254, 242, 242) // #fef2f2
         canvas.drawRoundRect(RectF(28f, y, 567f, y + alertHeight), 4f, 4f, paint)
         val alertBorderPaint = Paint().apply {
@@ -831,14 +836,32 @@ object PdfGenerator {
         }
         canvas.drawText("!", circleX - 1.8f, circleY + 2.5f, whiteExclP)
 
+        // Line 1 — this is a draft, in red
         paint.color = Color.rgb(185, 28, 28)
         paint.textSize = 7f
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        canvas.drawText("Note:", 49f, y + 12f, paint)
+        canvas.drawText("DRAFT BILL:", 49f, y + 11f, paint)
 
         paint.color = Color.rgb(153, 27, 27)
         paint.typeface = Typeface.DEFAULT
-        canvas.drawText("All amounts shown in this report are approximate and may vary from final supplier invoice / dispatch quantity.", 73f, y + 12f, paint)
+        canvas.drawText(
+            "This is not an actual invoice. All amounts are approximate and may vary from the final supplier invoice / dispatch quantity.",
+            97f, y + 11f, paint
+        )
+
+        // Line 2 — the dispatch policy, on its own highlight so it reads as a separate instruction
+        val policyText = "DISPATCH POLICY: One Bill One LR is strictly mandatory."
+        paint.textSize = 7f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        val policyWidth = paint.measureText(policyText) + 12f
+        canvas.drawRoundRect(
+            RectF(49f, y + 15f, 49f + policyWidth, y + 26f),
+            2.5f,
+            2.5f,
+            Paint().apply { color = Color.rgb(254, 243, 199); isAntiAlias = true } // amber #fef3c7
+        )
+        paint.color = Color.rgb(146, 64, 14) // amber-800, clearly not the red above
+        canvas.drawText(policyText, 55f, y + 23f, paint)
 
         // Footer at bottom of page
         val footerY = 822f
@@ -849,7 +872,7 @@ object PdfGenerator {
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         canvas.drawText("YOUR GARMENT GUIDE ACROSS INDIA", 28f, footerY, paint)
 
-        val footerRight = "himattextile.com   |   Instagram • Facebook • LinkedIn • YouTube"
+        val footerRight = AgencyProfile.load(context).pdfFooterLine()
         paint.color = textDark
         canvas.drawText(footerRight, 567f - paint.measureText(footerRight), footerY, paint)
 
@@ -859,7 +882,9 @@ object PdfGenerator {
         if (!outputDir.exists()) outputDir.mkdirs()
         // Named after the customer's brand (shop / firm) so the chat shows whose report it is
         val reportBrand = customer?.brandName()?.takeIf { it.isNotBlank() } ?: visit.customerName
-        val file = File(outputDir, PdfFileNames.build(reportBrand, "Customer Report", visit.visitCode))
+        // "Quotation", not "Report": what the customer receives is a priced offer, not a statement,
+        // and the file name is the first thing they read in the chat.
+        val file = File(outputDir, PdfFileNames.build(reportBrand, "Customer Quotation", visit.visitCode))
         FileOutputStream(file).use { out ->
             pdfDocument.writeTo(out)
         }

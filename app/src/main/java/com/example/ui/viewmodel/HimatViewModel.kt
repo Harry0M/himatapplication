@@ -32,8 +32,13 @@ import com.example.data.local.entity.TransactionLogEntity
 import com.example.data.local.entity.TransporterEntity
 import com.example.data.local.entity.VisitEntity
 import com.example.data.repository.HimatRepository
+import com.example.util.AgencyProfile
 import com.example.util.AppNotifications
 import com.example.util.Birthdays
+import com.example.util.BusinessCard
+import com.example.util.BusinessCardFields
+import com.example.util.CreditBreach
+import com.example.util.CreditWatch
 import com.example.util.DeleteImpact
 import com.example.util.DeletionRequest
 import com.example.util.IdGenerator
@@ -215,6 +220,27 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
     private val _cloudEmployeesLoaded = MutableStateFlow(false)
     val cloudEmployeesLoaded: StateFlow<Boolean> = _cloudEmployeesLoaded.asStateFlow()
 
+    /**
+     * What the office said about this login when we last managed to ask.
+     *
+     * Three answers, and the difference between the last two is the whole point: "we could not ask"
+     * must never be treated as "you are not allowed", or a salesman in a market with no signal gets
+     * locked out of their own work.
+     */
+    sealed interface MembershipAnswer {
+        /** Not asked yet, or the question could not be put to the office. */
+        data object Unknown : MembershipAnswer
+
+        /** The office answered and does not have this email on the staff list. */
+        data object NotAMember : MembershipAnswer
+
+        /** The office answered with a record. [FirebaseRtdbService.Membership.active] may be false. */
+        data class Known(val record: FirebaseRtdbService.Membership) : MembershipAnswer
+    }
+
+    private val _membership = MutableStateFlow<MembershipAnswer>(MembershipAnswer.Unknown)
+    val membership: StateFlow<MembershipAnswer> = _membership.asStateFlow()
+
     private var realtimeSyncJob: Job? = null
 
     private val _isCloudSyncing = MutableStateFlow(false)
@@ -376,6 +402,143 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
 
     val distinctItemCodes: StateFlow<List<String>> = repository.distinctItemCodes
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** The agency's own contact details and links, as printed on every document. */
+    private val _agencyProfile = MutableStateFlow(AgencyProfile.load(application))
+    val agencyProfile: StateFlow<AgencyProfile> = _agencyProfile.asStateFlow()
+
+    /**
+     * The name to greet the signed-in person by, everywhere in the app.
+     *
+     * The name entered in the app comes first and the Google account name is a last resort. Screens
+     * used to fall back to the Google name whenever there was no staff record, so an owner who runs
+     * the agency without being on the salesman list was greeted by whatever their Gmail profile says
+     * — which is not the name the business knows them by. One flow so no screen can drift from
+     * another.
+     */
+    val signedInName: StateFlow<String> = combine(
+        _currentEmployee,
+        _membership,
+        currentUser,
+        _agencyProfile,
+        _isSuperAdmin
+    ) { employee, membership, user, profile, isOwner ->
+        val fromStaffRecord = employee?.name?.trim()?.takeIf { it.isNotBlank() }
+        val fromOffice = (membership as? MembershipAnswer.Known)?.record?.name?.trim()?.takeIf { it.isNotBlank() }
+        val ownerLabel = profile.businessName.trim().takeIf { isOwner && it.isNotBlank() }
+        fromStaffRecord
+            ?: fromOffice
+            ?: ownerLabel
+            ?: user?.displayName?.trim()?.takeIf { it.isNotBlank() }
+            ?: user?.email?.substringBefore('@')
+            ?: "there"
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, "there")
+
+    /** Saves the agency profile. Owner-only, matching the database rule. */
+    fun saveAgencyProfile(profile: AgencyProfile, onDone: (Boolean) -> Unit = {}) {
+        if (!isAdminNow()) {
+            toast("Only Admins can change the business details")
+            onDone(false)
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val ok = rtdbService.saveAgencyProfile(profile)
+            if (ok) {
+                _agencyProfile.value = profile
+                AgencyProfile.cache(getApplication(), profile)
+            }
+            launch(Dispatchers.Main) {
+                toast(if (ok) "Business details saved" else "Could not save. Check your connection.")
+                onDone(ok)
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Credit limit: who has bought past what they were given
+    // ---------------------------------------------------------------------
+
+    /**
+     * Balances an admin has already acknowledged, and at what outstanding amount.
+     *
+     * Kept per device. Clearing a warning is a "yes, I know" rather than a change to the customer, so
+     * it does not belong on the customer record — and storing the amount rather than a flag means the
+     * warning comes back if the balance keeps climbing instead of being muted for good.
+     */
+    private val creditPrefs = application.getSharedPreferences("himat_credit_ack", Context.MODE_PRIVATE)
+
+    private val _creditAcknowledged = MutableStateFlow(readCreditAcks())
+
+    private fun readCreditAcks(): Map<Long, Double> =
+        creditPrefs.all.mapNotNull { (key, value) ->
+            val id = key.toLongOrNull() ?: return@mapNotNull null
+            val amount = (value as? Float)?.toDouble() ?: return@mapNotNull null
+            id to amount
+        }.toMap()
+
+    /** Credit customers currently over their limit, worst first. Empty when there is nothing to say. */
+    val creditBreaches: StateFlow<List<CreditBreach>> =
+        combine(allCustomers, allVisits, allEntries, _creditAcknowledged) { customers, visits, entries, acks ->
+            CreditWatch.breaches(customers, visits, entries, acks)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Admin says "noted". The warning returns only if the balance climbs further. */
+    fun acknowledgeCreditBreach(breach: CreditBreach) {
+        if (!isAdminNow()) {
+            toast("Only Admins can clear a credit warning")
+            return
+        }
+        creditPrefs.edit().putFloat(breach.customerId.toString(), breach.outstanding.toFloat()).apply()
+        _creditAcknowledged.value = readCreditAcks()
+        toast("Credit warning cleared for ${breach.customerName}")
+    }
+
+    /** Breaches already announced, so one order does not notify the team on every snapshot. */
+    private val announcedCreditBreaches = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
+    /**
+     * Tells the team when an order pushes a customer past their credit limit.
+     *
+     * Announced from the phone that booked the order, right after it is saved, because that is the
+     * moment somebody can still do something about it.
+     */
+    private fun checkCreditAfterOrder(entry: PurchaseEntryEntity) {
+        val visit = allVisits.value.firstOrNull { it.id == entry.visitId } ?: return
+        val customer = allCustomers.value.firstOrNull { it.id == visit.customerId } ?: return
+        if (!CreditWatch.isCreditCustomer(customer) || customer.creditLimit <= 0.0) return
+        val outstanding = CreditWatch.outstandingFor(customer.id, allVisits.value, allEntries.value)
+        if (outstanding <= customer.creditLimit) return
+
+        // One announcement per customer per thousand rupees of overshoot, so a long trip does not
+        // send a message for every single order added on top
+        val bucket = (outstanding / 1000).toLong()
+        if (!announcedCreditBreaches.add("${customer.id}_$bucket")) return
+
+        val name = customer.brandName().ifBlank { customer.name }
+        val over = (outstanding - customer.creditLimit).toLong()
+        postNote(
+            type = AppNotifications.TYPE_CREDIT_LIMIT,
+            title = "Credit limit crossed: $name",
+            body = "Outstanding ₹${outstanding.toLong()} against a limit of ₹${customer.creditLimit.toLong()} " +
+                "— over by ₹$over. An Admin can clear this warning from Home.",
+            refId = customer.id
+        )
+    }
+
+    /** The business card message, ready to share. */
+    fun buildBusinessCard(fields: BusinessCardFields): String {
+        val (_, name) = currentActor()
+        return BusinessCard.buildMessage(
+            profile = _agencyProfile.value,
+            fields = fields,
+            senderName = name,
+            senderRole = Roles.label(_currentRole.value)
+        )
+    }
+
+    fun shareBusinessCard(fields: BusinessCardFields) {
+        ShareUtil.shareWhatsAppText(getApplication(), buildBusinessCard(fields))
+    }
 
     // Leads & Customer Registration Requests
     val allLeads: StateFlow<List<LeadEntity>> = repository.allLeads
@@ -554,8 +717,9 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
             Triple(cloudEmps, empsLoaded, localEmps)
         }
 
+        // _membership is in the combine so the office's answer re-decides access the moment it lands
         viewModelScope.launch {
-            combine(authFlow, empFlow) { auth, emp ->
+            combine(authFlow, empFlow, _membership) { auth, emp, _ ->
                 reconcileUserAuthorization(auth.first, auth.second, auth.third, emp.first, emp.second, emp.third)
             }.collect { }
         }
@@ -629,6 +793,13 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
 
         // 6d. Live connection state, for the sync indicator in the header
         rtdbService.listenToConnection { online -> _isOnline.value = online }
+
+        // 6e. Agency branding for PDF footers and the business card. Cached on the device so a report
+        // printed with no signal still carries the right contact details.
+        rtdbService.listenToAgencyProfile { profile ->
+            _agencyProfile.value = profile
+            AgencyProfile.cache(getApplication(), profile)
+        }
 
         // 7. Start listening to Purchase Entries
         rtdbService.listenToPurchaseEntries { entries ->
@@ -723,6 +894,21 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         realtimeSyncJob = viewModelScope.launch(Dispatchers.IO) {
             var gotEmployees = false
             try {
+                // Ask the office who this is, first. Everything else in the app reads the verdict
+                // this produces, and the database rules check the very same node, so a stranger is
+                // refused by the server as well as by the screen.
+                val answer = rtdbService.fetchMembership(userEmail)
+                _membership.value = answer.fold(
+                    onSuccess = { record ->
+                        if (record == null) MembershipAnswer.NotAMember else MembershipAnswer.Known(record)
+                    },
+                    onFailure = {
+                        // Could not ask. Not the same as being refused.
+                        Log.w("HimatViewModel", "membership check unavailable: ${it.message}")
+                        MembershipAnswer.Unknown
+                    }
+                )
+
                 withTimeoutOrNull(8000L) {
                     val emails = rtdbService.getSuperAdminEmails()
                     if (emails.isNotEmpty()) {
@@ -768,6 +954,8 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         _isAuthorized.value = null
         _authorizationMessage.value = null
         _currentEmployee.value = null
+        // The next person to sign in gets their own answer, not the last one's
+        _membership.value = MembershipAnswer.Unknown
         simulatedRole = null
         // Next login (maybe a different person) starts fresh on Home
         resetNavigation()
@@ -806,6 +994,38 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         val cloudMatch = cloudEmps.matching()
         val localMatch = localEmps.matching()
         val matchedEmployee = cloudMatch ?: localMatch
+
+        // The office's own answer about this login, from the members index. That node is mirrored
+        // from the staff list by a Cloud Function and no app can write it, which is what makes it
+        // trustworthy — and it is also the node the database rules check, so the app and the server
+        // now agree on who belongs here instead of guessing separately.
+        val membership = _membership.value
+
+        // Definitively not on the staff list: the office answered, and it does not know this email.
+        // Checked before anything else except ownership, because an unknown account must not be able
+        // to fall through to a stale local record.
+        if (membership is MembershipAnswer.NotAMember && !adminEmails.contains(userEmail)) {
+            _isSuperAdmin.value = false
+            _isAuthorized.value = false
+            _currentEmployee.value = null
+            rememberVerdict(userEmail, false)
+            _authorizationMessage.value =
+                "$userEmail is not on the staff list. Ask the Admin to add this email to your Staff " +
+                    "or Sub Agent record."
+            return
+        }
+
+        // On the list but switched off.
+        if (membership is MembershipAnswer.Known && !membership.record.active && !adminEmails.contains(userEmail)) {
+            _isSuperAdmin.value = false
+            _isAuthorized.value = false
+            _currentEmployee.value = matchedEmployee
+            _currentRole.value = membership.record.role.ifBlank { "Salesman" }
+            rememberVerdict(userEmail, false)
+            _authorizationMessage.value = matchedEmployee?.blockedReason?.takeIf { it.isNotBlank() }
+                ?: "Your account has been switched off by the Admin. All your records stay safe."
+            return
+        }
 
         // Check if user is explicit Super Admin in RTDB or Local Cache
         if (adminEmails.contains(userEmail)) {
@@ -905,20 +1125,10 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        // If cloud data is fully loaded and no super admins exist in RTDB at all, auto-claim as first Super Admin
-        if (adminEmails.isEmpty()) {
-            viewModelScope.launch {
-                rtdbService.registerSuperAdmin(userEmail, user.displayName ?: "Agency Owner")
-            }
-            _superAdminEmails.value = setOf(userEmail)
-            _superAdminEmailsLoaded.value = true
-            authPrefs.edit().putStringSet("cached_super_admins", setOf(userEmail)).apply()
-            _isSuperAdmin.value = true
-            _isAuthorized.value = true
-            _authorizationMessage.value = null
-            _currentRole.value = "Admin"
-            return
-        }
+        // There used to be a "claim ownership of an empty database" branch here, matching a clause in
+        // the database rules. Both are gone. Owner keys could be removed one at a time, so emptying
+        // the node re-armed the clause and the next person to sign in owned the agency. A fresh
+        // deployment now gets its first owner from the Firebase console, once.
 
         // Unregistered user
         _isSuperAdmin.value = false
@@ -966,6 +1176,17 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
             _cloudEmployeesLoaded.value = false
             var gotEmployees = false
             try {
+                // Same question as at startup: has the office changed its mind about this account?
+                val email = user.email?.trim()?.lowercase().orEmpty()
+                if (email.isNotBlank()) {
+                    rtdbService.fetchMembership(email).fold(
+                        onSuccess = { record ->
+                            _membership.value = if (record == null) MembershipAnswer.NotAMember
+                            else MembershipAnswer.Known(record)
+                        },
+                        onFailure = { Log.w("HimatViewModel", "membership refresh unavailable: ${it.message}") }
+                    )
+                }
                 withTimeoutOrNull(8000L) {
                     val emails = rtdbService.getSuperAdminEmails()
                     if (emails.isNotEmpty()) {
@@ -1708,20 +1929,23 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Removing a cheque now goes through the same pipeline as everything else: an admin's delete is
+     * final, anybody else's becomes a request an admin answers.
+     *
+     * It used to be a straight hard delete for everyone. The function even worked out who was doing
+     * it and then threw those values away — the soft path was clearly intended and never wired up.
+     * A cheque is a money record, so it is the last thing that should disappear without a trace.
+     */
     fun deleteChequePdc(id: Long, onComplete: () -> Unit = {}) {
+        if (blockIfAgent("Deleting a cheque")) return
         viewModelScope.launch(Dispatchers.IO) {
-            val user = currentUser.value
-            val emp = currentEmployee.value
-            val deletedBy = emp?.name ?: user?.displayName ?: "User"
-            val email = user?.email ?: ""
-            val role = currentRole.value
-            val existing = repository.getChequeById(id)
-            if (existing != null) {
-                repository.deleteChequePdcById(id)
-                rtdbService.deleteChequePdc(id)
+            val existing = repository.getChequeById(id) ?: run {
+                launch(Dispatchers.Main) { onComplete() }
+                return@launch
             }
             launch(Dispatchers.Main) {
-                onComplete()
+                startDelete(OrphanScan.forCheque(existing)) { onComplete() }
             }
         }
     }
@@ -2653,6 +2877,10 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
             pushEntry(savedEntry)
             announceNewOrder(savedEntry, visit)
 
+            // Did this order push the customer past their credit limit? Checked here because this is
+            // the moment somebody can still act on it.
+            checkCreditAfterOrder(savedEntry)
+
             // The credited salesman is always on the trip, so it shows in their trips and on the customer report
             if (visit != null && resolvedSalesmanId > 0L && visit.tripMembers().none { it.id == resolvedSalesmanId }) {
                 val updatedTrip = ensureTripMember(visit, resolvedSalesmanId, resolvedSalesmanName)
@@ -2963,6 +3191,10 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 allMarkets.value.firstOrNull { it.id == id }?.let { repository.deleteMarket(it) }
                 rtdbService.deleteMarket(id)
             }
+            RecordKind.CHEQUE -> {
+                repository.deleteChequePdcById(id)
+                rtdbService.deleteChequePdc(id)
+            }
             // Staff are deactivated, never erased: the record is what stops a removed login from
             // working, and it keeps their name on the trips and orders they did.
             RecordKind.STAFF -> {
@@ -3030,6 +3262,16 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
             RecordKind.MARKET -> allMarkets.value.firstOrNull { it.id == id }?.let { market ->
                 repository.saveMarket(market.copy(isDeleted = true, deletedAt = System.currentTimeMillis()))
                 rtdbService.softDeleteMarket(market, actorName, actorEmail, actorRole)
+            }
+            RecordKind.CHEQUE -> repository.getChequeById(id)?.let { cheque ->
+                repository.saveChequePdc(
+                    cheque.copy(
+                        isDeleted = true,
+                        deletedAt = System.currentTimeMillis(),
+                        deletedBy = actorName
+                    )
+                )
+                rtdbService.softDeleteChequePdc(cheque, actorName, actorEmail, actorRole)
             }
             // Staff records are admin-only anyway; there is no soft path for them
             RecordKind.STAFF -> toast("Only Admins can remove a staff record")

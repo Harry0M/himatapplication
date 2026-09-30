@@ -25,7 +25,8 @@ enum class RecordKind(val node: String, val label: String) {
     BRAND("brands", "Brand"),
     TRANSPORTER("transporters", "Transporter"),
     MARKET("markets", "Market"),
-    STAFF("employees", "Staff")
+    STAFF("employees", "Staff"),
+    CHEQUE("cheques_pdc", "Cheque")
 }
 
 /**
@@ -351,6 +352,25 @@ object OrphanScan {
             )
         )
     }
+
+    // -------------------------------------------------------------------------
+    // Cheque / PDC
+    // -------------------------------------------------------------------------
+
+    /**
+     * A cheque has nothing hanging off it, so there is never an orphan to warn about. It goes through
+     * the same pipeline anyway: a cheque is a money record, so a staff delete has to become a request
+     * an admin answers rather than the record simply vanishing.
+     */
+    fun forCheque(cheque: ChequePdcEntity): DeleteImpact = DeleteImpact(
+        kind = RecordKind.CHEQUE,
+        id = cheque.id,
+        title = listOf(
+            cheque.chequeNo.trim().takeIf { it.isNotBlank() }?.let { "Cheque $it" },
+            cheque.partyName.trim().takeIf { it.isNotBlank() },
+            cheque.amount.takeIf { it > 0.0 }?.let { "₹${it.toLong()}" }
+        ).filterNotNull().joinToString(" • ").ifBlank { "Cheque ${cheque.id}" }
+    )
 
     // -------------------------------------------------------------------------
     // Staff / Sub Agent

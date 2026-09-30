@@ -49,6 +49,9 @@ object AppNotifications {
     /** Somebody asked for a record to be deleted and an admin has to decide. */
     const val TYPE_DELETE_REQUEST = "delete_request"
 
+    /** A credit customer has bought past the limit on their record. */
+    const val TYPE_CREDIT_LIMIT = "credit_limit"
+
     /** A customer's birthday is today. */
     const val TYPE_BIRTHDAY = "birthday"
 

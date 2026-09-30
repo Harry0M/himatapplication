@@ -15,6 +15,7 @@ import com.example.data.local.entity.SupplierEntity
 import com.example.data.local.entity.TransactionEntity
 import com.example.data.local.entity.TransporterEntity
 import com.example.data.local.entity.VisitEntity
+import com.example.util.AgencyProfile
 import com.example.util.DeletionRequest
 import com.example.util.WorkNotification
 import com.google.firebase.database.DataSnapshot
@@ -414,6 +415,136 @@ class FirebaseRtdbService(
 
     fun sanitizeEmail(email: String): String {
         return email.trim().lowercase().replace(".", "_").replace("@", "_at_")
+    }
+
+    // -------------------------------------------------------------------------
+    // The agency's own details, printed on every document
+    // -------------------------------------------------------------------------
+
+    /** Live agency profile. Every device keeps a local copy so PDFs print the same footer offline. */
+    fun listenToAgencyProfile(onUpdate: (AgencyProfile) -> Unit): ValueEventListener {
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                if (!snapshot.exists()) return
+                fun str(key: String) = snapshot.child(key).getValue(String::class.java).orEmpty()
+                onUpdate(
+                    AgencyProfile(
+                        businessName = str("businessName").ifBlank { AgencyProfile.DEFAULT_NAME },
+                        tagline = str("tagline").ifBlank { AgencyProfile.DEFAULT_TAGLINE },
+                        website = str("website"),
+                        phone = str("phone"),
+                        whatsapp = str("whatsapp"),
+                        email = str("email"),
+                        address = str("address"),
+                        gstin = str("gstin"),
+                        instagram = str("instagram"),
+                        facebook = str("facebook"),
+                        linkedin = str("linkedin"),
+                        youtube = str("youtube"),
+                        upiId = str("upiId")
+                    )
+                )
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                android.util.Log.w("FirebaseRtdbService", "settings/agency onCancelled: ${error.message}")
+            }
+        }
+        return registerListener(
+            rootRef.child(AgencyProfile.NODE).child(AgencyProfile.CHILD),
+            listener
+        )
+    }
+
+    /** Saves the agency profile. Owner-only by the rules: it appears on every customer document. */
+    suspend fun saveAgencyProfile(profile: AgencyProfile): Boolean = withContext(Dispatchers.IO) {
+        try {
+            rootRef.child(AgencyProfile.NODE).child(AgencyProfile.CHILD)
+                .mergeRecordConfirmed(profile)
+        } catch (e: Exception) {
+            android.util.Log.w("FirebaseRtdbService", "saveAgencyProfile failed: ${e.message}")
+            false
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Membership: is this account one of ours, and what is it allowed to be?
+    // -------------------------------------------------------------------------
+
+    /**
+     * What the office says about one login. Read from `members/<emailKey>`, which is mirrored from
+     * the staff list by a Cloud Function and cannot be written by any app.
+     */
+    data class Membership(
+        val employeeId: Long = 0,
+        val name: String = "",
+        val role: String = "",
+        val active: Boolean = false
+    )
+
+    /**
+     * Asks the office about the signed-in account, and says plainly when the answer is "nobody".
+     *
+     * [Membership] null means this email is not on the staff list. That is different from "could not
+     * ask", which is why this returns a [Result]: refusing somebody because the network was down
+     * would lock out a salesman with no signal, and letting somebody in because the check failed is
+     * the hole this whole node exists to close.
+     *
+     * The rules let an account read only its own entry, so this leaks nothing and works even for a
+     * complete stranger — they simply get null instead of a permission error.
+     */
+    suspend fun fetchMembership(email: String, timeoutMs: Long = 8000L): Result<Membership?> {
+        val key = sanitizeEmail(email)
+        if (key.isBlank()) return Result.success(null)
+        return withTimeoutOrNull(timeoutMs) {
+            suspendCancellableCoroutine<Result<Membership?>> { cont ->
+                rootRef.child("members").child(key)
+                    .addListenerForSingleValueEvent(object : ValueEventListener {
+                        override fun onDataChange(snapshot: DataSnapshot) {
+                            if (!cont.isActive) return
+                            if (!snapshot.exists()) {
+                                cont.resumeWith(Result.success(Result.success(null)))
+                                return
+                            }
+                            val membership = Membership(
+                                employeeId = snapshot.child("employeeId").getValue(Long::class.java) ?: 0L,
+                                name = snapshot.child("name").getValue(String::class.java).orEmpty(),
+                                role = snapshot.child("role").getValue(String::class.java).orEmpty(),
+                                active = snapshot.child("active").getValue(Boolean::class.java) ?: false
+                            )
+                            cont.resumeWith(Result.success(Result.success(membership)))
+                        }
+
+                        override fun onCancelled(error: DatabaseError) {
+                            android.util.Log.w("FirebaseRtdbService", "members lookup refused: ${error.message}")
+                            if (cont.isActive) {
+                                cont.resumeWith(Result.success(Result.failure(error.toException())))
+                            }
+                        }
+                    })
+            }
+        } ?: Result.failure(IllegalStateException("membership lookup timed out"))
+    }
+
+    /** Owner check without reading the whole node: just this account's two possible keys. */
+    suspend fun isOwner(email: String, uid: String, timeoutMs: Long = 8000L): Result<Boolean> {
+        val key = sanitizeEmail(email)
+        return withTimeoutOrNull(timeoutMs) {
+            suspendCancellableCoroutine<Result<Boolean>> { cont ->
+                rootRef.child("super_admins").addListenerForSingleValueEvent(object : ValueEventListener {
+                    override fun onDataChange(snapshot: DataSnapshot) {
+                        if (!cont.isActive) return
+                        val byKey = key.isNotBlank() && snapshot.child(key).exists()
+                        val byUid = uid.isNotBlank() && snapshot.child(uid).exists()
+                        cont.resumeWith(Result.success(Result.success(byKey || byUid)))
+                    }
+
+                    override fun onCancelled(error: DatabaseError) {
+                        if (cont.isActive) cont.resumeWith(Result.success(Result.failure(error.toException())))
+                    }
+                })
+            }
+        } ?: Result.failure(IllegalStateException("owner lookup timed out"))
     }
 
     suspend fun getSuperAdminEmails(): Set<String> = suspendCancellableCoroutine { cont ->

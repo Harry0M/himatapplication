@@ -1,12 +1,19 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -29,10 +36,14 @@ import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.SupportAgent
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -46,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.local.entity.PurchaseEntryEntity
 import com.example.data.local.entity.VisitEntity
+import com.example.util.CreditBreach
 import com.example.ui.components.InfoCard
 import com.example.ui.components.OrderRow
 import com.example.ui.components.PrimaryButton
@@ -113,7 +125,9 @@ fun HomeScreen(
     val notDelivered = remember(entries) { entries.count { !it.isDelivered() } }
     val recentOrders = remember(entries) { entries.sortedByDescending { it.createdAt }.take(5) }
     val requests = pendingCustomerRequests + pendingSupplierRequests
-    val name = currentEmployee?.name ?: currentUser?.displayName ?: "there"
+    // The name the business knows them by, not whatever their Google profile says
+    val name by viewModel.signedInName.collectAsStateWithLifecycle()
+    val creditBreaches by viewModel.creditBreaches.collectAsStateWithLifecycle()
 
     // List rows carry their own side padding so they can run edge to edge with a divider;
     // everything else on Home is inset by this.
@@ -136,6 +150,23 @@ fun HomeScreen(
                     "$todayLabel • ${if (isAdmin) "Admin" else Roles.label(role)}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary
+                )
+            }
+        }
+
+        // Credit customers who have bought past their limit. Sits above the day's work because it is
+        // the one thing on this screen that costs money if it is scrolled past. Stays until an admin
+        // clears it, and comes back if the balance climbs further.
+        if (!isAgent && creditBreaches.isNotEmpty()) {
+            item {
+                CreditLimitWarningCard(
+                    breaches = creditBreaches,
+                    canClear = isAdmin,
+                    onClear = { viewModel.acknowledgeCreditBreach(it) },
+                    onOpenCustomer = { id ->
+                        customers.firstOrNull { it.id == id }?.let { viewModel.openCustomerDetail(it) }
+                    },
+                    modifier = inset
                 )
             }
         }
@@ -353,4 +384,95 @@ fun HomeScreen(
         }
     }
 
+}
+
+/**
+ * "These credit customers are over their limit."
+ *
+ * Deliberately not dismissible by anyone: a salesman seeing it is the point, and only an admin can
+ * clear it. Clearing records the balance it was cleared at, so the warning returns if the customer
+ * keeps buying rather than being silenced for good.
+ */
+@Composable
+private fun CreditLimitWarningCard(
+    breaches: List<CreditBreach>,
+    canClear: Boolean,
+    onClear: (CreditBreach) -> Unit,
+    onOpenCustomer: (Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val amber = Color(0xFFB45309)
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = Color(0xFFFFFBEB),
+        border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.WarningAmber,
+                    contentDescription = null,
+                    tint = amber,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (breaches.size == 1) "A credit customer is over their limit"
+                    else "${breaches.size} credit customers are over their limit",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = amber
+                )
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = if (canClear) "Tap a name to open the customer. Clear a warning once you have decided."
+                else "Please check with the Admin before booking more for them.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary
+            )
+
+            // Only the worst few; the rest are on the customer screens
+            breaches.take(4).forEach { breach ->
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { onOpenCustomer(breach.customerId) }
+                    ) {
+                        Text(
+                            breach.customerName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            "Owes ₹${breach.outstanding.toLong()} against ₹${breach.creditLimit.toLong()}" +
+                                " • over by ₹${breach.overBy.toLong()}" +
+                                if (breach.overPercent > 0) " (${breach.overPercent}%)" else "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = amber
+                        )
+                    }
+                    if (canClear) {
+                        TextButton(onClick = { onClear(breach) }) {
+                            Text("Clear", color = amber, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            if (breaches.size > 4) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    "and ${breaches.size - 4} more",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+            }
+        }
+    }
 }

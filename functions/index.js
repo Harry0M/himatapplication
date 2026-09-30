@@ -12,7 +12,7 @@
  * Because the message carries a `notification` block, Android shows it even when the app is closed.
  */
 
-const { onValueCreated } = require("firebase-functions/v2/database");
+const { onValueCreated, onValueWritten } = require("firebase-functions/v2/database");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { logger } = require("firebase-functions");
 const admin = require("firebase-admin");
@@ -28,6 +28,154 @@ const SEND_CHUNK = 500;
 
 /** Notification records older than this are cleaned up as we go, so the node stays small. */
 const HISTORY_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+
+// -----------------------------------------------------------------------------
+// The member index: who is allowed into the database at all
+//
+// The database rules need to answer "is this signed-in account one of ours?" — but rules cannot
+// search a node, so they cannot look through `employees` for a matching email. They need a node keyed
+// by something derived from the token.
+//
+// That node cannot be written by the apps either. That was the original hole: `employees` was
+// writable by anyone, and both apps read `role: "Admin"` off it, so any Google account could hand
+// itself admin with one REST call. So `members` is written *only here*, mirrored from `employees`,
+// and closed to every client. The rules trust it precisely because no client can touch it.
+//
+// Shape: members/<emailKey> = { employeeId, name, role, active }
+// The key is the same sanitised email the apps already use for `super_admins`.
+// -----------------------------------------------------------------------------
+
+/** '.' -> '_' and '@' -> '_at_'. Must match Android sanitizeEmail and the web emailKey. */
+function emailKey(email) {
+  return String(email || "").trim().toLowerCase().replace(/\./g, "_").replace(/@/g, "_at_");
+}
+
+/** Both login addresses an employee record can carry. */
+function loginEmailsOf(emp) {
+  return [emp && emp.email, emp && emp.alternateEmail]
+    .map((e) => String(e || "").trim().toLowerCase())
+    .filter((e) => e.length > 0 && e.includes("@"));
+}
+
+/** A deactivated or suspended staff member stays in the index, marked inactive, so rules deny them. */
+function isActiveEmployee(emp) {
+  if (!emp) return false;
+  if (emp.isDeleted === true || emp.deleted === true) return false;
+  if (emp.isBlocked === true || emp.blocked === true) return false;
+  const status = String(emp.status || "").trim().toLowerCase();
+  if (status === "suspended" || status === "deactivated") return false;
+  return true;
+}
+
+function memberRowFor(emp, employeeId) {
+  return {
+    employeeId: Number(employeeId) || 0,
+    name: String(emp.name || "").trim(),
+    email: loginEmailsOf(emp)[0] || "",
+    role: String(emp.role || "Salesman").trim(),
+    active: isActiveEmployee(emp),
+    updatedAt: Date.now(),
+  };
+}
+
+/**
+ * Keeps `members` in step with `employees`.
+ *
+ * Fires on create, update and delete. An email moved from one record to another, or removed
+ * altogether, has to drop its old key or a departed address would keep its access.
+ */
+exports.syncMemberIndex = onValueWritten(
+  { ref: "/employees/{employeeId}", instance: RTDB_INSTANCE, region: REGION },
+  async (event) => {
+    const before = event.data.before.val();
+    const after = event.data.after.val();
+    const employeeId = event.params.employeeId;
+
+    const beforeKeys = before ? loginEmailsOf(before).map(emailKey) : [];
+    const afterKeys = after ? loginEmailsOf(after).map(emailKey) : [];
+
+    const updates = {};
+
+    // Addresses this record no longer uses lose their entry, but only if no other record claims it
+    for (const key of beforeKeys) {
+      if (!afterKeys.includes(key)) updates[key] = null;
+    }
+    for (const key of afterKeys) {
+      updates[key] = memberRowFor(after, employeeId);
+    }
+
+    if (Object.keys(updates).length === 0) return;
+
+    const db = admin.database();
+
+    // Guard the removals: another employee record may legitimately hold the same address now
+    for (const key of Object.keys(updates)) {
+      if (updates[key] !== null) continue;
+      const existing = await db.ref(`members/${key}`).get();
+      if (existing.exists() && Number(existing.val().employeeId) !== Number(employeeId)) {
+        delete updates[key];
+      }
+    }
+
+    if (Object.keys(updates).length === 0) return;
+    await db.ref("members").update(updates);
+    logger.info(`member index for employee ${employeeId}: ${JSON.stringify(Object.keys(updates))}`);
+  }
+);
+
+/**
+ * Rebuilds the whole member index from `employees`.
+ *
+ * Needed once, because `syncMemberIndex` only fires on a change and the staff list already exists.
+ * Kept afterwards as a repair tool: it is safe to run at any time and only writes what differs.
+ * Owner-only — it is called from the web admin.
+ */
+exports.rebuildMemberIndex = onSchedule(
+  { schedule: "0 4 * * *", timeZone: "Asia/Kolkata", region: REGION },
+  async () => {
+    const db = admin.database();
+    const [empSnap, memberSnap] = await Promise.all([
+      db.ref("employees").get(),
+      db.ref("members").get(),
+    ]);
+
+    const wanted = {};
+    if (empSnap.exists()) {
+      empSnap.forEach((child) => {
+        const emp = child.val() || {};
+        loginEmailsOf(emp).forEach((email) => {
+          wanted[emailKey(email)] = memberRowFor(emp, emp.id || child.key);
+        });
+      });
+    }
+
+    const updates = {};
+    Object.keys(wanted).forEach((key) => {
+      const current = memberSnap.child(key).val();
+      // updatedAt always differs, so compare only the fields that decide access
+      if (
+        !current ||
+        current.active !== wanted[key].active ||
+        String(current.role) !== String(wanted[key].role) ||
+        Number(current.employeeId) !== Number(wanted[key].employeeId)
+      ) {
+        updates[key] = wanted[key];
+      }
+    });
+    if (memberSnap.exists()) {
+      memberSnap.forEach((child) => {
+        if (!(child.key in wanted)) updates[child.key] = null;
+      });
+    }
+
+    if (Object.keys(updates).length === 0) {
+      logger.info("member index already in step");
+      return;
+    }
+    await db.ref("members").update(updates);
+    logger.info(`member index rebuilt: ${Object.keys(updates).length} change(s)`);
+  }
+);
 
 /** Sub Agents are deliberately left out of team notifications. */
 function isSubAgent(role) {

@@ -75,10 +75,11 @@ async function checkSuperAdmin(u: User): Promise<boolean> {
     role: "SUPER_ADMIN",
     createdAt: Date.now(),
   }
-  if (!allSnap.exists() || Object.keys(data).length === 0) {
-    await Promise.all([set(byEmailRef, adminData), set(byUidRef, adminData)])
-    return true
-  }
+
+  // There used to be a "super_admins is empty, so I must be the owner" branch here, mirroring a
+  // clause in the database rules. Both are gone. Owner keys can be removed one at a time, so
+  // emptying the node re-armed the clause and handed the agency to whoever signed in next. A fresh
+  // deployment gets its first owner from the Firebase console, once.
 
   const matches = Object.values(data).some(
     (a: any) =>
