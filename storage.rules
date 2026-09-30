@@ -2,20 +2,26 @@ rules_version = '2';
 
 // Photos and documents for Himat Textile.
 //
-// One thing to be clear about, because it changes what these rules can and cannot promise:
-// a Firebase download URL (the `...?alt=media&token=...` link the app stores on each record and
-// shares over WhatsApp) is served WITHOUT consulting these rules. The token in the link is the
-// permission. So tightening `read` here does not retro-protect a link that has already been sent,
-// and it does not break one either. What it does do is stop anyone who is not signed in from
-// reading or listing objects through the SDK, which is how a path would otherwise be discovered.
+// READ IS SPLIT INTO get AND list ON PURPOSE. This is the important part of this file.
 //
-// The real protection for those links is that the paths only appear in the database, and the
-// database is now readable by members of the agency only.
+// After an upload the app calls getDownloadURL() to get the permanent link it stores on the record.
+// That call is an SDK read, so it needs `get`. Both public registration forms upload BEFORE their
+// user is signed in — the customer form collects KYC photos on step 3 and only verifies the phone OTP
+// at the very end, and the supplier form has no sign-in at all. So requiring a signed-in user for
+// `get` breaks every public upload: the file lands, then the link cannot be read back.
+//
+// `list` is a different thing and stays closed. Nobody without an account should be able to walk the
+// kyc/ folder and see what is in it.
+//
+// Also worth knowing: a Firebase download URL (`...?alt=media&token=...`) is served WITHOUT
+// consulting these rules — the token in the link is the permission. So opening `get` on the public
+// upload folders gives away nothing that the stored links do not already give away, and closing it
+// would not have protected them either.
 //
 // What this file allows:
-//   - the public customer and supplier registration forms may CREATE files, because the person
-//     filling one in has no account yet, and nothing else: they cannot read back, replace or remove;
-//   - a signed-in member may read, upload and replace anywhere the app uses;
+//   - the public customer and supplier registration forms may CREATE files and read back the link for
+//     what they just uploaded, and nothing else: they cannot list, replace or remove;
+//   - a signed-in member may read, list, upload and replace anywhere the app uses;
 //   - every upload is capped at 15 MB and must be an image or a PDF.
 service firebase.storage {
   match /b/{bucket}/o {
@@ -35,33 +41,34 @@ service firebase.storage {
     }
 
     // ---------------------------------------------------------------------
-    // Public registration forms — create only, no sign-in
+    // Public registration forms — upload and read back the link, no sign-in
     //
-    // The folder names here have to match what the forms actually pass to FileUpload, which is why
-    // the whole `suppliers/` subtree is covered: the form writes to suppliers/shop,
-    // suppliers/godown and suppliers/cards, while these rules used to name only
-    // suppliers/shop_photos and suppliers/visiting_cards. Those uploads fell through to the
-    // catch-all, which needs a signed-in user — so on an unauthenticated form they were refused.
+    // The folder names match what the forms actually pass to FileUpload. The whole `suppliers/`
+    // subtree is covered because the supplier form writes to suppliers/shop, suppliers/godown and
+    // suppliers/cards, while these rules used to name only suppliers/shop_photos and
+    // suppliers/visiting_cards — so those uploads fell through to the catch-all and were refused.
     // ---------------------------------------------------------------------
 
     match /registrations/{allPaths=**} {
-      allow read: if signedIn();
+      allow get: if true;
+      allow list: if signedIn();
       allow create: if sizeOk() && typeOk();
       allow update, delete: if signedIn();
     }
 
     // Customer KYC: shop front, GST certificate, PAN, Aadhaar front and back, cancelled cheque,
-    // owner selfie. The customer form runs as a phone-OTP session, so it is signed in, but the
-    // create rule stays open because that session is not a member of the agency.
+    // owner selfie. Uploaded on step 3, before the phone OTP at the end of the form.
     match /kyc/{allPaths=**} {
-      allow read: if signedIn();
+      allow get: if true;
+      allow list: if signedIn();
       allow create: if sizeOk() && typeOk();
       allow update, delete: if signedIn();
     }
 
-    // Supplier form: shop photo, godown photo, visiting card.
+    // Supplier form: shop photo, godown photo, visiting card. No sign-in anywhere in this form.
     match /suppliers/{allPaths=**} {
-      allow read: if signedIn();
+      allow get: if true;
+      allow list: if signedIn();
       allow create: if sizeOk() && typeOk();
       allow update, delete: if signedIn();
     }
@@ -71,7 +78,8 @@ service firebase.storage {
     // cheques, reports and any per-record subfolder under them.
     // ---------------------------------------------------------------------
     match /{allPaths=**} {
-      allow read: if signedIn();
+      allow get: if signedIn();
+      allow list: if signedIn();
       allow write: if signedIn() && sizeOk() && typeOk();
       allow delete: if signedIn();
     }

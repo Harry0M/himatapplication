@@ -9,6 +9,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.auth.AuthRepository
 import com.example.data.remote.FirebaseRtdbService
+import com.example.data.remote.TeamService
 import com.example.data.remote.FcmTokenRegistrar
 import com.example.data.remote.FirebaseStorageService
 
@@ -40,6 +41,8 @@ import com.example.util.BusinessCardFields
 import com.example.util.CreditBreach
 import com.example.util.CreditWatch
 import com.example.util.DeleteImpact
+import com.example.util.DeletionDetails
+import com.example.util.RecordDetail
 import com.example.util.DeletionRequest
 import com.example.util.IdGenerator
 import com.example.util.OrphanScan
@@ -78,6 +81,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import android.util.Log
 import java.io.File
@@ -124,6 +128,8 @@ enum class AppScreen {
     MORE,
     /** Admin console for staff delete requests: approve (hard delete) or reject (restore). */
     DELETION_REQUESTS,
+    /** The agency's own contact details and links, printed on every document. Admin only. */
+    SETTINGS,
     SUB_AGENT_MASTER,
     SUB_AGENT_DETAIL,
     SUB_AGENT_FORM;
@@ -182,6 +188,9 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
     val authRepository = AuthRepository()
     val rtdbService = FirebaseRtdbService()
     val storageService = FirebaseStorageService()
+
+    /** Adding people goes through the office: the employees node is owner-only in the rules. */
+    private val teamService = TeamService()
     private val authPrefs = application.getSharedPreferences("himat_auth_prefs", Context.MODE_PRIVATE)
 
     val currentUser: StateFlow<FirebaseUser?> = authRepository.currentUser
@@ -696,34 +705,6 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
     fun validateSupplier(supplier: SupplierEntity): ValidationResult = RecordValidator.validateSupplier(supplier)
     fun validateGarmentItem(item: GarmentItemEntity): ValidationResult = RecordValidator.validateGarmentItem(item)
     fun validateProduct(product: ProductEntity): ValidationResult = RecordValidator.validateProduct(product)
-
-    init {
-        // Observe authentication state to manage RTDB listeners & cloud sync lifecycle
-        viewModelScope.launch {
-            currentUser.collect { user ->
-                if (user != null) {
-                    startRealtimeSync(user)
-                } else {
-                    stopRealtimeSync()
-                }
-            }
-        }
-
-        // Combine authorization states
-        val authFlow = combine(currentUser, _superAdminEmails, _superAdminEmailsLoaded) { user, adminEmails, adminsLoaded ->
-            Triple(user, adminEmails, adminsLoaded)
-        }
-        val empFlow = combine(_cloudEmployees, _cloudEmployeesLoaded, repository.allEmployees) { cloudEmps, empsLoaded, localEmps ->
-            Triple(cloudEmps, empsLoaded, localEmps)
-        }
-
-        // _membership is in the combine so the office's answer re-decides access the moment it lands
-        viewModelScope.launch {
-            combine(authFlow, empFlow, _membership) { auth, emp, _ ->
-                reconcileUserAuthorization(auth.first, auth.second, auth.third, emp.first, emp.second, emp.third)
-            }.collect { }
-        }
-    }
 
     private fun startRealtimeSync(user: FirebaseUser) {
         realtimeSyncJob?.cancel()
@@ -1486,14 +1467,36 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
             setup()
         }
 
+    /**
+     * Staff may now add people too — a Staff member or a Sub Agent, never an Admin.
+     *
+     * The form limits the role chips to [creatableRoles], and the Cloud Function that does the write
+     * checks the same thing again. The check that matters is the one on the server: `employees` is
+     * owner-only in the database rules, so a staff member's save goes through the function or not at
+     * all. This gate only decides whether the screen opens.
+     */
     fun openAddMaster(tab: MasterTab) {
         if (blockIfAgent("Adding records")) return
-        if (tab == MasterTab.EMPLOYEES && !isAdminNow()) {
-            toast("Only Admins can add new staff")
+        if (tab == MasterTab.EMPLOYEES && creatableRoles().isEmpty()) {
+            toast("Your login cannot add people")
             return
         }
         openMasterForm(tab)
     }
+
+    /**
+     * Roles this person may hand out. Admin gives any of the three; Staff may add another Staff member
+     * or a Sub Agent but never an Admin; a Sub Agent adds nobody.
+     */
+    fun creatableRoles(): List<String> = when {
+        isAdminNow() -> listOf(Roles.ADMIN, Roles.STAFF, Roles.AGENT)
+        Roles.isAgent(_currentRole.value) -> emptyList()
+        _isAuthorized.value == false -> emptyList()
+        else -> listOf(Roles.STAFF, Roles.AGENT)
+    }
+
+    /** Only an Admin may bind a login email to somebody, because that is what grants access. */
+    fun canSetLoginEmail(): Boolean = isAdminNow()
 
     fun openEditCustomer(customer: CustomerEntity) {
         if (blockIfAgent("Editing a customer")) return
@@ -1525,6 +1528,13 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         openMasterForm(MasterTab.PRODUCTS) { _editingProduct.value = product }
     }
 
+    /**
+     * Editing an existing person stays Admin-only even though staff may now create one.
+     *
+     * Changing somebody's record means being able to change the email it is bound to, and that is the
+     * same thing as handing out access. Adding a new person is a smaller decision than rewriting who
+     * an existing login belongs to.
+     */
     fun openEditEmployee(employee: EmployeeEntity) {
         if (Roles.isAgent(employee.role)) {
             openEditSubAgent(employee)
@@ -1548,7 +1558,14 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         openMasterForm(MasterTab.EMPLOYEES, AppScreen.SUB_AGENT_FORM) { _editingEmployee.value = agent }
     }
 
-    /** Staff and admins can register sub agents; only admins may give them a login email. */
+    /**
+     * Staff and admins can register sub agents; only admins may give them a login email.
+     *
+     * Goes through the office for the same reason as [saveEmployee]: a Sub Agent record lives in the
+     * `employees` node, which a phone may not write. The email is stripped here for a non-admin and
+     * stripped again server-side — a login email is what grants access, so it is not a field a staff
+     * member gets to fill in.
+     */
     fun saveSubAgent(agent: EmployeeEntity, onSaved: ((EmployeeEntity) -> Unit)? = null) {
         if (blockIfAgent("Saving a sub agent")) return
         viewModelScope.launch(Dispatchers.IO) {
@@ -1560,13 +1577,19 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
                 email = loginEmail,
                 status = agent.status.ifBlank { "Active" }
             )
-            val id = repository.saveEmployee(toSave)
-            val saved = if (toSave.id == 0L) toSave.copy(id = id) else toSave
-            rtdbService.syncEmployee(saved)
-            launch(Dispatchers.Main) {
-                if (_selectedEmployeeDetail.value?.id == saved.id) _selectedEmployeeDetail.value = saved
-                onSaved?.invoke(saved)
-            }
+            teamService.saveMember(toSave).fold(
+                onSuccess = { result ->
+                    val saved = toSave.copy(id = result.id, employeeId = result.employeeId)
+                    repository.saveEmployee(saved)
+                    launch(Dispatchers.Main) {
+                        if (_selectedEmployeeDetail.value?.id == saved.id) _selectedEmployeeDetail.value = saved
+                        onSaved?.invoke(saved)
+                    }
+                },
+                onFailure = { e ->
+                    launch(Dispatchers.Main) { toast(e.message ?: "Could not save the sub agent.") }
+                }
+            )
         }
     }
 
@@ -2459,39 +2482,50 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Employee Operations
-    fun saveEmployee(employee: EmployeeEntity) {
+    /**
+     * Saves a staff member or Sub Agent through the office.
+     *
+     * Not written from here any more. The database rules make `employees` owner-only, because the role
+     * field on it decides who is an admin — so the request goes to a Cloud Function that checks the
+     * role against who is asking (Admin may create any of the three, Staff may create a Staff member
+     * or a Sub Agent, a Sub Agent creates nobody) and issues the staff code itself. Two phones adding
+     * somebody at the same moment can no longer land on the same code.
+     *
+     * The local copy is written only after the office accepts, so a refusal does not leave a record on
+     * one phone that exists nowhere else.
+     */
+    fun saveEmployee(employee: EmployeeEntity, onDone: ((Boolean) -> Unit)? = null) {
+        if (blockIfAgent("Adding people")) {
+            onDone?.invoke(false)
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
-            // isAdminNow() also counts an owner who has no staff record of their own
-            if (!isAdminNow()) {
-                launch(Dispatchers.Main) {
-                    Toast.makeText(getApplication(), "Only Admins can create or edit employee records", Toast.LENGTH_LONG).show()
+            val result = teamService.saveMember(employee)
+            result.fold(
+                onSuccess = { saved ->
+                    val record = employee.copy(
+                        id = saved.id,
+                        employeeId = saved.employeeId,
+                        role = saved.role,
+                        status = employee.status.ifBlank { "Active" }
+                    )
+                    repository.saveEmployee(record)
+                    launch(Dispatchers.Main) {
+                        if (saved.codeChanged) {
+                            toast("${employee.employeeId.trim()} was already taken, saved as ${saved.employeeId}")
+                        } else {
+                            toast("${saved.role.let { Roles.label(it) }} saved")
+                        }
+                        onDone?.invoke(true)
+                    }
+                },
+                onFailure = { e ->
+                    launch(Dispatchers.Main) {
+                        toast(e.message ?: "Could not save. Check your connection.")
+                        onDone?.invoke(false)
+                    }
                 }
-                return@launch
-            }
-            // Last line of defence on the staff code. Two admins adding people at the same time, or an
-            // old app version still generating a random digit, would otherwise hand out the same code
-            // and make two different people look like one in every report.
-            val known = everyStaffRecord.value.ifEmpty { allPeople.value }
-            val prefix = if (Roles.isAgent(employee.role)) StaffCodes.AGENT_PREFIX else StaffCodes.STAFF_PREFIX
-            val wanted = employee.employeeId.trim()
-            val code = when {
-                wanted.isBlank() -> StaffCodes.next(known, prefix)
-                StaffCodes.isTaken(wanted, known, employee.id) -> StaffCodes.next(known, prefix)
-                else -> wanted
-            }
-            val record = if (code == employee.employeeId) employee else employee.copy(employeeId = code)
-            val generatedId = repository.saveEmployee(record)
-            val toSync = if (record.id == 0L) record.copy(id = generatedId) else record
-            rtdbService.syncEmployee(toSync)
-            if (code != wanted && wanted.isNotBlank()) {
-                launch(Dispatchers.Main) {
-                    Toast.makeText(
-                        getApplication(),
-                        "$wanted was already taken, saved as $code",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            }
+            )
         }
     }
 
@@ -3130,11 +3164,12 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
             if (removeLinked) {
                 impact.removableIdsByKind().forEach { (kind, ids) ->
                     ids.forEach { id ->
-                        if (hard) hardDeleteRecord(kind, id) else softDeleteRecord(kind, id, actorName, actorEmail, actorRole)
+                        if (hard) hardDeleteRecord(kind, id, actorName, actorEmail, actorRole)
+                        else softDeleteRecord(kind, id, actorName, actorEmail, actorRole)
                     }
                 }
             }
-            if (hard) hardDeleteRecord(impact.kind, impact.id)
+            if (hard) hardDeleteRecord(impact.kind, impact.id, actorName, actorEmail, actorRole)
             else softDeleteRecord(impact.kind, impact.id, actorName, actorEmail, actorRole)
 
             // One announcement for the whole delete, covering every record kind. An admin's own hard
@@ -3156,8 +3191,24 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Removes one record for good, locally and in the cloud. Admin only, enforced by the caller. */
-    private suspend fun hardDeleteRecord(kind: RecordKind, id: Long) {
+    /**
+     * Removes one record for good, locally and in the cloud. Admin only, enforced by the caller.
+     *
+     * The record is stamped with who is removing it just before it goes. Nothing in the app reads
+     * that stamp — it is there so the copy the office keeps in the bin says who threw it away. A
+     * staff member's delete already carries those fields from when the request was raised; an admin
+     * deleting directly would otherwise leave an anonymous entry.
+     */
+    private suspend fun hardDeleteRecord(
+        kind: RecordKind,
+        id: Long,
+        actorName: String = "",
+        actorEmail: String = "",
+        actorRole: String = ""
+    ) {
+        if (actorName.isNotBlank()) {
+            rtdbService.stampDeleter(kind.node, id, actorName, actorEmail, actorRole)
+        }
         when (kind) {
             RecordKind.VISIT -> {
                 repository.getVisitById(id)?.let { repository.deleteVisit(it) }
@@ -3291,6 +3342,106 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _deletionActionBusy = MutableStateFlow<String?>(null)
     val deletionActionBusy: StateFlow<String?> = _deletionActionBusy.asStateFlow()
+
+    /**
+     * The full record behind a deletion request, so an admin can see what they are deciding on.
+     *
+     * The queue used to show only the one-line summary written when the request was filed, which is not
+     * enough: "Order #HT-2711" does not say whether it is ₹800 or ₹80,000, whether it has been paid, or
+     * whether the goods have already left. The by-id lookups deliberately ignore the isDeleted flag, so
+     * a record that is hidden from every list can still be read here.
+     */
+    suspend fun loadDeletionDetail(request: DeletionRequest): RecordDetail = withContext(Dispatchers.IO) {
+        val id = request.itemId
+        val fallback = DeletionDetails.unavailable(request.entityLabel, id, request.itemSummary)
+
+        when (request.collection) {
+            "visits" -> repository.getVisitById(id)?.let { visit ->
+                DeletionDetails.forVisit(
+                    visit = visit,
+                    customer = repository.getCustomerById(visit.customerId),
+                    orders = allEntries.value
+                )
+            }
+
+            "purchase_entries" -> repository.getEntryById(id)?.let { entry ->
+                val visit = repository.getVisitById(entry.visitId)
+                DeletionDetails.forOrder(
+                    entry = entry,
+                    visit = visit,
+                    customer = visit?.let { repository.getCustomerById(it.customerId) }
+                )
+            }
+
+            "customers" -> repository.getCustomerById(id)?.let { customer ->
+                val trips = allVisits.value.filter { it.customerId == id }
+                val tripIds = trips.map { it.id }.toSet()
+                DeletionDetails.forCustomer(
+                    customer = customer,
+                    trips = trips.size,
+                    orders = allEntries.value.count { it.visitId in tripIds },
+                    outstanding = CreditWatch.outstandingFor(id, allVisits.value, allEntries.value)
+                )
+            }
+
+            "suppliers" -> repository.getSupplierById(id)?.let { supplier ->
+                DeletionDetails.forSupplier(
+                    supplier = supplier,
+                    orders = allEntries.value.count { it.supplierId == id },
+                    products = allProducts.value.count { it.supplierId == id }
+                )
+            }
+
+            "products" -> repository.getProductById(id)?.let { product ->
+                DeletionDetails.forProduct(
+                    product = product,
+                    ordersUsingCode = allEntries.value.count {
+                        product.productCode.isNotBlank() &&
+                            it.itemCode.trim().equals(product.productCode.trim(), ignoreCase = true)
+                    }
+                )
+            }
+
+            "cheques_pdc" -> repository.getChequeById(id)?.let { DeletionDetails.forCheque(it) }
+
+            "brands" -> repository.getBrandById(id)?.let { brand ->
+                DeletionDetails.forBrand(
+                    brand = brand,
+                    suppliers = allSuppliers.value.count { it.brandId == brand.id }
+                )
+            }
+
+            "transporters" -> repository.getTransporterById(id)?.let { transporter ->
+                DeletionDetails.forTransporter(
+                    transporter = transporter,
+                    orders = allEntries.value.count {
+                        it.transporter.trim().equals(transporter.transporterName.trim(), ignoreCase = true)
+                    }
+                )
+            }
+
+            "markets" -> repository.getMarketById(id)?.let { market ->
+                val name = market.marketName.trim()
+                DeletionDetails.forMarket(
+                    market = market,
+                    customers = allCustomers.value.count { it.marketArea.trim().equals(name, ignoreCase = true) },
+                    suppliers = allSuppliers.value.count {
+                        it.marketId == market.id || it.marketArea.trim().equals(name, ignoreCase = true)
+                    }
+                )
+            }
+
+            "employees" -> repository.getEmployeeById(id)?.let { employee ->
+                DeletionDetails.forStaff(
+                    employee = employee,
+                    trips = allVisits.value.count { it.hasMember(employee) },
+                    orders = allEntries.value.count { it.salesmanId == id || it.createdById == id }
+                )
+            }
+
+            else -> null
+        } ?: fallback
+    }
 
     /** Admin approved: the record really goes, along with a trip's orders and packs. */
     fun approveDeletionRequest(request: DeletionRequest) {
@@ -3803,14 +3954,29 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
             val customer = customerOfTrip(visit)
             val salesman = allEmployees.value.find { it.id == visit.employeeId }
             val entries = visitEntries.value
-            val pdfFile = PdfGenerator.generateCustomerDayReport(
-                getApplication(),
-                visit,
-                customer,
-                salesman,
-                entries,
-                options
-            )
+            // Same quotation, two shapes of paper. The sender picks in the options sheet: the card
+            // layout for a shop owner, the ruled GST-style form for a transport office or an accountant.
+            val pdfFile = when (options.layout) {
+                com.example.ui.components.ReportPdfLayout.RULED_FORM ->
+                    PdfGenerator.generateCustomerRuledFormReport(
+                        getApplication(),
+                        visit,
+                        customer,
+                        salesman,
+                        entries,
+                        options
+                    )
+
+                com.example.ui.components.ReportPdfLayout.MODERN ->
+                    PdfGenerator.generateCustomerDayReport(
+                        getApplication(),
+                        visit,
+                        customer,
+                        salesman,
+                        entries,
+                        options
+                    )
+            }
             launch(Dispatchers.Main) {
                 ShareUtil.sharePdfFile(
                     getApplication(),
@@ -4011,6 +4177,58 @@ class HimatViewModel(application: Application) : AndroidViewModel(application) {
         val supplier = supplierOfOrder(entry)
         val text = ShareUtil.buildSupplierCopyText(visit, supplier, customer, listOf(entry))
         ShareUtil.shareWhatsAppText(getApplication(), text)
+    }
+
+    // =====================================================================
+    // WIRING — deliberately the last thing in the class
+    // =====================================================================
+
+    /**
+     * Connects sign-in to the cloud listeners and to the authorization decision.
+     *
+     * This block sits at the very bottom of the class, and the two collectors are dispatched rather
+     * than run where they are declared, for one reason: both used to crash the app on every cold start.
+     *
+     * `viewModelScope` dispatches on `Dispatchers.Main.immediate`, so a `launch` from inside the
+     * constructor does not wait — it runs straight away, and `currentUser` is a StateFlow that always
+     * has a value, so `collect` delivered that value while the ViewModel was still being built. With
+     * nobody signed in that reached `stopRealtimeSync` → `resetNavigation` → `clearSupplierQueue`,
+     * which reads `_supplierQueue` — a property declared two thousand lines below the old position of
+     * this block, and therefore still null. A guaranteed NullPointerException before the first frame.
+     *
+     * Kotlin initialises a class strictly top to bottom, so anything started during construction can
+     * only safely touch what is declared above it. Nothing in a class this size can rely on that, so
+     * the wiring waits for construction to finish instead: plain `Dispatchers.Main` always posts to
+     * the looper, and being last in the file means every property is already built by then.
+     *
+     * Do not move this block up, and do not drop the explicit dispatcher.
+     */
+    init {
+        // Sign-in and sign-out drive the RTDB listeners and the cloud sync lifecycle
+        viewModelScope.launch(Dispatchers.Main) {
+            currentUser.collect { user ->
+                if (user != null) {
+                    startRealtimeSync(user)
+                } else {
+                    stopRealtimeSync()
+                }
+            }
+        }
+
+        // Combine authorization states
+        val authFlow = combine(currentUser, _superAdminEmails, _superAdminEmailsLoaded) { user, adminEmails, adminsLoaded ->
+            Triple(user, adminEmails, adminsLoaded)
+        }
+        val empFlow = combine(_cloudEmployees, _cloudEmployeesLoaded, repository.allEmployees) { cloudEmps, empsLoaded, localEmps ->
+            Triple(cloudEmps, empsLoaded, localEmps)
+        }
+
+        // _membership is in the combine so the office's answer re-decides access the moment it lands
+        viewModelScope.launch(Dispatchers.Main) {
+            combine(authFlow, empFlow, _membership) { auth, emp, _ ->
+                reconcileUserAuthorization(auth.first, auth.second, auth.third, emp.first, emp.second, emp.third)
+            }.collect { }
+        }
     }
 }
 

@@ -17,8 +17,8 @@ android {
     applicationId = "com.aistudio.himattextile.sourcemgmt"
     minSdk = 24
     targetSdk = 36
-    versionCode = 3
-    versionName = "1.2"
+    versionCode = 14
+    versionName = "2.2"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -110,6 +110,11 @@ dependencies {
   // Firebase Realtime Database and Cloud Storage
   implementation(libs.firebase.database)
   implementation(libs.firebase.storage)
+  // Push notifications for new trips, joins and orders
+  implementation(libs.firebase.messaging)
+  // Callable functions. Adding a person is decided on the server, because the database rules
+  // deliberately do not let a phone write the employees node.
+  implementation(libs.firebase.functions)
 
 
   // Firebase Auth and Google Sign-In via Credential Manager
@@ -124,8 +129,8 @@ dependencies {
   implementation(libs.logging.interceptor)
   implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
-  // implementation(libs.play.services.location)
   implementation(libs.retrofit)
+  implementation("com.google.zxing:core:3.5.3")
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)

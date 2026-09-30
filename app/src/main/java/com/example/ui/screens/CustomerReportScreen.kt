@@ -70,6 +70,7 @@ import com.example.ui.viewmodel.HimatViewModel
 import com.example.util.PdfGenerator
 import com.example.ui.components.CustomerReportOptions
 import com.example.ui.components.ReportOptionsBottomSheet
+import com.example.util.ReportFields
 import com.example.util.ShareUtil
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -101,11 +102,14 @@ fun CustomerReportScreen(
     // Bottom sheets (shown before PDF generation)
     if (showDayReportSheet) {
         ReportOptionsBottomSheet(
-            title = "Day Report PDF Customize Karein",
+            title = "Quotation PDF Customize Karein",
             options = reportOptions,
             onOptionsChange = { reportOptions = it },
             onGeneratePdf = { viewModel.shareCustomerDayReportPdf(visit, reportOptions) },
-            onDismiss = { showDayReportSheet = false }
+            onDismiss = { showDayReportSheet = false },
+            // Resolved with the same function the PDF writer uses, so each box shows as its
+            // placeholder exactly what will be printed if the sender leaves it alone
+            defaults = ReportFields.resolve(visit, customer, entries)
         )
     }
 

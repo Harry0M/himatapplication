@@ -201,14 +201,14 @@
       ".read": "auth != null && ((auth.token.email != null && root.child('members').child(auth.token.email.toLowerCase().replace('.', '_').replace('@', '_at_')).child('active').val() === true) || (auth.token.email != null && (root.child('super_admins').child(auth.token.email.toLowerCase().replace('.', '_').replace('@', '_at_')).exists() || root.child('super_admins').child(auth.uid).exists())))",
       ".write": false,
       "$id": {
-        ".write": "auth != null ? (newData.exists() || (auth.token.email != null && (root.child('super_admins').child(auth.token.email.toLowerCase().replace('.', '_').replace('@', '_at_')).exists() || root.child('super_admins').child(auth.uid).exists()))) : !data.exists()"
+        ".write": "auth != null ? (newData.exists() || (auth.token.email != null && (root.child('super_admins').child(auth.token.email.toLowerCase().replace('.', '_').replace('@', '_at_')).exists() || root.child('super_admins').child(auth.uid).exists()))) : (newData.exists() && (!data.exists() || !data.child('status').exists() || data.child('status').val() === 'PENDING'))"
       }
     },
     "supplier_registration_requests": {
       ".read": "auth != null && ((auth.token.email != null && root.child('members').child(auth.token.email.toLowerCase().replace('.', '_').replace('@', '_at_')).child('active').val() === true) || (auth.token.email != null && (root.child('super_admins').child(auth.token.email.toLowerCase().replace('.', '_').replace('@', '_at_')).exists() || root.child('super_admins').child(auth.uid).exists())))",
       ".write": false,
       "$id": {
-        ".write": "auth != null ? (newData.exists() || (auth.token.email != null && (root.child('super_admins').child(auth.token.email.toLowerCase().replace('.', '_').replace('@', '_at_')).exists() || root.child('super_admins').child(auth.uid).exists()))) : !data.exists()"
+        ".write": "auth != null ? (newData.exists() || (auth.token.email != null && (root.child('super_admins').child(auth.token.email.toLowerCase().replace('.', '_').replace('@', '_at_')).exists() || root.child('super_admins').child(auth.uid).exists()))) : (newData.exists() && (!data.exists() || !data.child('status').exists() || data.child('status').val() === 'PENDING'))"
       }
     },
     "bin": {
@@ -221,6 +221,10 @@
       "$key": {
         ".write": "auth != null && (auth.token.email != null && (root.child('super_admins').child(auth.token.email.toLowerCase().replace('.', '_').replace('@', '_at_')).exists() || root.child('super_admins').child(auth.uid).exists()))"
       }
+    },
+    "bin_meta": {
+      ".read": false,
+      ".write": false
     },
     "tombstones": {
       ".read": "auth != null && (auth.token.email != null && (root.child('super_admins').child(auth.token.email.toLowerCase().replace('.', '_').replace('@', '_at_')).exists() || root.child('super_admins').child(auth.uid).exists()))",

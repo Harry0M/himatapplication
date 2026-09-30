@@ -20,6 +20,7 @@ const BrandsView = lazy(() => import("./views/BrandsView").then((m) => ({ defaul
 const TransportersView = lazy(() => import("./views/TransportersView").then((m) => ({ default: m.TransportersView })))
 const MarketsView = lazy(() => import("./views/MarketsView").then((m) => ({ default: m.MarketsView })))
 const DeletionsView = lazy(() => import("./views/DeletionsView").then((m) => ({ default: m.DeletionsView })))
+const BinView = lazy(() => import("./views/BinView").then((m) => ({ default: m.BinView })))
 const CustomerRegistrationView = lazy(() =>
   import("./views/CustomerRegistrationView").then((m) => ({ default: m.CustomerRegistrationView }))
 )
@@ -183,6 +184,8 @@ function MainLayout() {
         return <RequestsView onNavigate={navigate} />
       case "deletions":
         return <DeletionsView />
+      case "bin":
+        return <BinView />
       case "agent":
         return <AgentPortalView />
       default:

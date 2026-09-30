@@ -70,6 +70,7 @@ import com.example.ui.screens.ChequePdcScreen
 import com.example.ui.screens.CustomerDetailScreen
 import com.example.ui.screens.BrandDetailScreen
 import com.example.ui.screens.CustomerReportScreen
+import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.CustomerOrderReportScreen
 import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.DeletionRequestsScreen
@@ -897,6 +898,8 @@ fun HimatApp(viewModel: HimatViewModel = viewModel()) {
                 AppScreen.PROFILE -> ProfileScreen(viewModel = viewModel, onBack = goBack)
 
                 AppScreen.DELETION_REQUESTS -> DeletionRequestsScreen(viewModel = viewModel, onBack = goBack)
+
+                AppScreen.SETTINGS -> SettingsScreen(viewModel = viewModel, onBack = goBack)
 
                 AppScreen.LEADS -> LeadsScreen(viewModel = viewModel, onBack = goBack)
 

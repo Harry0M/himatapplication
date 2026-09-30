@@ -10,6 +10,7 @@ import {
   LogOut,
   Sparkles,
   ShieldAlert,
+  Trash2,
   Tag,
   Compass,
   Package,
@@ -46,6 +47,7 @@ export type ActiveTab =
   | "markets"
   | "requests"
   | "deletions"
+  | "bin"
   | "agent"
 
 export const ALL_TABS: ActiveTab[] = [
@@ -67,6 +69,7 @@ export const ALL_TABS: ActiveTab[] = [
   "markets",
   "requests",
   "deletions",
+  "bin",
   "agent",
 ]
 
@@ -78,7 +81,11 @@ export const ALL_TABS: ActiveTab[] = [
  */
 export function tabsForRole(role: AppRole | null): ActiveTab[] {
   if (role === "agent") return ["agent", "orders"]
-  if (role === "staff") return ALL_TABS.filter((t) => t !== "requests" && t !== "deletions" && t !== "agent")
+  // The bin is admins only. Staff never see it, and the Cloud Functions behind it check ownership
+  // again anyway — this list decides what is shown, not what is allowed.
+  if (role === "staff") {
+    return ALL_TABS.filter((t) => t !== "requests" && t !== "deletions" && t !== "bin" && t !== "agent")
+  }
   if (role === "admin") return ALL_TABS.filter((t) => t !== "agent")
   return []
 }
@@ -107,6 +114,7 @@ export const TAB_TITLES: Record<ActiveTab, string> = {
   markets: "Markets",
   requests: "Registration Requests",
   deletions: "Deletions",
+  bin: "Bin",
   agent: "My Customers",
 }
 
@@ -224,6 +232,7 @@ export function Sidebar({ activeTab, setActiveTab, isOpen, onClose }: SidebarPro
                 badge: count(pendingDeletionsCount),
                 badgeVariant: "destructive",
               },
+              { id: "bin", label: "Bin", icon: Trash2 },
             ],
           },
         ]

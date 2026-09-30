@@ -832,6 +832,43 @@ class FirebaseRtdbService(
         }
     }
 
+    /**
+     * Writes who is about to remove a record, immediately before it is removed.
+     *
+     * Nothing in the app reads these fields on a record that is on its way out. They exist for the
+     * copy the office keeps: the bin is filled by a server-side trigger that sees the record as it
+     * was at the moment of deletion, so whatever is stamped here is what the bin can say about who
+     * threw it away. Without it, an admin deleting something directly leaves an anonymous entry.
+     *
+     * Awaited so the stamp lands first, and silent on failure: an anonymous bin entry is a small loss
+     * next to a delete that refuses to happen.
+     */
+    suspend fun stampDeleter(
+        node: String,
+        id: Long,
+        deletedBy: String,
+        email: String,
+        role: String
+    ) = withContext(Dispatchers.IO) {
+        try {
+            withTimeoutOrNull(6000L) {
+                suspendCancellableCoroutine<Unit> { cont ->
+                    rootRef.child(node).child(id.toString()).updateChildren(
+                        mapOf(
+                            "deletedBy" to deletedBy,
+                            "deletedByEmail" to email,
+                            "deletedByRole" to role,
+                            "deletedAt" to System.currentTimeMillis()
+                        )
+                    ).addOnCompleteListener { if (cont.isActive) cont.resumeWith(Result.success(Unit)) }
+                }
+            }
+            Unit
+        } catch (_: Exception) {
+            Unit
+        }
+    }
+
     suspend fun recordDeletionRequest(
         collection: String,
         itemId: Long,

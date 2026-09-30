@@ -389,21 +389,21 @@ object PdfGenerator {
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         canvas.drawText("CUSTOMER / SHOP DETAILS", 53f, y + 18f, paint)
 
-        val customerBrand = (customer?.firmName?.takeIf { it.isNotBlank() } ?: customer?.name ?: visit.customerName).uppercase()
+        // One resolver decides every printed value, so the options sheet can show the sender exactly
+        // what is going on the page and let them correct it for this PDF without touching the master.
+        val fields = ReportFields.resolve(visit, customer, entries, options.overrides)
+
+        val customerBrand = fields.firmName.uppercase()
         paint.color = primaryDark
         paint.textSize = 11.5f
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         val dispBrand = if (customerBrand.length > 34) customerBrand.take(32) + ".." else customerBrand
         canvas.drawText(dispBrand, 38f, y + 32f, paint)
 
-        val customerOwner = customer?.name.orEmpty().ifBlank { "Mr. Jitendra Bhai" }
-        val customerPhone = if (options.showPhone) customer?.phone.orEmpty().ifBlank { "+91 98765 43210" } else "—"
-        val customerGstin = if (options.showGstin) (customer?.gstin?.takeIf { it.isNotBlank() } ?: "Unregistered") else "—"
-        val customerAddress = if (options.showAddress) {
-            customer?.shopAddress?.takeIf { it.isNotBlank() }
-                ?: customer?.city?.let { "$it${if (!customer.state.isNullOrBlank()) ", ${customer.state}" else ""}" }
-                ?: "Ahiliyanagar, Maharashtra"
-        } else "—"
+        val customerOwner = fields.proprietor
+        val customerPhone = if (options.showPhone) fields.phone else "—"
+        val customerGstin = if (options.showGstin) fields.gstin else "—"
+        val customerAddress = if (options.showAddress) fields.address else "—"
 
         val kvStartY = y + 43f
         val kvSpacing = 9.8f
@@ -434,23 +434,13 @@ object PdfGenerator {
             paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             canvas.drawText("TRANSPORT & BOOKING DETAILS", 330f, y + 18f, paint)
 
-            val primaryTransporter = entries.find { it.transporter.isNotBlank() }?.transporter
-                ?: customer?.preferredTransporterName?.takeIf { it.isNotBlank() }
-                ?: "Shree Maruti Transport"
-            val bookingStation = customer?.transportPreference?.takeIf { it.isNotBlank() }
-                ?: customer?.city?.takeIf { it.isNotBlank() }?.let { "$it (${it.take(3).uppercase()})" }
-                ?: "Ahmedabad (ADI)"
-            val lrNo = "—"
-            val dispatchDate = visit.date.ifBlank { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
-            val deliveryTo = customer?.city?.let { "$it${if (!customer.state.isNullOrBlank()) ", ${customer.state}" else ""}" } ?: "Ahiliyanagar, Maharashtra"
-
             // Build filtered list of transport rows based on options
             val transRows = mutableListOf<Pair<String, String>>()
-            if (options.showTransporter)    transRows += "Transporter" to primaryTransporter
-            if (options.showBookingStation) transRows += "Booking Station" to bookingStation
-            if (options.showLrNo)           transRows += "LR / Booking No." to lrNo
-            if (options.showDispatchDate)   transRows += "Dispatch Date" to dispatchDate
-            if (options.showDeliveryTo)     transRows += "Delivery To" to deliveryTo
+            if (options.showTransporter)    transRows += "Transporter" to fields.transporter
+            if (options.showBookingStation) transRows += "Booking Station" to fields.bookingStation
+            if (options.showLrNo)           transRows += "LR / Booking No." to fields.lrNo
+            if (options.showDispatchDate)   transRows += "Dispatch Date" to fields.dispatchDate
+            if (options.showDeliveryTo)     transRows += "Delivery To" to fields.deliveryTo
 
             val colonXTrans = 385f
             val valXTrans = 393f
@@ -470,6 +460,53 @@ object PdfGenerator {
         }
 
         y += cardHeight + 8f
+
+        // The sender's own lines, if they added any. Drawn as their own strip between the customer
+        // card and the table rather than squeezed into the card, which is a fixed 74f and would
+        // overflow into the table the moment somebody added a third field.
+        val extraFields = options.usableCustomFields()
+        if (extraFields.isNotEmpty()) {
+            val perRow = 2
+            val rows = (extraFields.size + perRow - 1) / perRow
+            val stripHeight = 14f + (rows * 11f)
+
+            paint.style = Paint.Style.FILL
+            paint.color = Color.rgb(248, 250, 252) // slate-50
+            canvas.drawRoundRect(RectF(28f, y, 567f, y + stripHeight), 4f, 4f, paint)
+            canvas.drawRoundRect(RectF(28f, y, 567f, y + stripHeight), 4f, 4f, borderPaint)
+
+            paint.color = textHeader
+            paint.textSize = 6.6f
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            canvas.drawText("ADDITIONAL DETAILS", 38f, y + 10f, paint)
+
+            val colWidth = (567f - 28f - 20f) / perRow
+            extraFields.forEachIndexed { index, field ->
+                val col = index % perRow
+                val row = index / perRow
+                val x = 38f + (col * colWidth)
+                val lineY = y + 21f + (row * 11f)
+
+                paint.color = textMuted
+                paint.textSize = 7.2f
+                paint.typeface = Typeface.DEFAULT
+                val label = if (field.label.length > 22) field.label.take(20) + ".." else field.label
+                canvas.drawText("$label:", x, lineY, paint)
+
+                paint.color = textDark
+                paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                val labelWidth = paint.measureText("$label:") + 4f
+                val room = colWidth - labelWidth - 8f
+                var value = field.value
+                while (value.isNotEmpty() && paint.measureText(value) > room) {
+                    value = value.dropLast(1)
+                }
+                if (value.length < field.value.length && value.length > 2) value = value.dropLast(2) + ".."
+                canvas.drawText(value, x + labelWidth, lineY, paint)
+            }
+
+            y += stripHeight + 8f
+        }
 
         // 11 Table Columns across 539f (from 28f to 567f):
         // Col boundaries: 28f, 48f, 96f, 154f, 218f, 244f, 286f, 338f, 386f, 434f, 494f, 567f
@@ -655,39 +692,44 @@ object PdfGenerator {
 
         y += 8f
 
-        // Totals Box (Right aligned: 347f..567f, width 220f)
-        val totLeft = 347f
-        val totRight = 567f
-        val totWidth = totRight - totLeft
+        // Totals Box (Right aligned: 347f..567f, width 220f).
+        //
+        // The "Amount summary" switch used to have no effect here — the totals were drawn whatever the
+        // sender chose. It is honoured now, and when it is off the page closes up instead of leaving
+        // the gap where the figures would have been.
+        if (options.showAmountSummary) {
+            val totLeft = 347f
+            val totRight = 567f
 
-        paint.color = textDark
-        paint.textSize = 8f
-        paint.typeface = Typeface.DEFAULT
-        canvas.drawText("Subtotal (${totalPieces} Pcs)", totLeft + 8f, y + 10f, paint)
-        val subStr = "₹" + String.format(Locale.US, "%,.2f", totalAmount)
-        canvas.drawText(subStr, totRight - 8f - paint.measureText(subStr), y + 10f, paint)
+            paint.color = textDark
+            paint.textSize = 8f
+            paint.typeface = Typeface.DEFAULT
+            canvas.drawText("Subtotal (${totalPieces} Pcs)", totLeft + 8f, y + 10f, paint)
+            val subStr = "₹" + String.format(Locale.US, "%,.2f", totalAmount)
+            canvas.drawText(subStr, totRight - 8f - paint.measureText(subStr), y + 10f, paint)
 
-        canvas.drawText("Garment GST (5%)", totLeft + 8f, y + 22f, paint)
-        val gstStr = "₹" + String.format(Locale.US, "%,.2f", totalGst)
-        canvas.drawText(gstStr, totRight - 8f - paint.measureText(gstStr), y + 22f, paint)
+            canvas.drawText("Garment GST (5%)", totLeft + 8f, y + 22f, paint)
+            val gstStr = "₹" + String.format(Locale.US, "%,.2f", totalGst)
+            canvas.drawText(gstStr, totRight - 8f - paint.measureText(gstStr), y + 22f, paint)
 
-        // Grand Total highlighted pill row
-        val grandTotal = totalAmount + totalGst
-        val pillTop = y + 28f
-        val pillHeight = 20f
-        paint.color = Color.rgb(238, 242, 246) // Soft slate-teal/blue background #eef2f6
-        canvas.drawRoundRect(RectF(totLeft, pillTop, totRight, pillTop + pillHeight), 4f, 4f, paint)
+            // Grand Total highlighted pill row
+            val grandTotal = totalAmount + totalGst
+            val pillTop = y + 28f
+            val pillHeight = 20f
+            paint.color = Color.rgb(238, 242, 246) // Soft slate-teal/blue background #eef2f6
+            canvas.drawRoundRect(RectF(totLeft, pillTop, totRight, pillTop + pillHeight), 4f, 4f, paint)
 
-        paint.color = primaryDark
-        paint.textSize = 10f
-        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        canvas.drawText("Grand Total", totLeft + 8f, pillTop + 14f, paint)
+            paint.color = primaryDark
+            paint.textSize = 10f
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            canvas.drawText("Grand Total", totLeft + 8f, pillTop + 14f, paint)
 
-        val grandStr = "₹" + String.format(Locale.US, "%,.2f", grandTotal)
-        paint.textSize = 11f
-        canvas.drawText(grandStr, totRight - 8f - paint.measureText(grandStr), pillTop + 14.5f, paint)
+            val grandStr = "₹" + String.format(Locale.US, "%,.2f", grandTotal)
+            paint.textSize = 11f
+            canvas.drawText(grandStr, totRight - 8f - paint.measureText(grandStr), pillTop + 14.5f, paint)
 
-        y += 56f
+            y += 56f
+        }
 
         // Bottom 3-Column Info Card (Height: 74f)
         val bCardHeight = 74f
@@ -813,7 +855,9 @@ object PdfGenerator {
         // miss; the one thing a customer must not miss is that this is a draft, and the one thing the
         // transporter must not miss is one bill per LR. So both live here, and the policy gets its own
         // colour so the two lines do not read as one sentence.
-        val alertHeight = 29f
+        // A note the sender typed gets its own third line, so the ribbon grows rather than overlapping
+        val senderNote = options.customNote.trim()
+        val alertHeight = if (senderNote.isNotBlank()) 40f else 29f
         paint.color = Color.rgb(254, 242, 242) // #fef2f2
         canvas.drawRoundRect(RectF(28f, y, 567f, y + alertHeight), 4f, 4f, paint)
         val alertBorderPaint = Paint().apply {
@@ -863,6 +907,23 @@ object PdfGenerator {
         paint.color = Color.rgb(146, 64, 14) // amber-800, clearly not the red above
         canvas.drawText(policyText, 55f, y + 23f, paint)
 
+        // Line 3 — whatever the sender wanted to say about this particular PDF
+        if (senderNote.isNotBlank()) {
+            paint.color = Color.rgb(120, 53, 15)
+            paint.textSize = 7f
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            canvas.drawText("NOTE:", 49f, y + 35f, paint)
+
+            paint.typeface = Typeface.DEFAULT
+            var note = senderNote.replace(Regex("\\s+"), " ")
+            val room = 567f - 82f - 12f
+            while (note.isNotEmpty() && paint.measureText(note) > room) {
+                note = note.dropLast(1)
+            }
+            if (note.length < senderNote.length && note.length > 2) note = note.dropLast(2) + ".."
+            canvas.drawText(note, 78f, y + 35f, paint)
+        }
+
         // Footer at bottom of page
         val footerY = 822f
         canvas.drawLine(28f, footerY - 10f, 567f, footerY - 10f, borderPaint)
@@ -884,6 +945,696 @@ object PdfGenerator {
         val reportBrand = customer?.brandName()?.takeIf { it.isNotBlank() } ?: visit.customerName
         // "Quotation", not "Report": what the customer receives is a priced offer, not a statement,
         // and the file name is the first thing they read in the chat.
+        val file = File(outputDir, PdfFileNames.build(reportBrand, "Customer Quotation", visit.visitCode))
+        FileOutputStream(file).use { out ->
+            pdfDocument.writeTo(out)
+        }
+        pdfDocument.close()
+        return file
+    }
+
+    // =========================================================================
+    // 1b. CUSTOMER QUOTATION — RULED FORM (GST / e-way bill style)
+    // =========================================================================
+
+    /**
+     * The same quotation as [generateCustomerDayReport], drawn as a ruled form.
+     *
+     * Why a second shape of one document: the card layout reads well on a phone, but a transport
+     * office, a check-post clerk or an accountant reads a GST bill and an e-way bill all day — every
+     * field in its own box, one grid of rows and columns, nothing to hunt for. Handing them the same
+     * numbers in the shape they already know is the difference between a glance and a phone call.
+     *
+     * It honours the same [options] as the card layout, and it honours them further: the column set is
+     * built from the toggles rather than fixed, so switching off Brand or Salesman genuinely narrows
+     * the grid instead of leaving a dash in a column nobody wanted.
+     */
+    fun generateCustomerRuledFormReport(
+        context: Context,
+        visit: VisitEntity,
+        customer: CustomerEntity?,
+        salesman: EmployeeEntity?,
+        entries: List<PurchaseEntryEntity>,
+        options: com.example.ui.components.CustomerReportOptions = com.example.ui.components.CustomerReportOptions()
+    ): File {
+        val pdfDocument = PdfDocument()
+        var pageNum = 1
+        var pageInfo = PdfDocument.PageInfo.Builder(595, 842, pageNum).create()
+        var page = pdfDocument.startPage(pageInfo)
+        var canvas: Canvas = page.canvas
+
+        // One margin for every band, so all the boxes line up down the page
+        val left = 24f
+        val right = 571f
+        val metaX = 392f
+
+        val ink = Color.rgb(15, 23, 42)
+        val inkMuted = Color.rgb(90, 103, 122)
+        val ruleColor = Color.rgb(71, 85, 105)
+        val hairColor = Color.rgb(176, 188, 202)
+        val capBg = Color.rgb(241, 245, 249)
+        val totalBg = Color.rgb(226, 232, 240)
+        val amber = Color.rgb(180, 83, 9)
+
+        val paint = Paint().apply { isAntiAlias = true }
+        val rulePaint = Paint().apply {
+            isAntiAlias = true
+            color = ruleColor
+            style = Paint.Style.STROKE
+            strokeWidth = 1f
+        }
+        val hairPaint = Paint().apply {
+            isAntiAlias = true
+            color = hairColor
+            style = Paint.Style.STROKE
+            strokeWidth = 0.7f
+        }
+
+        val tfBold = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        val tfPlain = Typeface.DEFAULT
+        val tfItalic = Typeface.create(Typeface.DEFAULT, Typeface.ITALIC)
+
+        val profile = AgencyProfile.load(context)
+        // Every printed value comes from here, including anything the sender corrected in the sheet
+        val fields = ReportFields.resolve(visit, customer, entries, options.overrides)
+        val docDate = fields.dispatchDate
+
+        // ── Columns, built from what the sender chose to show ─────────────────
+        val grid = QuotationGrid.forOptions(options, left, right)
+        val cols = grid.columns
+        val edges = grid.edges
+        val idxPcs = grid.indexOf(GridColumnKey.PCS)
+        val idxTaxable = grid.indexOf(GridColumnKey.TAXABLE)
+        val idxGst = grid.indexOf(GridColumnKey.GST)
+        val idxPack = grid.indexOf(GridColumnKey.PACK)
+
+        /** Draws text inside cell [index], clipped to the cell and placed per the column's alignment. */
+        fun cellText(index: Int, text: String, baseline: Float, p: Paint) {
+            val shown = QuotationGrid.clipToWidth(text, grid.cellWidth(index)) { p.measureText(it) }
+            if (shown.isEmpty()) return
+            canvas.drawText(shown, grid.textX(index, p.measureText(shown)), baseline, p)
+        }
+
+        /** A tinted caption strip at the top of a box — what makes each box announce itself. */
+        fun capStrip(boxLeft: Float, boxRight: Float, top: Float, text: String) {
+            paint.color = capBg
+            paint.typeface = tfPlain
+            canvas.drawRect(boxLeft, top, boxRight, top + 14f, paint)
+            canvas.drawLine(boxLeft, top + 14f, boxRight, top + 14f, hairPaint)
+            paint.color = ruleColor
+            paint.textSize = 6.3f
+            paint.typeface = tfBold
+            val caption = QuotationGrid.clipToWidth(text, boxRight - boxLeft - 12f) { paint.measureText(it) }
+            canvas.drawText(caption, boxLeft + 6f, top + 10f, paint)
+        }
+
+        /**
+         * A "Key : Value" line. Both halves are clipped: the sender types their own labels in the
+         * options sheet, and a long one would otherwise run straight through the colon.
+         */
+        fun kvLine(x: Float, baseline: Float, key: String, value: String, boxRight: Float, bold: Boolean = false) {
+            paint.color = inkMuted
+            paint.textSize = 6.9f
+            paint.typeface = tfPlain
+            val colonX = x + 68f
+            canvas.drawText(QuotationGrid.clipToWidth(key, colonX - x - 3f) { paint.measureText(it) }, x, baseline, paint)
+            canvas.drawText(":", colonX, baseline, paint)
+            paint.color = ink
+            paint.typeface = if (bold) tfBold else tfPlain
+            val valueX = colonX + 5f
+            val shown = QuotationGrid.clipToWidth(value, boxRight - valueX - 5f) { paint.measureText(it) }
+            canvas.drawText(shown, valueX, baseline, paint)
+        }
+
+        var y = 94f
+
+        fun drawTitleBand() {
+            val top = 24f
+            val bottom = 88f
+            paint.color = Color.WHITE
+            canvas.drawRect(left, top, right, bottom, paint)
+            canvas.drawRect(left, top, right, bottom, rulePaint)
+            canvas.drawLine(metaX, top, metaX, bottom, rulePaint)
+
+            val logoBitmap = try {
+                BitmapFactory.decodeResource(context.resources, R.drawable.himat_logo)
+            } catch (_: Exception) {
+                null
+            }
+            val logoHeight = 32f
+            val logoWidth = if (logoBitmap != null) {
+                logoHeight * (logoBitmap.width.toFloat() / logoBitmap.height.toFloat())
+            } else 0f
+            if (logoBitmap != null) {
+                canvas.drawBitmap(
+                    logoBitmap,
+                    null,
+                    RectF(left + 7f, top + 8f, left + 7f + logoWidth, top + 8f + logoHeight),
+                    paint
+                )
+            }
+            val textX = if (logoBitmap != null) left + 7f + logoWidth + 8f else left + 8f
+
+            paint.color = ink
+            paint.textSize = 14.5f
+            paint.typeface = tfBold
+            canvas.drawText(profile.businessName.uppercase(), textX, top + 20f, paint)
+
+            paint.color = amber
+            paint.textSize = 6.3f
+            canvas.drawText(profile.tagline.uppercase(), textX, top + 30f, paint)
+
+            paint.color = Color.rgb(51, 65, 85)
+            paint.textSize = 6.6f
+            paint.typeface = Typeface.DEFAULT_BOLD
+            val detailsWidth = metaX - 8f - textX
+            drawTextFitted(canvas, paint, COMPANY_ADDRESS, textX, top + 42f, detailsWidth)
+            drawTextFitted(canvas, paint, COMPANY_CONTACT, textX, top + 52f, detailsWidth)
+
+            // Right half: what this document is, then its reference rows in their own boxes
+            paint.color = ink
+            paint.textSize = 12.5f
+            paint.typeface = tfBold
+            canvas.drawText("CUSTOMER QUOTATION", metaX + 7f, top + 19f, paint)
+
+            paint.color = Color.rgb(153, 27, 27)
+            paint.textSize = 6.2f
+            paint.typeface = tfBold
+            canvas.drawText("ESTIMATE ONLY — NOT A TAX INVOICE", metaX + 7f, top + 28f, paint)
+
+            val metaTop = top + 33f
+            val metaRowHeight = (bottom - metaTop) / 3f
+            val metaKeys = arrayOf("Quotation No.", "Date", "Salesman")
+            val metaVals = arrayOf(
+                visit.visitCode.ifBlank { "—" },
+                docDate,
+                (salesman?.name ?: visit.employeeName).ifBlank { "—" }
+            )
+            for (i in metaKeys.indices) {
+                val rowTop = metaTop + (i * metaRowHeight)
+                if (i > 0) canvas.drawLine(metaX, rowTop, right, rowTop, hairPaint)
+                val baseline = rowTop + metaRowHeight - 3.4f
+                paint.color = inkMuted
+                paint.textSize = 6.5f
+                paint.typeface = tfPlain
+                canvas.drawText(metaKeys[i], metaX + 7f, baseline, paint)
+                paint.color = ink
+                paint.typeface = tfBold
+                val valueX = metaX + 72f
+                val shown = QuotationGrid.clipToWidth(metaVals[i], right - valueX - 5f) { paint.measureText(it) }
+                canvas.drawText(shown, valueX, baseline, paint)
+            }
+        }
+
+        fun drawFooter() {
+            val footerY = 824f
+            canvas.drawLine(left, footerY - 11f, right, footerY - 11f, hairPaint)
+
+            paint.color = amber
+            paint.textSize = 7f
+            paint.typeface = tfBold
+            canvas.drawText(profile.tagline.uppercase(), left, footerY, paint)
+
+            val footerRight = profile.pdfFooterLine()
+            if (footerRight.isNotBlank()) {
+                paint.color = ink
+                canvas.drawText(footerRight, right - paint.measureText(footerRight), footerY, paint)
+            }
+
+            paint.color = inkMuted
+            paint.textSize = 6.2f
+            paint.typeface = tfPlain
+            val pageLabel = "Page $pageNum"
+            canvas.drawText(pageLabel, (595f - paint.measureText(pageLabel)) / 2f, footerY + 9f, paint)
+        }
+
+        fun startNextPage() {
+            pdfDocument.finishPage(page)
+            pageNum++
+            pageInfo = PdfDocument.PageInfo.Builder(595, 842, pageNum).create()
+            page = pdfDocument.startPage(pageInfo)
+            canvas = page.canvas
+            drawTitleBand()
+            drawFooter()
+            y = 94f
+        }
+
+        fun drawTableHeader() {
+            val headerHeight = 17f
+            paint.color = capBg
+            paint.typeface = tfPlain
+            canvas.drawRect(left, y, right, y + headerHeight, paint)
+
+            paint.color = ink
+            paint.textSize = 6.1f
+            paint.typeface = tfBold
+            cols.forEachIndexed { index, column -> cellText(index, column.title, y + 11.2f, paint) }
+
+            canvas.drawRect(left, y, right, y + headerHeight, rulePaint)
+            for (i in 1 until edges.size - 1) {
+                canvas.drawLine(edges[i], y, edges[i], y + headerHeight, rulePaint)
+            }
+            y += headerHeight
+        }
+
+        drawTitleBand()
+        drawFooter()
+
+        // ── Party band: who is buying (left) and how it travels (right) ───────
+        val partyTop = y
+        val partySplit = if (options.showTransportSection) 302f else right
+
+        val customerFirm = fields.firmName.uppercase()
+
+        val custRows = buildList {
+            add("Proprietor" to fields.proprietor)
+            if (options.showPhone) add("Phone" to fields.phone)
+            if (options.showGstin) add("GSTIN" to fields.gstin)
+            if (options.showAddress) add("Address" to fields.address)
+            if (fields.cityState != ReportFields.BLANK) add("City / State" to fields.cityState)
+        }
+
+        val transRows = buildList {
+            if (!options.showTransportSection) return@buildList
+            if (options.showTransporter) add("Transporter" to fields.transporter)
+            if (options.showBookingStation) add("Booking Station" to fields.bookingStation)
+            if (options.showLrNo) add("LR / Booking No." to fields.lrNo)
+            if (options.showDispatchDate) add("Dispatch Date" to fields.dispatchDate)
+            if (options.showDeliveryTo) add("Delivery To" to fields.deliveryTo)
+        }
+
+        val rowStep = 10.5f
+        val custFirmBaseline = partyTop + 34f
+        val custRowStart = partyTop + 47f
+        val transRowStart = partyTop + 34f
+        val custBottom = custRowStart + ((custRows.size - 1).coerceAtLeast(0) * rowStep)
+        val transBottom = transRowStart + ((transRows.size - 1).coerceAtLeast(0) * rowStep)
+        val partyBottom = maxOf(custBottom, transBottom) + 8f
+
+        paint.color = Color.WHITE
+        canvas.drawRect(left, partyTop, right, partyBottom, paint)
+        capStrip(left, partySplit, partyTop, "CUSTOMER / BILL TO")
+
+        paint.color = ink
+        paint.textSize = 10.5f
+        paint.typeface = tfBold
+        val shownFirm = QuotationGrid.clipToWidth(customerFirm, partySplit - left - 14f) { paint.measureText(it) }
+        canvas.drawText(shownFirm, left + 7f, custFirmBaseline, paint)
+
+        custRows.forEachIndexed { index, (key, value) ->
+            kvLine(left + 7f, custRowStart + (index * rowStep), key, value, partySplit, bold = index == 0)
+        }
+
+        if (options.showTransportSection) {
+            capStrip(partySplit, right, partyTop, "TRANSPORT & BOOKING")
+            canvas.drawLine(partySplit, partyTop, partySplit, partyBottom, rulePaint)
+            transRows.forEachIndexed { index, (key, value) ->
+                kvLine(partySplit + 7f, transRowStart + (index * rowStep), key, value, right, bold = index == 0)
+            }
+        }
+        canvas.drawRect(left, partyTop, right, partyBottom, rulePaint)
+        y = partyBottom
+
+        // ── The sender's own lines, each in its own cell ──────────────────────
+        val extraFields = options.usableCustomFields()
+        if (extraFields.isNotEmpty()) {
+            val perRow = 2
+            val extraRows = (extraFields.size + perRow - 1) / perRow
+            val extraTop = y
+            val extraBottom = extraTop + 14f + (extraRows * 12f)
+
+            paint.color = Color.WHITE
+            canvas.drawRect(left, extraTop, right, extraBottom, paint)
+            capStrip(left, right, extraTop, "ADDITIONAL DETAILS")
+
+            val cellWidth = (right - left) / perRow
+            extraFields.forEachIndexed { index, field ->
+                val col = index % perRow
+                val row = index / perRow
+                val cellLeft = left + (col * cellWidth)
+                val cellRight = cellLeft + cellWidth
+                val rowTop = extraTop + 14f + (row * 12f)
+                if (row > 0) canvas.drawLine(left, rowTop, right, rowTop, hairPaint)
+                if (col > 0) canvas.drawLine(cellLeft, rowTop, cellLeft, rowTop + 12f, hairPaint)
+                kvLine(cellLeft + 7f, rowTop + 8.5f, field.label, field.value, cellRight)
+            }
+            canvas.drawRect(left, extraTop, right, extraBottom, rulePaint)
+            y = extraBottom
+        }
+
+        // ── The order grid ────────────────────────────────────────────────────
+        y += 6f
+        drawTableHeader()
+
+        var totalPieces = 0
+        var totalTaxable = 0.0
+        var totalGst = 0.0
+        var totalCases = 0
+        var totalLoose = 0
+
+        if (entries.isEmpty()) {
+            val emptyHeight = 18f
+            paint.color = inkMuted
+            paint.textSize = 7f
+            paint.typeface = tfItalic
+            val message = "No orders recorded for this trip."
+            canvas.drawText(message, left + 8f, y + 12f, paint)
+            canvas.drawRect(left, y, right, y + emptyHeight, rulePaint)
+            y += emptyHeight
+        }
+
+        entries.forEachIndexed { index, item ->
+            val packNote = item.mixedPackNote?.trim().orEmpty()
+            val rowHeight = if (packNote.isEmpty()) 14.5f else 23f
+
+            // A row is never split across pages — it is broken before it starts
+            if (y + rowHeight > 700f) {
+                startNextPage()
+                drawTableHeader()
+            }
+
+            totalPieces += item.pieces
+            totalTaxable += item.totalAmount
+            totalGst += item.gstAmount
+            totalCases += item.caseCount
+            totalLoose += item.loosePieces
+
+            val rowTop = y
+            val baseline = rowTop + 10f
+
+            paint.color = ink
+            paint.textSize = 6.7f
+            paint.typeface = tfPlain
+
+            cols.forEachIndexed { colIndex, column ->
+                val text = when (column.key) {
+                    GridColumnKey.SR -> "${index + 1}"
+                    GridColumnKey.ORDER_NO -> item.orderNo.ifBlank { "—" }
+                    GridColumnKey.BRAND -> item.supplierName.ifBlank { "—" }
+                    GridColumnKey.ITEM -> item.itemCode.ifBlank { "—" }
+                    GridColumnKey.PCS -> "${item.pieces}"
+                    GridColumnKey.RATE -> String.format(Locale.US, "%,.2f", item.rate)
+                    GridColumnKey.TAXABLE -> String.format(Locale.US, "%,.2f", item.totalAmount)
+                    GridColumnKey.GST -> String.format(Locale.US, "%,.2f", item.gstAmount)
+                    GridColumnKey.PACK -> if (item.loosePieces > 0) {
+                        "${item.caseCount}c + ${item.loosePieces}L"
+                    } else {
+                        "${item.caseCount} cs"
+                    }
+                    GridColumnKey.DATE ->
+                        (item.orderDate.takeIf { it.isNotBlank() } ?: visit.date).take(10).ifBlank { "—" }
+
+                    GridColumnKey.SALESMAN -> item.salesmanName.takeIf { it.isNotBlank() }
+                        ?: (salesman?.name ?: visit.employeeName).ifBlank { "—" }
+
+                    GridColumnKey.STATUS -> item.deliveryStatus.ifBlank { "Pending" }
+                }
+                val cellPaint = if (column.key == GridColumnKey.TAXABLE) {
+                    Paint(paint).apply { typeface = tfBold }
+                } else {
+                    paint
+                }
+                cellText(colIndex, text, baseline, cellPaint)
+            }
+
+            // The packing note belongs to the row, so it runs under it across the whole grid rather
+            // than being squeezed into one narrow cell where it would be unreadable.
+            if (packNote.isNotEmpty()) {
+                val notePaint = Paint(paint).apply {
+                    textSize = 6f
+                    color = inkMuted
+                    typeface = tfItalic
+                }
+                val shownNote = QuotationGrid.clipToWidth(
+                    "Packing: ${packNote.replace(Regex("\\s+"), " ")}",
+                    right - edges[1] - 10f
+                ) { notePaint.measureText(it) }
+                canvas.drawText(shownNote, edges[1] + 3f, rowTop + 19f, notePaint)
+            }
+
+            y += rowHeight
+
+            // Every cell ruled: the vertical lines stop at the note line so the note reads as one strip
+            val verticalBottom = if (packNote.isEmpty()) y else rowTop + 14.5f
+            for (i in 1 until edges.size - 1) {
+                canvas.drawLine(edges[i], rowTop, edges[i], verticalBottom, hairPaint)
+            }
+            canvas.drawLine(left, rowTop, left, y, rulePaint)
+            canvas.drawLine(right, rowTop, right, y, rulePaint)
+            canvas.drawLine(left, y, right, y, hairPaint)
+        }
+
+        // ── Total row, on the same grid as the orders it adds up ──────────────
+        if (options.showAmountSummary) {
+            if (y + 18f > 706f) {
+                startNextPage()
+                drawTableHeader()
+            }
+            val totalTop = y
+            val totalHeight = 18f
+            paint.color = totalBg
+            paint.typeface = tfPlain
+            canvas.drawRect(left, totalTop, right, totalTop + totalHeight, paint)
+
+            paint.color = ink
+            paint.textSize = 7.2f
+            paint.typeface = tfBold
+            canvas.drawText("TOTAL", left + 7f, totalTop + 12f, paint)
+
+            if (idxPcs >= 0) cellText(idxPcs, "$totalPieces", totalTop + 12f, paint)
+            if (idxTaxable >= 0) {
+                cellText(idxTaxable, String.format(Locale.US, "%,.2f", totalTaxable), totalTop + 12f, paint)
+            }
+            if (idxGst >= 0) {
+                cellText(idxGst, String.format(Locale.US, "%,.2f", totalGst), totalTop + 12f, paint)
+            }
+
+            val caseSummary = if (totalLoose > 0) "$totalCases cs + $totalLoose L" else "$totalCases cs"
+            if (idxPack >= 0) cellText(idxPack, caseSummary, totalTop + 12f, paint)
+
+            canvas.drawRect(left, totalTop, right, totalTop + totalHeight, rulePaint)
+            // Skipped at edges[1] so "TOTAL" reads across the serial and order columns as one label
+            for (i in 2 until edges.size - 1) {
+                canvas.drawLine(edges[i], totalTop, edges[i], totalTop + totalHeight, hairPaint)
+            }
+            y += totalHeight
+        } else {
+            // Without a total row the grid would end on a hairline, lighter than the box around it
+            canvas.drawLine(left, y, right, y, rulePaint)
+        }
+
+        // Everything below needs about 200f; start a clean page rather than splitting it
+        if (y > 566f) startNextPage()
+
+        // ── Amount in words + the figures, side by side ───────────────────────
+        if (options.showAmountSummary) {
+            y += 7f
+            val sumTop = y
+            val sumBottom = sumTop + 58f
+            val sumSplit = 330f
+            val grandTotal = totalTaxable + totalGst
+
+            paint.color = Color.WHITE
+            canvas.drawRect(left, sumTop, right, sumBottom, paint)
+            capStrip(left, sumSplit, sumTop, "AMOUNT CHARGEABLE (IN WORDS)")
+            capStrip(sumSplit, right, sumTop, "SUMMARY")
+
+            paint.color = ink
+            paint.textSize = 7.4f
+            paint.typeface = tfBold
+            val words = convertNumberToWords(grandTotal.toLong())
+            val wordLines = wrapToWidth(paint, words, sumSplit - left - 14f, maxLines = 3)
+            wordLines.forEachIndexed { line, text ->
+                canvas.drawText(text, left + 7f, sumTop + 27f + (line * 9.5f), paint)
+            }
+
+            paint.color = inkMuted
+            paint.textSize = 6.3f
+            paint.typeface = tfItalic
+            canvas.drawText(
+                "Garment GST charged at 5%. Figures are an estimate against this trip.",
+                left + 7f,
+                sumBottom - 6f,
+                paint
+            )
+
+            // Right half: three ruled figure rows, the last one filled so the eye lands on it
+            val figures = listOf(
+                "Taxable Value ($totalPieces pcs)" to totalTaxable,
+                "GST (5%)" to totalGst
+            )
+            val figureRowHeight = 12f
+            figures.forEachIndexed { index, (label, amount) ->
+                val rowTop = sumTop + 14f + (index * figureRowHeight)
+                if (index > 0) canvas.drawLine(sumSplit, rowTop, right, rowTop, hairPaint)
+                paint.color = inkMuted
+                paint.textSize = 6.9f
+                paint.typeface = tfPlain
+                canvas.drawText(label, sumSplit + 7f, rowTop + 8.5f, paint)
+                paint.color = ink
+                paint.typeface = tfBold
+                val figure = formatInr(amount)
+                canvas.drawText(figure, right - 7f - paint.measureText(figure), rowTop + 8.5f, paint)
+            }
+
+            val grandTop = sumTop + 14f + (figures.size * figureRowHeight)
+            paint.color = ink
+            paint.typeface = tfPlain
+            canvas.drawRect(sumSplit, grandTop, right, sumBottom, paint)
+            paint.color = Color.WHITE
+            paint.textSize = 8.6f
+            paint.typeface = tfBold
+            canvas.drawText("GRAND TOTAL", sumSplit + 7f, grandTop + 14f, paint)
+            val grandStr = formatInr(grandTotal)
+            paint.textSize = 9.4f
+            canvas.drawText(grandStr, right - 7f - paint.measureText(grandStr), grandTop + 14.2f, paint)
+
+            canvas.drawLine(sumSplit, sumTop, sumSplit, sumBottom, rulePaint)
+            canvas.drawRect(left, sumTop, right, sumBottom, rulePaint)
+            y = sumBottom
+        }
+
+        // ── Declaration box: the two things nobody may miss, plus the sender's note ──
+        y += 7f
+        val senderNote = options.customNote.trim().replace(Regex("\\s+"), " ")
+        val declTop = y
+        val declBottom = declTop + if (senderNote.isNotBlank()) 60f else 46f
+
+        paint.color = Color.WHITE
+        canvas.drawRect(left, declTop, right, declBottom, paint)
+        capStrip(left, right, declTop, "DECLARATION & DISPATCH TERMS")
+
+        /**
+         * A bold lead-in followed by its sentence. The sentence is placed after whatever the lead-in
+         * actually measured rather than at a guessed offset, so the two never sit on top of each other.
+         */
+        fun declLine(baseline: Float, lead: String, body: String, leadColor: Int) {
+            paint.color = leadColor
+            paint.textSize = 6.9f
+            paint.typeface = tfBold
+            canvas.drawText(lead, left + 7f, baseline, paint)
+            val bodyX = left + 7f + paint.measureText(lead) + 5f
+            paint.typeface = tfPlain
+            val shown = QuotationGrid.clipToWidth(body, right - bodyX - 7f) { paint.measureText(it) }
+            canvas.drawText(shown, bodyX, baseline, paint)
+        }
+
+        declLine(
+            declTop + 26f,
+            "DRAFT BILL:",
+            "Not an actual invoice. Amounts are approximate and may vary from the final supplier invoice or dispatch quantity.",
+            Color.rgb(153, 27, 27)
+        )
+        declLine(
+            declTop + 38f,
+            "DISPATCH POLICY:",
+            "One Bill One LR is strictly mandatory.",
+            amber
+        )
+
+        if (senderNote.isNotBlank()) {
+            canvas.drawLine(left, declTop + 44f, right, declTop + 44f, hairPaint)
+            declLine(declTop + 55f, "NOTE:", senderNote, ink)
+        }
+        canvas.drawRect(left, declTop, right, declBottom, rulePaint)
+        y = declBottom
+
+        // ── Bank / UPI, and the signature cells ───────────────────────────────
+        y += 7f
+        val bankTop = y
+        val bankBottom = bankTop + 78f
+        val bankSplit = if (options.showSignatureBox) 330f else right
+
+        paint.color = Color.WHITE
+        canvas.drawRect(left, bankTop, right, bankBottom, paint)
+        capStrip(left, bankSplit, bankTop, "PAYMENT DETAILS (HIMAT TEXTILE)")
+
+        val bankRows = listOf(
+            "Bank" to "ICICI Bank, Ashram Rd",
+            "Account Name" to "Himat Textile (Current)",
+            "Account No." to "136805501447",
+            "IFSC" to "ICIC0000189",
+            "UPI" to profile.upiId.ifBlank { "eazypay.0000053310@icici" }
+        )
+        val qrSize = 44f
+        val qrLeft = bankSplit - qrSize - 8f
+        bankRows.forEachIndexed { index, (key, value) ->
+            kvLine(left + 7f, bankTop + 27f + (index * 10f), key, value, qrLeft - 4f, bold = index == 2)
+        }
+
+        val paymentQr = try {
+            BitmapFactory.decodeResource(context.resources, R.drawable.payment_qr)
+        } catch (_: Exception) {
+            null
+        } ?: generateQrCodeBitmap(
+            "upi://pay?pa=${profile.upiId.ifBlank { "eazypay.0000053310@icici" }}&pn=${profile.businessName}&cu=INR",
+            160
+        )
+        if (paymentQr != null) {
+            canvas.drawBitmap(
+                paymentQr,
+                null,
+                RectF(qrLeft, bankTop + 21f, qrLeft + qrSize, bankTop + 21f + qrSize),
+                paint
+            )
+            paint.color = inkMuted
+            paint.textSize = 5.6f
+            paint.typeface = tfBold
+            val scanLabel = "SCAN TO PAY"
+            canvas.drawText(
+                scanLabel,
+                qrLeft + (qrSize - paint.measureText(scanLabel)) / 2f,
+                bankTop + 21f + qrSize + 7f,
+                paint
+            )
+        }
+
+        if (options.showSignatureBox) {
+            val signSplit = (bankSplit + right) / 2f
+            capStrip(bankSplit, signSplit, bankTop, "CUSTOMER'S ACCEPTANCE")
+            capStrip(signSplit, right, bankTop, "FOR ${profile.businessName.uppercase()}")
+
+            canvas.drawLine(bankSplit, bankTop, bankSplit, bankBottom, rulePaint)
+            canvas.drawLine(signSplit, bankTop, signSplit, bankBottom, hairPaint)
+
+            paint.color = inkMuted
+            paint.textSize = 6.2f
+            paint.typeface = tfPlain
+            canvas.drawLine(bankSplit + 12f, bankBottom - 18f, signSplit - 12f, bankBottom - 18f, hairPaint)
+            canvas.drawText("Signature & shop stamp", bankSplit + 12f, bankBottom - 8f, paint)
+
+            canvas.drawLine(signSplit + 12f, bankBottom - 18f, right - 12f, bankBottom - 18f, hairPaint)
+            canvas.drawText("Authorised Signatory", signSplit + 12f, bankBottom - 8f, paint)
+
+            // Every salesman who worked these orders, so the customer knows who to call
+            val tripSalesmen = salesmenForReport(visit, entries)
+            val salesmanLine = tripSalesmen.joinToString(", ")
+                .ifBlank { (salesman?.name ?: visit.employeeName) }
+            if (salesmanLine.isNotBlank()) {
+                paint.color = ink
+                paint.textSize = 6.6f
+                paint.typeface = tfBold
+                val shown = QuotationGrid.clipToWidth(salesmanLine, right - signSplit - 24f) { paint.measureText(it) }
+                canvas.drawText(shown, signSplit + 12f, bankTop + 30f, paint)
+
+                paint.color = inkMuted
+                paint.textSize = 6f
+                paint.typeface = tfPlain
+                val contact = salesman?.phone.orEmpty().ifBlank { profile.phone }
+                if (contact.isNotBlank()) {
+                    canvas.drawText(contact, signSplit + 12f, bankTop + 39f, paint)
+                }
+            }
+        }
+        canvas.drawRect(left, bankTop, right, bankBottom, rulePaint)
+
+        pdfDocument.finishPage(page)
+
+        val outputDir = File(context.cacheDir, "reports")
+        if (!outputDir.exists()) outputDir.mkdirs()
+        // Same name as the card layout: the customer is receiving the same document, and the file
+        // name is the first thing they read in the chat.
+        val reportBrand = customer?.brandName()?.takeIf { it.isNotBlank() } ?: visit.customerName
         val file = File(outputDir, PdfFileNames.build(reportBrand, "Customer Quotation", visit.visitCode))
         FileOutputStream(file).use { out ->
             pdfDocument.writeTo(out)

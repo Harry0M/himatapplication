@@ -15,6 +15,28 @@ import java.util.Locale
 
 object ShareUtil {
 
+    /**
+     * The web admin, which is where anything this app deliberately does not carry lives.
+     *
+     * The bin is the main one: records deleted for good are reviewed and emptied there and nowhere
+     * else, so the phone only needs to know how to get to it.
+     */
+    const val WEB_ADMIN_URL = "https://himatsms.web.app"
+    const val WEB_BIN_URL = "$WEB_ADMIN_URL/#/app/bin"
+
+    /** Opens a link in the browser. Says so plainly if the phone has nothing that can. */
+    fun openUrl(context: Context, url: String) {
+        try {
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            )
+        } catch (_: Exception) {
+            Toast.makeText(context, "No app on this phone can open that link", Toast.LENGTH_LONG).show()
+        }
+    }
+
     fun sharePdfFile(context: Context, file: File, title: String, targetPackage: String? = null) {
         try {
             val uri: Uri = FileProvider.getUriForFile(

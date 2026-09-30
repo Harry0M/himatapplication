@@ -15,6 +15,9 @@ import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.PendingActions
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.Business
+import androidx.compose.material.icons.filled.ContactMail
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Store
@@ -38,12 +41,14 @@ import com.example.ui.components.MenuRow
 import com.example.ui.components.ScreenHeader
 import com.example.ui.components.SectionHeader
 import com.example.ui.components.UiDimens
+import com.example.ui.dialogs.BusinessCardSheet
 import com.example.ui.dialogs.CustomerRequestsDialog
 import com.example.ui.dialogs.RegistrationShareBottomSheet
 import com.example.ui.dialogs.SupplierRequestsDialog
 import com.example.ui.viewmodel.AppScreen
 import com.example.ui.viewmodel.HimatViewModel
 import com.example.util.Roles
+import com.example.util.ShareUtil
 
 /**
  * Everything that is not a daily tab lives here, each feature exactly once:
@@ -66,6 +71,7 @@ fun MoreScreen(viewModel: HimatViewModel) {
     var showSupplierRequests by remember { mutableStateOf(false) }
     var showShareSheet by remember { mutableStateOf(false) }
     var confirmSignOut by remember { mutableStateOf(false) }
+    var showBusinessCard by remember { mutableStateOf(false) }
 
     val who = currentEmployee?.name ?: currentUser?.displayName ?: currentUser?.email ?: ""
 
@@ -149,7 +155,25 @@ fun MoreScreen(viewModel: HimatViewModel) {
                     badge = if (pendingDeletions > 0) "$pendingDeletions waiting" else null
                 ) { viewModel.navigateTo(AppScreen.DELETION_REQUESTS) }
                 MenuDivider()
+                MenuRow(
+                    Icons.Default.Delete,
+                    "Bin",
+                    "Records deleted for good. Opens the web admin."
+                ) { ShareUtil.openUrl(context, ShareUtil.WEB_BIN_URL) }
+                MenuDivider()
+                MenuRow(
+                    Icons.Default.Business,
+                    "Business details",
+                    "Contact and links printed on every PDF"
+                ) { viewModel.navigateTo(AppScreen.SETTINGS) }
+                MenuDivider()
             }
+            MenuRow(
+                Icons.Default.ContactMail,
+                "Share business card",
+                "Send our details on WhatsApp"
+            ) { showBusinessCard = true }
+            MenuDivider()
             MenuRow(Icons.Default.AccountCircle, "Profile & settings", "Your login, sync status") {
                 viewModel.navigateTo(AppScreen.PROFILE)
             }
@@ -160,6 +184,13 @@ fun MoreScreen(viewModel: HimatViewModel) {
         } }
     }
 
+    if (showBusinessCard) {
+        BusinessCardSheet(
+            viewModel = viewModel,
+            onDismiss = { showBusinessCard = false },
+            onEditDetails = if (isAdmin) ({ viewModel.navigateTo(AppScreen.SETTINGS) }) else null
+        )
+    }
     if (showCustomerRequests) {
         CustomerRequestsDialog(viewModel = viewModel, onDismiss = { showCustomerRequests = false })
     }

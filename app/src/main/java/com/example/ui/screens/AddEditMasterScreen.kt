@@ -472,7 +472,18 @@ fun AddEditMasterScreen(
                 ?: viewModel.nextStaffCode()
         )
     }
-    var empRole by remember(editingEmployee) { mutableStateOf(editingEmployee?.role ?: empDraft?.get("role")?.toString() ?: "Salesman") }
+    // What this person may hand out, and whether they may bind a login email. Both are checked again
+    // by the Cloud Function that writes the record; these only shape the form.
+    val allowedRoles = remember(isSuperAdmin, currentEmployee) { viewModel.creatableRoles() }
+    val canSetLoginEmail = remember(isSuperAdmin, currentEmployee) { viewModel.canSetLoginEmail() }
+    var empRole by remember(editingEmployee) {
+        mutableStateOf(
+            editingEmployee?.role
+                ?: empDraft?.get("role")?.toString()
+                ?: allowedRoles.firstOrNull { !Roles.isAdmin(it) }
+                ?: Roles.STAFF
+        )
+    }
     var empPhone by remember(editingEmployee) { mutableStateOf(editingEmployee?.phone ?: empDraft?.get("phone")?.toString() ?: "") }
     var empPhone2 by remember(editingEmployee) { mutableStateOf(editingEmployee?.phone2 ?: "") }
     var empPhone3 by remember(editingEmployee) { mutableStateOf(editingEmployee?.phone3 ?: "") }
@@ -959,9 +970,15 @@ fun AddEditMasterScreen(
                     assignedMarkets = empSelectedMarkets.joinToString(", "),
                     markets = empSelectedMarkets.joinToString(", ")
                 )
-                viewModel.saveEmployee(candidate)
-                MasterDraftManager.clearDraft(context, "employee")
-                onBack()
+                // Wait for the office before leaving. The role is checked server-side, so a refusal
+                // ("Only an Admin can make somebody an Admin") has to leave the form open with the
+                // draft intact rather than closing it behind a toast nobody can act on.
+                viewModel.saveEmployee(candidate) { saved ->
+                    if (saved) {
+                        MasterDraftManager.clearDraft(context, "employee")
+                        onBack()
+                    }
+                }
             }
         }
     }
@@ -1527,6 +1544,8 @@ fun AddEditMasterScreen(
                                 onEmployeeIdChange = { empId = it },
                                 role = empRole,
                                 onRoleChange = { empRole = it },
+                                allowedRoles = allowedRoles,
+                                canSetLoginEmail = canSetLoginEmail,
                                 phone = empPhone,
                                 onPhoneChange = { empPhone = it },
                                 phone2 = empPhone2,
@@ -4023,6 +4042,10 @@ private fun EmployeeFormContent(
     onEmployeeIdChange: (String) -> Unit,
     role: String,
     onRoleChange: (String) -> Unit,
+    /** Roles this person may hand out. Staff never see Administrator. */
+    allowedRoles: List<String>,
+    /** Only an Admin may bind a login email, so for anyone else the email fields are read-only. */
+    canSetLoginEmail: Boolean,
     phone: String,
     onPhoneChange: (String) -> Unit,
     phone2: String,
@@ -4078,8 +4101,10 @@ private fun EmployeeFormContent(
                     color = NavyPrimary
                 )
 
+                // Only the roles this person may actually hand out. A Staff member sees "Sales Agent"
+                // alone; the Administrator chip is not shown to them rather than shown and refused.
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Salesman", "Admin").forEach { r ->
+                    allowedRoles.forEach { r ->
                         val isSelected = role.equals(r, ignoreCase = true)
                         Surface(
                             color = if (isSelected) NavyPrimary else Color(0xFFF1F5F9),
@@ -4095,7 +4120,11 @@ private fun EmployeeFormContent(
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text(
-                                    text = if (r == "Admin") "👑 Administrator" else "💼 Sales Agent",
+                                    text = when {
+                                        Roles.isAdmin(r) -> "👑 Administrator"
+                                        Roles.isAgent(r) -> "🤝 Sub Agent"
+                                        else -> "💼 Staff"
+                                    },
                                     color = if (isSelected) Color.White else TextPrimary,
                                     fontWeight = FontWeight.Bold,
                                     style = MaterialTheme.typography.bodySmall
